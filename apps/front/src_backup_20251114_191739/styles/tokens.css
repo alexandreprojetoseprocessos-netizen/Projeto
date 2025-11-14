@@ -1,0 +1,62 @@
+:root {
+  /* Brand palette */
+  --color-primary-900: #0d1428;
+  --color-primary-800: #131b35;
+  --color-primary-700: #1f2a44;
+  --color-primary-600: #2f3b5f;
+  --color-primary-500: #5b3fff;
+  --color-primary-100: #e7e9f7;
+  --color-primary-50: #f5f6fb;
+
+  --color-success-500: #1ec28b;
+  --color-warning-500: #ff8c42;
+  --color-danger-500: #ff5a5a;
+
+  --color-neutral-50: #f8f9fb;
+  --color-neutral-100: #f2f4f7;
+  --color-neutral-200: #e5e7eb;
+  --color-neutral-400: #9ca3af;
+  --color-neutral-600: #4b5563;
+  --color-neutral-900: #0f172a;
+
+  --surface-muted: var(--color-neutral-50);
+  --surface-card: #ffffff;
+  --surface-card-secondary: #fbfbfe;
+
+  --text-strong: var(--color-neutral-900);
+  --text-muted: #6b7280;
+  --text-inverse: #ffffff;
+
+  --border-soft: var(--color-neutral-200);
+
+  /* Typography & spacing */
+  --font-family-sans: "Inter", "Segoe UI", "SF Pro Display", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-size-base: 16px;
+  --line-height-base: 1.45;
+
+  /* Radii & shadows */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1.25rem;
+  --shadow-soft: 0 12px 35px rgba(15, 23, 42, 0.08);
+  --shadow-elevated: 0 25px 60px rgba(15, 23, 42, 0.12);
+
+  /* Transitions */
+  --transition-base: 150ms ease;
+
+  /* Gradients */
+  --gradient-hero: linear-gradient(135deg, rgba(31, 42, 68, 0.95), rgba(91, 63, 255, 0.85));
+  --gradient-card: linear-gradient(135deg, rgba(91, 63, 255, 0.08), rgba(31, 42, 68, 0));
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-muted: #0f172a;
+    --surface-card: #141c31;
+    --surface-card-secondary: #1b2440;
+    --text-strong: #f8fafc;
+    --text-muted: #cbd5f5;
+    --border-soft: rgba(255, 255, 255, 0.08);
+    --shadow-soft: 0 15px 40px rgba(3, 7, 18, 0.75);
+  }
+}

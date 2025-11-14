@@ -4,8 +4,8 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Tree } from "@minoru/react-dnd-treeview";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, BarChart, Bar } from "recharts";
 import { useAuth } from "./contexts/AuthContext";
-import { OrganizationSelector } from "./components/OrganizationSelector";
 import { AuthPage } from "./components/AuthPage";
+import { OrganizationSelector } from "./components/OrganizationSelector";
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 async function fetchJson(path, token, options, organizationId) {
     const headers = new Headers(options?.headers ?? undefined);
@@ -144,7 +144,7 @@ export const App = () => {
     const [timeEntryHours, setTimeEntryHours] = useState("");
     const [timeEntryDate, setTimeEntryDate] = useState(() => new Date().toISOString().split("T")[0]);
     const [timeEntryDescription, setTimeEntryDescription] = useState("");
-        useEffect(() => {
+            useEffect(() => {
         if (status !== "authenticated" || !token) {
             setOrganizations([]);
             setSelectedOrganizationId("");
@@ -168,12 +168,180 @@ export const App = () => {
                 }
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Falha ao carregar organiza��es";
+                const message = error instanceof Error ? error.message : "Falha ao carregar organizações";
                 setOrgError(message);
+                setOrganizations([]);
                 setSelectedOrganizationId("");
             }
         };
         loadOrganizations();
+    }, [status, token, selectedOrganizationId]);
+    useEffect(() => {
+        if (status !== "authenticated" || !token || !selectedOrganizationId) {
+            setProjects([]);
+            setSelectedProjectId("");
+            return;
+        }
+        const loadProjects = async () => {
+            try {
+                setProjectsError(null);
+                const data = await fetchJson("/projects", token, undefined, selectedOrganizationId);
+                setProjects(data.projects ?? []);
+                if (data.projects?.length) {
+                    if (!data.projects.find((project) => project.id === selectedProjectId)) {
+                        setSelectedProjectId(data.projects[0].id);
+                    }
+                }
+                else {
+                    setSelectedProjectId("");
+                }
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : "Falha ao carregar projetos";
+                setProjectsError(message);
+            }
+        };
+        loadProjects();
+    }, [status, token, selectedOrganizationId, selectedProjectId]);
+    useEffect(() => {
+        if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+            setProjectSummary(null);
+            return;
+        }
+        const loadSummary = async () => {
+            try {
+                setSummaryError(null);
+                const query = new URLSearchParams({ rangeDays: String(filters.rangeDays) });
+                const data = await fetchJson(`/projects/${selectedProjectId}/summary?${query.toString()}`, token, undefined, selectedOrganizationId);
+                setProjectSummary(data);
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : "Falha ao carregar resumo";
+                setSummaryError(message);
+            }
+        };
+        loadSummary();
+    }, [status, token, selectedProjectId, selectedOrganizationId, filters.rangeDays]);
+    useEffect(() => {
+        if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+            setMembers([]);
+            return;
+        }
+        const loadMembers = async () => {
+            try {
+                setMembersError(null);
+                const data = await fetchJson(`/projects/${selectedProjectId}/members`, token, undefined, selectedOrganizationId);
+                setMembers(data.members ?? []);
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : "Erro ao carregar equipe";
+                setMembersError(message);
+            }
+        };
+        loadMembers();
+    }, [status, token, selectedProjectId, selectedOrganizationId]);
+    useEffect(() => {
+        if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+            setWbsNodes([]);
+            setSelectedNodeId(null);
+            return;
+        }
+        const loadWbs = async () => {
+            try {
+                setWbsError(null);
+                const data = await fetchJson(`/projects/${selectedProjectId}/wbs`, token, undefined, selectedOrganizationId);
+                setWbsNodes(data.nodes ?? []);
+                if (!selectedNodeId && data.nodes?.length) {
+                    setSelectedNodeId(data.nodes[0].id);
+                }
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : "Erro ao carregar WBS";
+                setWbsError(message);
+            }
+        };
+        loadWbs();
+    }, [status, token, selectedProjectId, selectedOrganizationId, wbsRefresh]);
+    useEffect(() => {
+        if (!selectedNodeId || status !== "authenticated" || !token || !selectedOrganizationId) {
+            setComments([]);
+            return;
+        }
+        const loadComments = async () => {
+            try {
+                setCommentsError(null);
+                const data = await fetchJson(`/wbs/${selectedNodeId}/comments`, token, undefined, selectedOrganizationId);
+                setComments(data.comments ?? []);
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : "Erro ao carregar comentários";
+                setCommentsError(message);
+            }
+        };
+        loadComments();
+    }, [status, token, selectedNodeId, selectedOrganizationId, commentsRefresh]);
+    useEffect(() => {
+        if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+            setBoardColumns([]);
+            return;
+        }
+        const loadBoard = async () => {
+            try {
+                setBoardError(null);
+                const data = await fetchJson(`/projects/${selectedProjectId}/board`, token, undefined, selectedOrganizationId);
+                const normalized = (data.columns ?? []).map((column) => ({
+                    ...column,
+                    tasks: [...column.tasks].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                }));
+                setBoardColumns(normalized);
+                if (!newTaskColumn && normalized.length) {
+                    setNewTaskColumn(normalized[0].id);
+                }
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : "Erro ao carregar quadro";
+                setBoardError(message);
+            }
+        };
+        loadBoard();
+    }, [status, token, selectedProjectId, selectedOrganizationId, boardRefresh, newTaskColumn]);
+    useEffect(() => {
+        if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+            setGanttTasks([]);
+            setGanttMilestones([]);
+            return;
+        }
+        const loadGantt = async () => {
+            try {
+                setGanttError(null);
+                const data = await fetchJson(`/projects/${selectedProjectId}/gantt`, token, undefined, selectedOrganizationId);
+                setGanttTasks(data.tasks ?? []);
+                setGanttMilestones(data.milestones ?? []);
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : "Erro ao carregar Gantt";
+                setGanttError(message);
+            }
+        };
+        loadGantt();
+    }, [status, token, selectedProjectId, selectedOrganizationId]);
+    useEffect(() => {
+        if (status !== "authenticated" || !token || !selectedOrganizationId) {
+            setPortfolio([]);
+            return;
+        }
+        const loadPortfolio = async () => {
+            try {
+                setPortfolioError(null);
+                const data = await fetchJson("/reports/portfolio", token, undefined, selectedOrganizationId);
+                setPortfolio(data.projects ?? []);
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : "Erro ao carregar portfólio";
+                setPortfolioError(message);
+            }
+        };
+        loadPortfolio();
     }, [status, token, selectedOrganizationId]);
     const handleCreateTask = async (event) => {
         event.preventDefault();
@@ -318,7 +486,56 @@ export const App = () => {
     if (organizationCards.length > 1 && !selectedOrganizationId) {
         return (_jsx(OrganizationView, { organizations: organizationCards, onSelect: (organizationId) => setSelectedOrganizationId(organizationId), onCreateOrganization: () => alert("Fluxo de criação de organização em breve."), userEmail: user?.email ?? null }));
     }
-    return (_jsxs("main", { style: { fontFamily: "Inter, sans-serif", padding: "2rem", maxWidth: "1100px", margin: "0 auto" }, children: [_jsxs("header", { style: { marginBottom: "1.5rem", display: "flex", justifyContent: "space-between", gap: "1rem" }, children: [_jsxs("div", { children: [_jsx("h1", { children: "G&P \u2014 Gest\u00E3o de Projetos" }), _jsx("p", { children: "Dashboard consolidado alimentado pela API autenticada no Supabase." }), organizations.length > 0 && (_jsxs("label", { style: { display: "flex", flexDirection: "column", maxWidth: "320px", marginTop: "1rem" }, children: [_jsx("span", { children: "Selecione a organiza\u00E7\u00E3o" }), _jsx("select", { value: selectedOrganizationId, onChange: (event) => setSelectedOrganizationId(event.target.value), children: organizations.map((org) => (_jsxs("option", { value: org.id, children: [org.name, " (", org.role, ")"] }, org.id))) })] })), projects.length > 1 && (_jsxs("label", { style: { display: "flex", flexDirection: "column", maxWidth: "320px", marginTop: "1rem" }, children: [_jsx("span", { children: "Selecione o projeto" }), _jsx("select", { value: selectedProjectId, onChange: (event) => setSelectedProjectId(event.target.value), children: projects.map((project) => (_jsx("option", { value: project.id, children: project.name }, project.id))) })] })), projectsError && _jsx("p", { style: { color: "red" }, children: projectsError })] }), _jsxs("div", { style: { textAlign: "right" }, children: [_jsxs("p", { style: { marginBottom: "0.5rem" }, children: ["Logado como ", _jsx("strong", { children: user?.email })] }), _jsx("button", { onClick: signOut, children: "Sair" })] })] }), orgError && _jsx("p", { style: { color: "red" }, children: orgError }), !selectedOrganizationId ? (_jsx("p", { children: "Nenhuma organiza\u00E7\u00E3o dispon\u00EDvel para este usu\u00E1rio." })) : (_jsxs(_Fragment, { children: [_jsxs("section", { style: { marginBottom: "2rem" }, children: [_jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" }, children: [_jsx("h2", { children: "Resumo do projeto" }), _jsxs("label", { style: { display: "flex", gap: "0.5rem", alignItems: "center" }, children: ["Intervalo (dias):", _jsxs("select", { value: filters.rangeDays, onChange: (event) => setFilters((prev) => ({ ...prev, rangeDays: Number(event.target.value) })), children: [_jsx("option", { value: 7, children: "7" }), _jsx("option", { value: 14, children: "14" }), _jsx("option", { value: 30, children: "30" })] })] })] }), summaryError && _jsx("p", { style: { color: "red" }, children: summaryError }), projectSummary ? (_jsxs(_Fragment, { children: [_jsxs("div", { style: { display: "flex", gap: "1rem", flexWrap: "wrap" }, children: [_jsxs("div", { children: [_jsx("strong", { children: "Tarefas totais:" }), " ", projectSummary.totals.total] }), _jsxs("div", { children: [_jsx("strong", { children: "Conclu\u00EDdas:" }), " ", projectSummary.totals.done] }), _jsxs("div", { children: [_jsx("strong", { children: "Em andamento:" }), " ", projectSummary.totals.inProgress] }), _jsxs("div", { children: [_jsx("strong", { children: "Backlog:" }), " ", projectSummary.totals.backlog] }), _jsxs("div", { children: [_jsx("strong", { children: "Bloqueadas:" }), " ", projectSummary.totals.blocked] }), _jsxs("div", { children: [_jsx("strong", { children: "Tarefas atrasadas:" }), " ", projectSummary.overdueTasks] }), _jsxs("div", { children: [_jsxs("strong", { children: ["Velocity (", filters.rangeDays, "d):"] }), " ", projectSummary.velocity.doneLast7] }), _jsxs("div", { children: [_jsx("strong", { children: "Horas registradas (14d):" }), " ", projectSummary.hoursTracked.toFixed(2)] }), _jsxs("div", { children: [_jsx("strong", { children: "Capacidade semanal:" }), " ", projectSummary.capacity.weeklyCapacity, "h"] })] }), _jsxs("div", { style: { display: "flex", flexWrap: "wrap", gap: "1rem", marginTop: "1rem" }, children: [_jsxs("div", { style: { flex: "1 1 300px", height: "200px" }, children: [_jsx("h3", { children: "Burn-down" }), _jsx(ResponsiveContainer, { width: "100%", height: "100%", children: _jsxs(LineChart, { data: projectSummary.burnDown, children: [_jsx(XAxis, { dataKey: "date", tickFormatter: formatDate }), _jsx(YAxis, {}), _jsx(Tooltip, {}), _jsx(Legend, {}), _jsx(Line, { type: "monotone", dataKey: "done", stroke: "#22c55e" }), _jsx(Line, { type: "monotone", dataKey: "remaining", stroke: "#ef4444" })] }) })] }), _jsxs("div", { style: { flex: "1 1 300px", height: "200px" }, children: [_jsx("h3", { children: "Horas registradas (14d)" }), _jsx(ResponsiveContainer, { width: "100%", height: "100%", children: _jsxs(BarChart, { data: projectSummary.timeEntries, children: [_jsx(XAxis, { dataKey: "date", tickFormatter: formatDate }), _jsx(YAxis, {}), _jsx(Tooltip, {}), _jsx(Bar, { dataKey: "hours", fill: "#3b82f6" })] }) })] })] }), _jsxs("div", { style: { marginTop: "1rem" }, children: [_jsx("strong", { children: "Pr\u00F3ximos marcos:" }), " ", projectSummary.upcomingMilestones.length ? (_jsx("ul", { children: projectSummary.upcomingMilestones.map((milestone) => (_jsxs("li", { children: [milestone.name, " \u2014 ", formatDate(milestone.dueDate), " (", milestone.status, ")"] }, milestone.id))) })) : (_jsx("span", { children: "Nenhum marco futuro" }))] })] })) : (_jsx("p", { children: "Selecione um projeto para ver o resumo." }))] }), _jsxs("section", { style: { marginBottom: "2rem" }, children: [_jsx("h2", { children: "Equipe" }), membersError && _jsx("p", { style: { color: "red" }, children: membersError }), !membersError && !members.length && _jsx("p", { children: "Nenhum membro vinculado." }), !membersError && members.length > 0 && (_jsxs("table", { style: { width: "100%", borderCollapse: "collapse" }, children: [_jsx("thead", { children: _jsxs("tr", { children: [_jsx("th", { align: "left", children: "Nome" }), _jsx("th", { align: "left", children: "Email" }), _jsx("th", { align: "left", children: "Papel" }), _jsx("th", { align: "left", children: "Capacidade (h/sem)" })] }) }), _jsx("tbody", { children: members.map((member) => (_jsxs("tr", { children: [_jsx("td", { children: member.name }), _jsx("td", { children: member.email }), _jsx("td", { children: member.role }), _jsx("td", { children: member.capacityWeekly })] }, member.id))) })] }))] }), _jsxs("section", { style: { marginBottom: "2rem" }, children: [_jsx("h2", { children: "Kanban do projeto" }), boardError && _jsx("p", { style: { color: "red" }, children: boardError }), !boardError && boardColumns.length > 0 && (_jsxs("form", { onSubmit: handleCreateTask, style: { display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }, children: [_jsx("input", { type: "text", placeholder: "T\u00EDtulo da tarefa", value: newTaskTitle, onChange: (event) => setNewTaskTitle(event.target.value), required: true }), _jsx("select", { value: newTaskColumn, onChange: (event) => setNewTaskColumn(event.target.value), required: true, children: boardColumns.map((column) => (_jsx("option", { value: column.id, children: column.label }, column.id))) }), _jsx("button", { type: "submit", children: "Adicionar" })] })), !boardError && _jsx(KanbanBoard, { columns: boardColumns, onDragEnd: handleDragEnd })] }), _jsxs("section", { style: { marginBottom: "2rem" }, children: [_jsx("h2", { children: "WBS (Resumo)" }), wbsError && _jsx("p", { style: { color: "red" }, children: wbsError }), !wbsError && _jsx(WbsTreeView, { nodes: wbsNodes, onMove: handleWbsMove })] }), _jsxs("section", { style: { marginBottom: "2rem" }, children: [_jsx("h2", { children: "Coment\u00E1rios do item selecionado" }), wbsNodes.length > 0 && (_jsxs("label", { style: { display: "flex", flexDirection: "column", maxWidth: "320px", marginBottom: "1rem" }, children: [_jsx("span", { children: "Escolha um item da WBS" }), _jsxs("select", { value: selectedNodeId ?? "", onChange: (event) => setSelectedNodeId(event.target.value), children: [_jsx("option", { value: "", children: "Selecione..." }), flattenNodes(wbsNodes).map((node) => (_jsxs("option", { value: node.id, children: [node.title, " (", node.type, ")"] }, node.id)))] })] })), _jsx(CommentsPanel, { comments: comments, error: commentsError }), selectedNodeId ? (_jsxs(_Fragment, { children: [_jsxs("form", { onSubmit: handleCreateComment, style: { marginTop: "1rem", display: "flex", flexDirection: "column" }, children: [_jsx("textarea", { placeholder: "Novo coment\u00E1rio", value: commentBody, onChange: (event) => setCommentBody(event.target.value), rows: 3 }), _jsx("button", { type: "submit", disabled: !commentBody.trim(), children: "Registrar coment\u00E1rio" })] }), _jsxs("form", { onSubmit: handleCreateTimeEntry, style: { marginTop: "1rem", display: "flex", flexWrap: "wrap", gap: "0.5rem" }, children: [_jsx("input", { type: "number", min: "0", step: "0.25", placeholder: "Horas", value: timeEntryHours, onChange: (event) => setTimeEntryHours(event.target.value), required: true }), _jsx("input", { type: "date", value: timeEntryDate, onChange: (event) => setTimeEntryDate(event.target.value), required: true }), _jsx("input", { type: "text", placeholder: "Descri\u00E7\u00E3o (opcional)", value: timeEntryDescription, onChange: (event) => setTimeEntryDescription(event.target.value) }), _jsx("button", { type: "submit", children: "Registrar horas" })] })] })) : (_jsx("p", { children: "Selecione um item para comentar e registrar horas." }))] }), _jsxs("section", { children: [_jsx("h2", { children: "Gantt simplificado" }), ganttError && _jsx("p", { style: { color: "red" }, children: ganttError }), !ganttError && _jsx(GanttTimeline, { tasks: ganttTasks, milestones: ganttMilestones })] }), _jsxs("section", { style: { marginTop: "2rem" }, children: [_jsx("h2", { children: "Relat\u00F3rio de portf\u00F3lio" }), portfolioError && _jsx("p", { style: { color: "red" }, children: portfolioError }), !portfolioError && (_jsxs(_Fragment, { children: [_jsx("button", { type: "button", onClick: handleDownloadPortfolio, style: { marginBottom: "1rem" }, children: "Baixar CSV" }), _jsxs("table", { style: { width: "100%", borderCollapse: "collapse" }, children: [_jsx("thead", { children: _jsxs("tr", { children: [_jsx("th", { align: "left", children: "Projeto" }), _jsx("th", { align: "left", children: "Status" }), _jsx("th", { align: "left", children: "Tarefas (Done/Total)" }), _jsx("th", { align: "left", children: "Riscos abertos" }), _jsx("th", { align: "left", children: "Horas" })] }) }), _jsx("tbody", { children: portfolio.map((row) => (_jsxs("tr", { children: [_jsx("td", { children: row.projectName }), _jsx("td", { children: row.status }), _jsxs("td", { children: [row.tasksDone, "/", row.tasksTotal] }), _jsx("td", { children: row.risksOpen }), _jsx("td", { children: row.hoursTracked.toFixed(2) })] }, row.projectId))) })] })] }))] })] }))] }));
+    return (_jsx(DashboardLayout, {
+        userEmail: user?.email ?? null,
+        organizations,
+        selectedOrganizationId,
+        onOrganizationChange: (organizationId) => setSelectedOrganizationId(organizationId),
+        orgError,
+        onSignOut: signOut,
+        projects,
+        selectedProjectId,
+        onProjectChange: (projectId) => setSelectedProjectId(projectId),
+        projectsError,
+        filters,
+        onRangeChange: (rangeDays) => setFilters((prev) => ({ ...prev, rangeDays })),
+        summary: projectSummary,
+        summaryError,
+        members,
+        membersError,
+        boardColumns: columns,
+        boardError,
+        onCreateTask: handleCreateTask,
+        onDragTask: handleDragEnd,
+        newTaskTitle,
+        onTaskTitleChange: (value) => setNewTaskTitle(value),
+        newTaskColumn,
+        onTaskColumnChange: (value) => setNewTaskColumn(value),
+        wbsNodes,
+        wbsError,
+        onMoveNode: handleWbsMove,
+        selectedNodeId,
+        onSelectNode: (nodeId) => setSelectedNodeId(nodeId),
+        comments,
+        commentsError,
+        onSubmitComment: handleCreateComment,
+        commentBody,
+        onCommentBodyChange: (value) => setCommentBody(value),
+        timeEntryDate,
+        timeEntryHours,
+        timeEntryDescription,
+        onTimeEntryDateChange: (value) => setTimeEntryDate(value),
+        onTimeEntryHoursChange: (value) => setTimeEntryHours(value),
+        onTimeEntryDescriptionChange: (value) => setTimeEntryDescription(value),
+        onLogTime: handleCreateTimeEntry,
+        ganttTasks,
+        ganttMilestones,
+        ganttError,
+        portfolio,
+        portfolioError,
+        onExportPortfolio: handleDownloadPortfolio
+    }));
+
 };
 function flattenNodes(nodes) {
     return nodes.flatMap((node) => [node, ...flattenNodes(node.children)]);
@@ -375,6 +592,8 @@ function updateNodeParent(nodes, nodeId, parentId, position) {
     }
     return insertIntoTree(withoutItem);
 }
+
+
 
 
 

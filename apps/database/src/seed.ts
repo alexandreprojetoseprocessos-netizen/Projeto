@@ -16,16 +16,20 @@ import {
 } from "@prisma/client";
 import { prisma } from "./index";
 
+const seedUserId = process.env.SEED_USER_ID ?? "user-gestor";
+const seedUserEmail = process.env.SEED_USER_EMAIL ?? "gestor@gp.local";
+const seedUserName = process.env.SEED_USER_NAME ?? "Gestor(a) Demo";
+
 async function main() {
   console.log("Seeding base data...");
 
   const adminUser = await prisma.user.upsert({
-    where: { email: "gestor@gp.local" },
-    update: { fullName: "Gestor(a) Demo" },
+    where: { email: seedUserEmail },
+    update: { fullName: seedUserName },
     create: {
-      id: "user-gestor",
-      email: "gestor@gp.local",
-      fullName: "Gestor(a) Demo",
+      id: seedUserId,
+      email: seedUserEmail,
+      fullName: seedUserName,
       passwordHash: "demo-hash",
       locale: "pt-BR",
       timezone: "America/Sao_Paulo"
