@@ -1,0 +1,20 @@
+{
+  "users": [
+    {
+      "email": "gestor@gp.local",
+      "password": "SenhaDemo123!",
+      "email_confirm": true,
+      "role": "authenticated",
+      "app_metadata": {"role": "OWNER"},
+      "user_metadata": {"full_name": "Gestor Demo"}
+    },
+    {
+      "email": "colaborador@gp.local",
+      "password": "SenhaDemo123!",
+      "email_confirm": true,
+      "role": "authenticated",
+      "app_metadata": {"role": "MEMBER"},
+      "user_metadata": {"full_name": "Colaborador Demo"}
+    }
+  ]
+}

@@ -1,0 +1,604 @@
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "./contexts/AuthContext";
+
+type ProjectSummary = {
+  id: string;
+  name: string;
+  status: string;
+  startDate?: string;
+  endDate?: string;
+  milestoneCount?: number;
+  wbsNodeCount?: number;
+};
+
+type ProjectMember = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  capacityWeekly: number;
+};
+
+type WbsTreeNode = {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  level: number;
+  estimateHours?: string | null;
+  progress?: number | null;
+  children: WbsTreeNode[];
+};
+
+type BoardTask = {
+  id: string;
+  title: string;
+  status: string;
+  priority?: string;
+  ownerId?: string | null;
+  boardColumnId: string;
+};
+
+type BoardColumn = {
+  id: string;
+  label: string;
+  order: number;
+  wipLimit?: number | null;
+  tasks: BoardTask[];
+};
+
+type GanttTask = {
+  id: string;
+  title: string;
+  status: string;
+  type: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  dependencies: string[];
+};
+
+type GanttMilestone = {
+  id: string;
+  name: string;
+  dueDate?: string;
+  status: string;
+};
+
+type Comment = {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: {
+    name: string;
+    email: string;
+  };
+};
+
+const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+
+async function fetchJson<T>(path: string, token: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers ?? undefined);
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  headers.set("Authorization", `Bearer ${token}`);
+
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...options,
+    headers
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = body.error ?? body.message ?? `API respondeu com status ${response.status}`;
+    throw new Error(message);
+  }
+  return body;
+}
+
+const formatDate = (value?: string | null) => {
+  if (!value) return "N/A";
+  return new Date(value).toLocaleDateString("pt-BR");
+};
+
+const WbsTreeView = ({ nodes }: { nodes: WbsTreeNode[] }) => {
+  if (!nodes.length) {
+    return <p>Nenhum item cadastrado.</p>;
+  }
+
+  const renderNodes = (items: WbsTreeNode[]) => (
+    <ul>
+      {items.map((node) => (
+        <li key={node.id}>
+          <strong>{node.title}</strong> — {node.type} ({node.status})
+          {node.estimateHours && <span> · {node.estimateHours}h</span>}
+          {!!node.children.length && renderNodes(node.children)}
+        </li>
+      ))}
+    </ul>
+  );
+
+  return renderNodes(nodes);
+};
+
+const LoginView = ({
+  onSubmit,
+  error
+}: {
+  onSubmit: (payload: { email: string; password: string }) => Promise<void>;
+  error: string | null;
+}) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitting(true);
+    try {
+      await onSubmit({ email, password });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <main style={{ maxWidth: "400px", margin: "4rem auto", fontFamily: "Inter, sans-serif" }}>
+      <h1>Entrar</h1>
+      <p>Use as credenciais do Supabase Auth para acessar o workspace.</p>
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <label>
+          Email
+          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+        </label>
+        <label>
+          Senha
+          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+        </label>
+        <button type="submit" disabled={submitting}>
+          {submitting ? "Entrando..." : "Entrar"}
+        </button>
+        {error && <span style={{ color: "red" }}>{error}</span>}
+      </form>
+    </main>
+  );
+};
+
+const KanbanBoard = ({ columns }: { columns: BoardColumn[] }) => {
+  if (!columns.length) {
+    return <p>Quadro vazio.</p>;
+  }
+
+  return (
+    <div style={{ display: "flex", gap: "1rem", overflowX: "auto" }}>
+      {columns.map((column) => (
+        <div
+          key={column.id}
+          style={{
+            minWidth: "220px",
+            background: "#f7f7f8",
+            borderRadius: "8px",
+            padding: "0.75rem"
+          }}
+        >
+          <div style={{ marginBottom: "0.5rem" }}>
+            <strong>{column.label}</strong>{" "}
+            {column.wipLimit ? <small>({column.tasks.length}/{column.wipLimit})</small> : null}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {column.tasks.length === 0 && <span style={{ color: "#777" }}>Sem tarefas</span>}
+            {column.tasks.map((task) => (
+              <article
+                key={task.id}
+                style={{
+                  background: "#fff",
+                  borderRadius: "6px",
+                  padding: "0.5rem",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.08)"
+                }}
+              >
+                <strong>{task.title}</strong>
+                <div style={{ fontSize: "0.85rem" }}>
+                  <span>Status: {task.status}</span>
+                  {task.priority && (
+                    <>
+                      {" "}
+                      · <span>Prioridade: {task.priority}</span>
+                    </>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const GanttTimeline = ({ tasks, milestones }: { tasks: GanttTask[]; milestones: GanttMilestone[] }) => {
+  if (!tasks.length) {
+    return <p>Nenhuma tarefa com datas definidas.</p>;
+  }
+
+  const dates = [
+    ...tasks.flatMap((task) => [task.startDate, task.endDate]),
+    ...milestones.map((milestone) => milestone.dueDate)
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => new Date(value!));
+  const timelineDates = dates.length ? dates : [new Date()];
+
+  const minDate = timelineDates.reduce((acc, date) => (acc.getTime() > date.getTime() ? date : acc));
+  const maxDate = timelineDates.reduce((acc, date) => (acc.getTime() < date.getTime() ? date : acc));
+  const totalDays = Math.max(1, (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  const offsetPercent = (value?: string | null) => {
+    if (!value) return 0;
+    const diff = new Date(value).getTime() - minDate.getTime();
+    return Math.max(0, (diff / (1000 * 60 * 60 * 24)) / totalDays) * 100;
+  };
+
+  const widthPercent = (start?: string | null, end?: string | null) => {
+    if (!start || !end) return 5;
+    const diff = new Date(end).getTime() - new Date(start).getTime();
+    return Math.max(5, (diff / (1000 * 60 * 60 * 24)) / totalDays * 100);
+  };
+
+  return (
+    <div style={{ border: "1px solid #e1e1e6", borderRadius: "8px", padding: "1rem" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        {tasks.map((task) => (
+          <div key={task.id}>
+            <div style={{ fontSize: "0.9rem" }}>
+              <strong>{task.title}</strong> — {task.status}
+            </div>
+            <div style={{ position: "relative", height: "18px", background: "#f0f0f5", borderRadius: "4px" }}>
+              <span
+                style={{
+                  position: "absolute",
+                  left: `${offsetPercent(task.startDate)}%`,
+                  width: `${widthPercent(task.startDate, task.endDate)}%`,
+                  background: "#7c3aed",
+                  height: "100%",
+                  borderRadius: "4px"
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: "1rem", fontSize: "0.9rem" }}>
+        <strong>Marcos:</strong>{" "}
+        {milestones.length
+          ? milestones.map((milestone) => `${milestone.name} (${formatDate(milestone.dueDate)})`).join(", ")
+          : "Nenhum marco"}
+      </div>
+    </div>
+  );
+};
+
+const CommentsPanel = ({
+  comments,
+  error
+}: {
+  comments: Comment[];
+  error: string | null;
+}) => {
+  if (error) {
+    return <p style={{ color: "red" }}>{error}</p>;
+  }
+
+  if (!comments.length) {
+    return <p>Nenhum comentario para o item selecionado.</p>;
+  }
+
+  return (
+    <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+      {comments.map((comment) => (
+        <li key={comment.id} style={{ borderBottom: "1px solid #eee", padding: "0.5rem 0" }}>
+          <p style={{ margin: 0 }}>{comment.body}</p>
+          <small>
+            {comment.author.name} · {formatDate(comment.createdAt)}
+          </small>
+        </li>
+      ))}
+    </ul>
+  );
+};
+
+export const App = () => {
+  const { status, user, token, signIn, signOut, error: authError } = useAuth();
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [membersError, setMembersError] = useState<string | null>(null);
+
+  const [wbsNodes, setWbsNodes] = useState<WbsTreeNode[]>([]);
+  const [wbsError, setWbsError] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+
+  const [boardColumns, setBoardColumns] = useState<BoardColumn[]>([]);
+  const [boardError, setBoardError] = useState<string | null>(null);
+
+  const [ganttTasks, setGanttTasks] = useState<GanttTask[]>([]);
+  const [ganttMilestones, setGanttMilestones] = useState<GanttMilestone[]>([]);
+  const [ganttError, setGanttError] = useState<string | null>(null);
+
+  // Projects
+  useEffect(() => {
+    if (status !== "authenticated" || !token) return;
+    const loadProjects = async () => {
+      try {
+        setProjectsError(null);
+        const data = await fetchJson<{ projects: ProjectSummary[] }>("/projects", token);
+        setProjects(data.projects ?? []);
+        if (data.projects?.length && !selectedProjectId) {
+          setSelectedProjectId(data.projects[0].id);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Falha ao carregar projetos";
+        setProjectsError(message);
+      }
+    };
+
+    loadProjects();
+  }, [status, token, selectedProjectId]);
+
+  // Project members
+  useEffect(() => {
+    if (status !== "authenticated" || !token || !selectedProjectId) {
+      setMembers([]);
+      return;
+    }
+    const loadMembers = async () => {
+      try {
+        setMembersError(null);
+        const data = await fetchJson<{ members: ProjectMember[] }>(`/projects/${selectedProjectId}/members`, token);
+        setMembers(data.members ?? []);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao carregar equipe";
+        setMembersError(message);
+      }
+    };
+    loadMembers();
+  }, [status, token, selectedProjectId]);
+
+  // WBS nodes
+  useEffect(() => {
+    if (status !== "authenticated" || !token || !selectedProjectId) {
+      setWbsNodes([]);
+      setSelectedNodeId(null);
+      return;
+    }
+
+    const loadWbs = async () => {
+      try {
+        setWbsError(null);
+        const data = await fetchJson<{ nodes: WbsTreeNode[] }>(`/projects/${selectedProjectId}/wbs`, token);
+        setWbsNodes(data.nodes ?? []);
+        const firstTask = findFirstTask(data.nodes ?? []);
+        setSelectedNodeId(firstTask?.id ?? null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao carregar WBS";
+        setWbsError(message);
+      }
+    };
+
+    loadWbs();
+  }, [status, token, selectedProjectId]);
+
+  // Comments for selected node
+  useEffect(() => {
+    if (!selectedNodeId || status !== "authenticated" || !token) {
+      setComments([]);
+      return;
+    }
+    const loadComments = async () => {
+      try {
+        setCommentsError(null);
+        const data = await fetchJson<{ comments: Comment[] }>(`/wbs/${selectedNodeId}/comments`, token);
+        setComments(data.comments ?? []);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao carregar comentarios";
+        setCommentsError(message);
+      }
+    };
+
+    loadComments();
+  }, [status, token, selectedNodeId]);
+
+  // Board data
+  useEffect(() => {
+    if (status !== "authenticated" || !token || !selectedProjectId) {
+      setBoardColumns([]);
+      return;
+    }
+
+    const loadBoard = async () => {
+      try {
+        setBoardError(null);
+        const data = await fetchJson<{ columns: BoardColumn[] }>(`/projects/${selectedProjectId}/board`, token);
+        setBoardColumns(data.columns ?? []);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao carregar quadro";
+        setBoardError(message);
+      }
+    };
+
+    loadBoard();
+  }, [status, token, selectedProjectId]);
+
+  // Gantt data
+  useEffect(() => {
+    if (status !== "authenticated" || !token || !selectedProjectId) {
+      setGanttTasks([]);
+      setGanttMilestones([]);
+      return;
+    }
+
+    const loadGantt = async () => {
+      try {
+        setGanttError(null);
+        const data = await fetchJson<{ tasks: GanttTask[]; milestones: GanttMilestone[] }>(
+          `/projects/${selectedProjectId}/gantt`,
+          token
+        );
+        setGanttTasks(data.tasks ?? []);
+        setGanttMilestones(data.milestones ?? []);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao carregar Gantt";
+        setGanttError(message);
+      }
+    };
+
+    loadGantt();
+  }, [status, token, selectedProjectId]);
+
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === selectedProjectId),
+    [projects, selectedProjectId]
+  );
+
+  if (status === "loading") {
+    return <p style={{ padding: "2rem" }}>Carregando autenticação...</p>;
+  }
+
+  if (status === "unauthenticated" || !token) {
+    return <LoginView onSubmit={({ email, password }) => signIn(email, password)} error={authError} />;
+  }
+
+  return (
+    <main style={{ fontFamily: "Inter, sans-serif", padding: "2rem", maxWidth: "1100px", margin: "0 auto" }}>
+      <header style={{ marginBottom: "1.5rem", display: "flex", justifyContent: "space-between", gap: "1rem" }}>
+        <div>
+          <h1>G&P — Gestao de Projetos</h1>
+          <p>Dashboard consolidado alimentado pela API autenticada no Supabase.</p>
+          {projects.length > 1 && (
+            <label style={{ display: "flex", flexDirection: "column", maxWidth: "320px", marginTop: "1rem" }}>
+              <span>Selecione o projeto</span>
+              <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)}>
+                {projects.map((project) => (
+                  <option value={project.id} key={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {projectsError && <p style={{ color: "red" }}>{projectsError}</p>}
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <p style={{ marginBottom: "0.5rem" }}>
+            Logado como <strong>{user?.email}</strong>
+          </p>
+          <button onClick={signOut}>Sair</button>
+        </div>
+      </header>
+
+      {selectedProject && (
+        <section style={{ marginBottom: "2rem" }}>
+          <h2>Resumo</h2>
+          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+            <div>
+              <strong>Status:</strong> {selectedProject.status}
+            </div>
+            <div>
+              <strong>Inicio:</strong> {formatDate(selectedProject.startDate)}
+            </div>
+            <div>
+              <strong>Fim:</strong> {formatDate(selectedProject.endDate)}
+            </div>
+            <div>
+              <strong>Marcos:</strong> {selectedProject.milestoneCount ?? 0}
+            </div>
+            <div>
+              <strong>Itens WBS:</strong> {selectedProject.wbsNodeCount ?? 0}
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section style={{ marginBottom: "2rem" }}>
+        <h2>Equipe</h2>
+        {membersError && <p style={{ color: "red" }}>{membersError}</p>}
+        {!membersError && !members.length && <p>Nenhum membro vinculado.</p>}
+        {!membersError && members.length > 0 && (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th align="left">Nome</th>
+                <th align="left">Email</th>
+                <th align="left">Papel</th>
+                <th align="left">Capacidade (h/sem)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((member) => (
+                <tr key={member.id}>
+                  <td>{member.name}</td>
+                  <td>{member.email}</td>
+                  <td>{member.role}</td>
+                  <td>{member.capacityWeekly}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section style={{ marginBottom: "2rem" }}>
+        <h2>Kanban do projeto</h2>
+        {boardError && <p style={{ color: "red" }}>{boardError}</p>}
+        {!boardError && <KanbanBoard columns={boardColumns} />}
+      </section>
+
+      <section style={{ marginBottom: "2rem" }}>
+        <h2>WBS (Resumo)</h2>
+        {wbsError && <p style={{ color: "red" }}>{wbsError}</p>}
+        {!wbsError && <WbsTreeView nodes={wbsNodes} />}
+      </section>
+
+      <section style={{ marginBottom: "2rem" }}>
+        <h2>Comentarios do item selecionado</h2>
+        {wbsNodes.length > 0 && (
+          <label style={{ display: "flex", flexDirection: "column", maxWidth: "320px", marginBottom: "1rem" }}>
+            <span>Escolha um item da WBS</span>
+            <select value={selectedNodeId ?? ""} onChange={(event) => setSelectedNodeId(event.target.value)}>
+              <option value="">Selecione...</option>
+              {flattenNodes(wbsNodes).map((node) => (
+                <option key={node.id} value={node.id}>
+                  {node.title} ({node.type})
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <CommentsPanel comments={comments} error={commentsError} />
+      </section>
+
+      <section style={{ marginBottom: "2rem" }}>
+        <h2>Gantt simplificado</h2>
+        {ganttError && <p style={{ color: "red" }}>{ganttError}</p>}
+        {!ganttError && <GanttTimeline tasks={ganttTasks} milestones={ganttMilestones} />}
+      </section>
+    </main>
+  );
+};
+
+function findFirstTask(nodes: WbsTreeNode[]): WbsTreeNode | null {
+  for (const node of nodes) {
+    if (node.type === "TASK" || node.type === "SUBTASK") {
+      return node;
+    }
+    const child = findFirstTask(node.children);
+    if (child) return child;
+  }
+  return null;
+}
+
+function flattenNodes(nodes: WbsTreeNode[]): WbsTreeNode[] {
+  return nodes.flatMap((node) => [node, ...flattenNodes(node.children)]);
+}

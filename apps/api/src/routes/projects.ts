@@ -1,0 +1,594 @@
+import { Router } from "express";
+import { Prisma, ProjectRole } from "@prisma/client";
+import { prisma } from "@gestao/database";
+import { authMiddleware } from "../middleware/auth";
+import { organizationMiddleware } from "../middleware/organization";
+import { ensureProjectMembership } from "../services/rbac";
+import { logger } from "../config/logger";
+
+type FlatWbsNode = {
+  id: string;
+  parentId: string | null;
+  title: string;
+  type: string;
+  status: string;
+  order: number;
+  level: number;
+  startDate: Date | null;
+  endDate: Date | null;
+  ownerId: string | null;
+  boardColumnId: string | null;
+  estimateHours: string | null;
+  progress: number | null;
+  taskType?: string | null;
+  storyPoints?: number | null;
+};
+
+type WbsTreeNode = FlatWbsNode & { children: WbsTreeNode[] };
+
+const buildWbsTree = (nodes: FlatWbsNode[]): WbsTreeNode[] => {
+  const nodeMap = new Map<string, WbsTreeNode>();
+  nodes.forEach((node) => {
+    nodeMap.set(node.id, { ...node, children: [] });
+  });
+
+  const roots: WbsTreeNode[] = [];
+
+  nodeMap.forEach((node) => {
+    if (node.parentId && nodeMap.has(node.parentId)) {
+      nodeMap.get(node.parentId)?.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  return roots;
+};
+
+const subtractDays = (date: Date, amount: number) => {
+  const result = new Date(date);
+  result.setDate(result.getDate() - amount);
+  return result;
+};
+
+const endOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+
+export const projectsRouter = Router();
+
+projectsRouter.use(authMiddleware);
+projectsRouter.use(organizationMiddleware);
+
+projectsRouter.get("/", async (req, res) => {
+  if (!req.organization || !req.user) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+
+  const projects = await prisma.project.findMany({
+    where: {
+      organizationId: req.organization.id,
+      members: {
+        some: {
+          userId: req.user.id
+        }
+      }
+    },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      startDate: true,
+      endDate: true,
+      milestones: {
+        select: {
+          id: true
+        }
+      },
+      wbsNodes: {
+        select: { id: true }
+      }
+    },
+    orderBy: [{ createdAt: "desc" }]
+  });
+
+  return res.json({
+    projects: projects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      status: project.status,
+      startDate: project.startDate,
+      endDate: project.endDate,
+      milestoneCount: project.milestones.length,
+      wbsNodeCount: project.wbsNodes.length
+    }))
+  });
+});
+
+projectsRouter.get("/:projectId/members", async (req, res) => {
+  const { projectId } = req.params;
+
+  const membership = await ensureProjectMembership(req, res, projectId);
+  if (!membership) return;
+
+  const members = await prisma.projectMember.findMany({
+    where: { projectId },
+    include: {
+      user: true
+    },
+    orderBy: [{ role: "asc" }, { createdAt: "asc" }]
+  });
+
+  return res.json({
+    projectId,
+    members: members.map((member) => ({
+      id: member.id,
+      userId: member.userId,
+      role: member.role,
+      capacityWeekly: member.capacityWeekly,
+      name: member.user.fullName,
+      email: member.user.email
+    }))
+  });
+});
+
+projectsRouter.get("/:projectId/summary", async (req, res) => {
+  const { projectId } = req.params;
+  const rangeDays = Number(req.query.rangeDays ?? "7");
+  const now = new Date();
+  const startRange = subtractDays(now, rangeDays);
+  const lastFourteenDays = subtractDays(now, 14);
+
+  const membership = await ensureProjectMembership(req, res, projectId);
+  if (!membership) return;
+
+  try {
+    const [tasks, members, milestones, timeEntries] = await Promise.all([
+      prisma.wbsNode.findMany({
+        where: { projectId, type: { in: ["TASK", "SUBTASK"] } },
+        select: {
+          status: true,
+          endDate: true,
+          updatedAt: true
+        }
+      }),
+      prisma.projectMember.findMany({
+        where: { projectId },
+        select: { capacityWeekly: true }
+      }),
+      prisma.milestone.findMany({
+        where: { projectId, dueDate: { gte: now } },
+        orderBy: { dueDate: "asc" },
+        take: 3
+      }),
+      prisma.timeEntry.findMany({
+        where: { projectId, entryDate: { gte: lastFourteenDays } },
+        orderBy: { entryDate: "asc" }
+      })
+    ]);
+
+    const totals = tasks.reduce(
+      (acc, task) => {
+        acc.total += 1;
+        if (task.status === "DONE") acc.done += 1;
+        if (task.status === "IN_PROGRESS") acc.inProgress += 1;
+        if (task.status === "BLOCKED") acc.blocked += 1;
+        if (task.status === "BACKLOG" || task.status === "TODO") acc.backlog += 1;
+        return acc;
+      },
+      { total: 0, done: 0, inProgress: 0, blocked: 0, backlog: 0 }
+    );
+
+    const overdueTasks = tasks.filter(
+      (task) => task.endDate && task.endDate < now && task.status !== "DONE"
+    ).length;
+    const velocity = tasks.filter(
+      (task) => task.status === "DONE" && task.updatedAt >= startRange
+    ).length;
+
+    const capacity = members.reduce(
+      (acc, member) => acc + (member.capacityWeekly ?? 0),
+      0
+    );
+
+    const hoursTracked = timeEntries.reduce(
+      (acc, entry) => acc + Number(entry.hours),
+      0
+    );
+
+    const timeSeries = timeEntries.reduce<Record<string, number>>((acc, entry) => {
+      const dateKey = entry.entryDate.toISOString().slice(0, 10);
+      acc[dateKey] = (acc[dateKey] ?? 0) + Number(entry.hours);
+      return acc;
+    }, {});
+    const timeSeriesArray = Object.entries(timeSeries).map(([date, hours]) => ({
+      date,
+      hours
+    }));
+
+    const burnDown = Array.from({ length: rangeDays }).map((_, index) => {
+      const day = subtractDays(now, rangeDays - 1 - index);
+      const completed = tasks.filter(
+        (task) => task.status === "DONE" && task.updatedAt <= endOfDay(day)
+      ).length;
+      return {
+        date: day.toISOString().slice(0, 10),
+        done: completed,
+        remaining: Math.max(0, totals.total - completed)
+      };
+    });
+
+    return res.json({
+      generatedAt: now,
+      totals,
+      overdueTasks,
+      velocity: { doneLast7: velocity },
+      capacity: {
+        members: members.length,
+        weeklyCapacity: capacity
+      },
+      hoursTracked,
+      timeEntries: timeSeriesArray,
+      burnDown,
+      upcomingMilestones: milestones.map((milestone) => ({
+        id: milestone.id,
+        name: milestone.name,
+        dueDate: milestone.dueDate,
+        status: milestone.status
+      }))
+    });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to load summary");
+    return res.status(500).json({ message: "Failed to load summary" });
+  }
+});
+
+projectsRouter.get("/:projectId/board", async (req, res) => {
+  const { projectId } = req.params;
+
+  const membership = await ensureProjectMembership(req, res, projectId);
+  if (!membership) return;
+
+  try {
+    const [columns, tasks] = await Promise.all([
+      prisma.boardColumn.findMany({
+        where: { projectId },
+        orderBy: [{ order: "asc" }]
+      }),
+      prisma.wbsNode.findMany({
+        where: { projectId, boardColumnId: { not: null } },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          boardColumnId: true,
+          order: true
+        },
+        orderBy: [{ order: "asc" }, { createdAt: "asc" }]
+      })
+    ]);
+
+    const groupedColumns = columns.map((column) => ({
+      id: column.id,
+      label: column.label,
+      order: column.order,
+      wipLimit: column.wipLimit,
+      status: column.status,
+      tasks: tasks
+        .filter((task) => task.boardColumnId === column.id)
+        .map((task) => ({
+          id: task.id,
+          title: task.title,
+          status: task.status,
+          priority: task.priority,
+          boardColumnId: column.id,
+          order: task.order
+        }))
+    }));
+
+    return res.json({ projectId, columns: groupedColumns });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to load board data");
+    return res.status(500).json({ message: "Failed to load board data" });
+  }
+});
+
+projectsRouter.post("/:projectId/board/tasks", async (req, res) => {
+  const { projectId } = req.params;
+  const { title, columnId, parentId, priority = "MEDIUM", estimateHours } = req.body as {
+    title?: string;
+    columnId?: string;
+    parentId?: string | null;
+    priority?: string;
+    estimateHours?: number | string;
+  };
+
+  if (!title || !columnId) {
+    return res.status(400).json({ message: "title and columnId are required" });
+  }
+
+  const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
+  if (!membership) return;
+
+  const column = await prisma.boardColumn.findFirst({
+    where: { id: columnId, projectId }
+  });
+
+  if (!column) {
+    return res.status(404).json({ message: "Column not found for this project" });
+  }
+
+  let parentLevel = -1;
+  if (parentId) {
+    const parentNode = await prisma.wbsNode.findFirst({
+      where: { id: parentId, projectId }
+    });
+    if (!parentNode) {
+      return res.status(400).json({ message: "Parent not found in this project" });
+    }
+    parentLevel = parentNode.level;
+  }
+
+  const order = await prisma.wbsNode.count({
+    where: { projectId, parentId: parentId ?? null }
+  });
+
+  try {
+    const task = await prisma.wbsNode.create({
+      data: {
+        projectId,
+        parentId: parentId ?? null,
+        level: parentLevel + 1,
+        order,
+        title,
+        type: "TASK",
+        status: column.status ?? "TODO",
+        priority: priority as any,
+        boardColumnId: column.id,
+        estimateHours: estimateHours ? new Prisma.Decimal(estimateHours) : undefined
+      }
+    });
+
+    return res.status(201).json({ task });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to create board task");
+    return res.status(500).json({ message: "Failed to create board task" });
+  }
+});
+
+projectsRouter.patch("/:projectId/board/tasks/:taskId", async (req, res) => {
+  const { projectId, taskId } = req.params;
+  const { columnId, status, priority, order } = req.body as {
+    columnId?: string;
+    status?: string;
+    priority?: string;
+    order?: number;
+  };
+
+  const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
+  if (!membership) return;
+
+  const existingTask = await prisma.wbsNode.findFirst({
+    where: { id: taskId, projectId }
+  });
+
+  if (!existingTask) {
+    return res.status(404).json({ message: "Task not found" });
+  }
+
+  const targetColumnId = columnId ?? existingTask.boardColumnId;
+  if (!targetColumnId) {
+    return res.status(400).json({ message: "Column is required" });
+  }
+
+  const column = await prisma.boardColumn.findFirst({
+    where: { id: targetColumnId, projectId }
+  });
+
+  if (!column) {
+    return res.status(404).json({ message: "Column not found" });
+  }
+
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      if (existingTask.boardColumnId && columnId && columnId !== existingTask.boardColumnId) {
+        const oldSiblings = await tx.wbsNode.findMany({
+          where: { projectId, boardColumnId: existingTask.boardColumnId },
+          orderBy: [{ order: "asc" }]
+        });
+        const cleaned = oldSiblings.filter((task) => task.id !== taskId);
+        await Promise.all(
+          cleaned.map((task, index) =>
+            tx.wbsNode.update({
+              where: { id: task.id },
+              data: { order: index }
+            })
+          )
+        );
+      }
+
+      const siblings = await tx.wbsNode.findMany({
+        where: { projectId, boardColumnId: targetColumnId },
+        orderBy: [{ order: "asc" }]
+      });
+
+      const filtered = siblings.filter((task) => task.id !== taskId);
+      const insertIndex =
+        typeof order === "number"
+          ? Math.max(0, Math.min(order, filtered.length))
+          : filtered.length;
+      filtered.splice(insertIndex, 0, { id: taskId } as any);
+
+      await Promise.all(
+        filtered.map((task, index) =>
+          tx.wbsNode.update({
+            where: { id: task.id },
+            data: {
+              order: index,
+              ...(task.id === taskId
+                ? {
+                    boardColumnId: targetColumnId,
+                    status: column.status ?? status ?? existingTask.status,
+                    priority: priority ?? existingTask.priority
+                  }
+                : {})
+            }
+          })
+        )
+      );
+
+      return tx.wbsNode.findUnique({ where: { id: taskId } });
+    });
+
+    return res.json({ task: updated });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to update board task");
+    return res.status(500).json({ message: "Failed to update board task" });
+  }
+});
+
+projectsRouter.get("/:projectId/wbs", async (req, res) => {
+  const { projectId } = req.params;
+
+  const membership = await ensureProjectMembership(req, res, projectId);
+  if (!membership) return;
+
+  const nodes = await prisma.wbsNode.findMany({
+    where: { projectId },
+    include: {
+      taskDetail: true
+    },
+    orderBy: [{ level: "asc" }, { order: "asc" }, { createdAt: "asc" }]
+  });
+
+  const formattedNodes: FlatWbsNode[] = nodes.map((node) => ({
+    id: node.id,
+    parentId: node.parentId,
+    title: node.title,
+    type: node.type,
+    status: node.status,
+    order: node.order,
+    level: node.level,
+    startDate: node.startDate,
+    endDate: node.endDate,
+    ownerId: node.ownerId,
+    boardColumnId: node.boardColumnId,
+    estimateHours: node.estimateHours?.toString() ?? null,
+    progress: node.progress ?? null,
+    taskType: node.taskDetail?.taskType ?? null,
+    storyPoints: node.taskDetail?.storyPoints ?? null
+  }));
+
+  return res.json({
+    projectId,
+    nodes: buildWbsTree(formattedNodes)
+  });
+});
+
+projectsRouter.post("/:projectId/wbs", async (req, res) => {
+  const { projectId } = req.params;
+  const {
+    title,
+    type = "TASK",
+    parentId,
+    status = "BACKLOG",
+    priority = "MEDIUM",
+    order,
+    startDate,
+    endDate,
+    estimateHours,
+    progress
+  } = req.body as Record<string, any>;
+
+  const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
+  if (!membership) return;
+
+  if (!title) {
+    return res.status(400).json({ message: "title is required" });
+  }
+
+  let parentLevel = -1;
+  if (parentId) {
+    const parent = await prisma.wbsNode.findFirst({ where: { id: parentId, projectId } });
+    if (!parent) {
+      return res.status(400).json({ message: "Parent not found" });
+    }
+    parentLevel = parent.level;
+  }
+
+  const siblingsCount = await prisma.wbsNode.count({
+    where: { projectId, parentId: parentId ?? null }
+  });
+
+  try {
+    const node = await prisma.wbsNode.create({
+      data: {
+        projectId,
+        parentId: parentId ?? null,
+        level: parentLevel + 1,
+        order: typeof order === "number" ? order : siblingsCount,
+        title,
+        type,
+        status,
+        priority,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+        estimateHours: estimateHours ? new Prisma.Decimal(estimateHours) : undefined,
+        progress
+      }
+    });
+
+    return res.status(201).json({ node });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to create WBS node");
+    return res.status(500).json({ message: "Failed to create WBS node" });
+  }
+});
+
+projectsRouter.get("/:projectId/gantt", async (req, res) => {
+  const { projectId } = req.params;
+
+  const membership = await ensureProjectMembership(req, res, projectId);
+  if (!membership) return;
+
+  try {
+    const [tasks, milestones] = await Promise.all([
+      prisma.wbsNode.findMany({
+        where: { projectId, type: { in: ["TASK", "SUBTASK"] } },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          type: true,
+          startDate: true,
+          endDate: true,
+          dependenciesAsSuccessor: {
+            select: { predecessorId: true }
+          }
+        },
+        orderBy: [{ startDate: "asc" }]
+      }),
+      prisma.milestone.findMany({
+        where: { projectId },
+        select: { id: true, name: true, dueDate: true, status: true },
+        orderBy: [{ dueDate: "asc" }]
+      })
+    ]);
+
+    return res.json({
+      projectId,
+      tasks: tasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        status: task.status,
+        type: task.type,
+        startDate: task.startDate,
+        endDate: task.endDate,
+        dependencies: task.dependenciesAsSuccessor.map((dep) => dep.predecessorId)
+      })),
+      milestones
+    });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to load Gantt data");
+    return res.status(500).json({ message: "Failed to load Gantt data" });
+  }
+});

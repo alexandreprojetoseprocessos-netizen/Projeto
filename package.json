@@ -1,0 +1,22 @@
+{
+  "name": "gestao-projetos",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/front",
+    "apps/database"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace apps/api run dev",
+    "dev:front": "npm --workspace apps/front run dev",
+    "db:migrate": "npm --workspace apps/database run migrate",
+    "db:seed": "npm --workspace apps/database run seed",
+    "lint": "npm --workspaces run lint"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
