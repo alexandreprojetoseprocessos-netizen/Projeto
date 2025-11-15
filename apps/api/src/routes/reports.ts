@@ -32,11 +32,33 @@ reportsRouter.get("/portfolio", async (req, res) => {
     },
     select: {
       id: true,
+      code: true,
       name: true,
+      clientName: true,
       status: true,
+      startDate: true,
+      endDate: true,
+      manager: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true
+        }
+      },
       wbsNodes: {
         where: { type: { in: ["TASK", "SUBTASK"] } },
-        select: { status: true }
+        select: {
+          status: true,
+          tags: {
+            select: {
+              tag: {
+                select: {
+                  name: true
+                }
+              }
+            }
+          }
+        }
       },
       risks: {
         select: { status: true }
@@ -55,10 +77,23 @@ reportsRouter.get("/portfolio", async (req, res) => {
     const risksOpen = project.risks.filter((risk) => risk.status !== "CLOSED").length;
     const hoursTracked = project.timeEntries.reduce((acc, entry) => acc + Number(entry.hours), 0);
 
+    const tags = Array.from(
+      new Set(
+        project.wbsNodes.flatMap((node) => node.tags?.map((assignment) => assignment.tag?.name).filter(Boolean) ?? [])
+      )
+    );
+
     return {
       projectId: project.id,
+      code: project.code,
       projectName: project.name,
       status: project.status,
+      clientName: project.clientName,
+      responsibleName: project.manager?.fullName,
+      responsibleEmail: project.manager?.email,
+      startDate: project.startDate,
+      endDate: project.endDate,
+      tags,
       tasksTotal,
       tasksDone,
       tasksInProgress,
@@ -72,6 +107,13 @@ reportsRouter.get("/portfolio", async (req, res) => {
     const header = [
       "projectId",
       "projectName",
+      "code",
+      "clientName",
+      "responsibleName",
+      "responsibleEmail",
+      "startDate",
+      "endDate",
+      "tags",
       "status",
       "tasksTotal",
       "tasksDone",
@@ -85,6 +127,13 @@ reportsRouter.get("/portfolio", async (req, res) => {
         [
           sanitizeCsvValue(row.projectId),
           sanitizeCsvValue(row.projectName),
+          sanitizeCsvValue(row.code ?? ""),
+          sanitizeCsvValue(row.clientName ?? ""),
+          sanitizeCsvValue(row.responsibleName ?? ""),
+          sanitizeCsvValue(row.responsibleEmail ?? ""),
+          sanitizeCsvValue(row.startDate ?? ""),
+          sanitizeCsvValue(row.endDate ?? ""),
+          sanitizeCsvValue(row.tags?.join("|") ?? ""),
           sanitizeCsvValue(row.status),
           row.tasksTotal,
           row.tasksDone,

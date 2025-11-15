@@ -4,7 +4,6 @@ import type { DropResult } from "@hello-pangea/dnd";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { AuthPage } from "./components/AuthPage";
 import { OrganizationSelector } from "./components/OrganizationSelector";
-import type { PortfolioProject } from "./components/ProjectPortfolio";
 import { useAuth } from "./contexts/AuthContext";
 
 type Organization = { id: string; name: string; role: string; activeProjects?: number };
@@ -70,13 +69,8 @@ export const App = () => {
   const [projectSummary, setProjectSummary] = useState<any | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
-  const [attachments, setAttachments] = useState<any[]>([]);
-  const [attachmentsError, setAttachmentsError] = useState<string | null>(null);
-  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
-
-  const [portfolio, setPortfolio] = useState<PortfolioProject[]>([]);
+  const [portfolio, setPortfolio] = useState<any[]>([]);
   const [portfolioError, setPortfolioError] = useState<string | null>(null);
-  const [portfolioLoading, setPortfolioLoading] = useState(false);
 
   const [filters, setFilters] = useState({ rangeDays: 7 });
   const [boardRefresh, setBoardRefresh] = useState(0);
@@ -285,54 +279,19 @@ export const App = () => {
   }, [status, token, selectedProjectId, selectedOrganizationId]);
 
   useEffect(() => {
-    if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
-      setAttachments([]);
-      setAttachmentsLoading(false);
-      return;
-    }
-
-    const loadAttachments = async () => {
-      try {
-        setAttachmentsLoading(true);
-        setAttachmentsError(null);
-        const data = await fetchJson<{ attachments: any[] }>(
-          `/projects/${selectedProjectId}/attachments`,
-          token,
-          undefined,
-          selectedOrganizationId
-        );
-        setAttachments(data.attachments ?? []);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Erro ao carregar documentos";
-        setAttachmentsError(message);
-        setAttachments([]);
-      } finally {
-        setAttachmentsLoading(false);
-      }
-    };
-
-    loadAttachments();
-  }, [status, token, selectedProjectId, selectedOrganizationId]);
-
-  useEffect(() => {
     if (status !== "authenticated" || !token || !selectedOrganizationId) {
       setPortfolio([]);
-      setPortfolioLoading(false);
       return;
     }
 
     const loadPortfolio = async () => {
       try {
-        setPortfolioLoading(true);
         setPortfolioError(null);
-        const data = await fetchJson<{ projects: PortfolioProject[] }>("/reports/portfolio", token, undefined, selectedOrganizationId);
+        const data = await fetchJson("/reports/portfolio", token, undefined, selectedOrganizationId);
         setPortfolio(data.projects ?? []);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro ao carregar portfólio";
         setPortfolioError(message);
-        setPortfolio([]);
-      } finally {
-        setPortfolioLoading(false);
       }
     };
 
@@ -543,9 +502,6 @@ export const App = () => {
       summaryError={summaryError}
       members={members}
       membersError={membersError}
-      attachments={attachments}
-      attachmentsError={attachmentsError}
-      attachmentsLoading={attachmentsLoading}
       boardColumns={boardColumns}
       boardError={boardError}
       onCreateTask={handleCreateTask}
@@ -576,7 +532,6 @@ export const App = () => {
       ganttError={ganttError}
       portfolio={portfolio}
       portfolioError={portfolioError}
-      portfolioLoading={portfolioLoading}
       onExportPortfolio={handleDownloadPortfolio}
     />
   );

@@ -592,3 +592,52 @@ projectsRouter.get("/:projectId/gantt", async (req, res) => {
     return res.status(500).json({ message: "Failed to load Gantt data" });
   }
 });
+
+projectsRouter.get("/:projectId/attachments", async (req, res) => {
+  const { projectId } = req.params;
+
+  const membership = await ensureProjectMembership(req, res, projectId);
+  if (!membership) return;
+
+  try {
+    const attachments = await prisma.attachment.findMany({
+      where: { projectId },
+      select: {
+        id: true,
+        fileName: true,
+        fileKey: true,
+        fileSize: true,
+        category: true,
+        createdAt: true,
+        targetType: true,
+        wbsNodeId: true,
+        uploadedBy: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true
+          }
+        }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+
+    return res.json({
+      projectId,
+      attachments: attachments.map((attachment) => ({
+        id: attachment.id,
+        fileName: attachment.fileName,
+        fileKey: attachment.fileKey,
+        fileSize: attachment.fileSize,
+        category: attachment.category,
+        createdAt: attachment.createdAt,
+        targetType: attachment.targetType,
+        wbsNodeId: attachment.wbsNodeId,
+        uploadedBy: attachment.uploadedBy
+      }))
+    });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to load attachments");
+    return res.status(500).json({ message: "Failed to load attachments" });
+  }
+});

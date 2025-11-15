@@ -1,8 +1,10 @@
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { Tree } from "@minoru/react-dnd-treeview";
+import { DndProvider } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, BarChart, Bar } from "recharts";
-import { type FormEvent } from "react";
-import { ProjectPortfolio } from "./ProjectPortfolio";
+import { useMemo, useState, type FormEvent } from "react";
+import { ProjectPortfolio, type PortfolioProject } from "./ProjectPortfolio";
 
 const formatDate = (value?: string | null) => {
   if (!value) return "N/A";
@@ -126,25 +128,27 @@ const WbsTreeView = ({
   }));
 
   return (
-    <Tree
-      tree={treeNodes}
-      rootId={0}
-      onDrop={(_event, options) => {
-        const nodeId = options.dragSource?.id as string | undefined;
-        if (!nodeId) return;
-        const parentId = options.dropTarget?.id && options.dropTarget.id !== 0 ? (options.dropTarget.id as string) : null;
-        onMove(nodeId, parentId, options.destinationIndex ?? 0);
-      }}
-      render={(node) => (
-        <button
-          type="button"
-          className={`wbs-node ${selectedNodeId === node.id ? "is-active" : ""}`}
-          onClick={() => onSelect(node.id as string)}
-        >
-          <strong>{node.data?.title}</strong> · {node.data?.type} ({node.data?.status})
-        </button>
-      )}
-    />
+    <DndProvider backend={HTML5Backend}>
+      <Tree
+        tree={treeNodes}
+        rootId={0}
+        onDrop={(_event, options) => {
+          const nodeId = options.dragSource?.id as string | undefined;
+          if (!nodeId) return;
+          const parentId = options.dropTarget?.id && options.dropTarget.id !== 0 ? (options.dropTarget.id as string) : null;
+          onMove(nodeId, parentId, options.destinationIndex ?? 0);
+        }}
+        render={(node) => (
+          <button
+            type="button"
+            className={`wbs-node ${selectedNodeId === node.id ? "is-active" : ""}`}
+            onClick={() => onSelect(node.id as string)}
+          >
+            <strong>{node.data?.title}</strong> · {node.data?.type} ({node.data?.status})
+          </button>
+        )}
+      />
+    </DndProvider>
   );
 };
 
@@ -202,6 +206,635 @@ const GanttTimeline = ({ tasks, milestones }: { tasks: any[]; milestones: any[] 
   );
 };
 
+type ProjectDetailsTabsProps = {
+  projectMeta: PortfolioProject | null;
+  projectLoading?: boolean;
+  summary: any;
+  summaryError: string | null;
+  filters: { rangeDays: number };
+  onRangeChange: (range: number) => void;
+  myTasks: any[];
+  members: any[];
+  membersError: string | null;
+  attachments: any[];
+  attachmentsError: string | null;
+  attachmentsLoading: boolean;
+  boardColumns: any[];
+  boardError: string | null;
+  onCreateTask: (event: FormEvent<HTMLFormElement>) => void;
+  onDragTask: (result: DropResult) => void;
+  newTaskTitle: string;
+  onTaskTitleChange: (value: string) => void;
+  newTaskColumn: string;
+  onTaskColumnChange: (value: string) => void;
+  wbsNodes: any[];
+  wbsError: string | null;
+  onMoveNode: (nodeId: string, parentId: string | null, position: number) => void;
+  selectedNodeId: string | null;
+  onSelectNode: (nodeId: string) => void;
+  comments: any[];
+  commentsError: string | null;
+  onSubmitComment: (event: FormEvent<HTMLFormElement>) => void;
+  commentBody: string;
+  onCommentBodyChange: (value: string) => void;
+  timeEntryDate: string;
+  timeEntryHours: string;
+  timeEntryDescription: string;
+  onTimeEntryDateChange: (value: string) => void;
+  onTimeEntryHoursChange: (value: string) => void;
+  onTimeEntryDescriptionChange: (value: string) => void;
+  onLogTime: (event: FormEvent<HTMLFormElement>) => void;
+  ganttTasks: any[];
+  ganttMilestones: any[];
+  ganttError: string | null;
+};
+
+const ProjectDetailsTabs = ({
+  projectMeta,
+  projectLoading,
+  summary,
+  summaryError,
+  filters,
+  onRangeChange,
+  myTasks,
+  members,
+  membersError,
+  attachments,
+  attachmentsError,
+  attachmentsLoading,
+  boardColumns,
+  boardError,
+  onCreateTask,
+  onDragTask,
+  newTaskTitle,
+  onTaskTitleChange,
+  newTaskColumn,
+  onTaskColumnChange,
+  wbsNodes,
+  wbsError,
+  onMoveNode,
+  selectedNodeId,
+  onSelectNode,
+  comments,
+  commentsError,
+  onSubmitComment,
+  commentBody,
+  onCommentBodyChange,
+  timeEntryDate,
+  timeEntryHours,
+  timeEntryDescription,
+  onTimeEntryDateChange,
+  onTimeEntryHoursChange,
+  onTimeEntryDescriptionChange,
+  onLogTime,
+  ganttTasks,
+  ganttMilestones,
+  ganttError
+}: ProjectDetailsTabsProps) => {
+  const [activeTab, setActiveTab] = useState("overview");
+
+  const tabs = [
+    { id: "overview", label: "Visão geral" },
+    { id: "edt", label: "EDT" },
+    { id: "board", label: "Board" },
+    { id: "gantt", label: "Cronograma" },
+    { id: "calendar", label: "Calendário" },
+    { id: "docs", label: "Documentos" },
+    { id: "activity", label: "Atividade" }
+  ];
+
+  const progressPercent = summary?.totals?.total
+    ? Math.round((summary.totals.done / summary.totals.total) * 100)
+    : 0;
+  const circumference = 2 * Math.PI * 54;
+  const strokeValue = (progressPercent / 100) * circumference;
+
+  const calendarEvents = useMemo(() => {
+    const milestoneEvents = (ganttMilestones ?? [])
+      .filter((milestone) => milestone?.dueDate)
+      .map((milestone) => ({
+        id: milestone.id ?? milestone.name,
+        title: milestone.name ?? "Marco",
+        date: milestone.dueDate,
+        type: "Marco"
+      }));
+
+    const taskEvents = (ganttTasks ?? [])
+      .filter((task) => task.startDate || task.endDate)
+      .slice(0, 6)
+      .map((task) => ({
+        id: task.id,
+        title: task.title,
+        date: task.startDate ?? task.endDate,
+        type: task.status ?? "Tarefa"
+      }));
+
+    return [...milestoneEvents, ...taskEvents].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [ganttMilestones, ganttTasks]);
+
+  const activityItems = useMemo(
+    () =>
+      (comments ?? []).map((comment) => ({
+        id: comment.id,
+        author: comment.author?.name ?? comment.authorName ?? "Colaborador",
+        role: comment.author?.role ?? comment.authorRole ?? "Equipe",
+        body: comment.body,
+        createdAt: comment.createdAt ?? new Date().toISOString()
+      })),
+    [comments]
+  );
+
+  const formatShortDate = (value?: string | null) => {
+    if (!value) return "—";
+    try {
+      return new Date(value).toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "short"
+      });
+    } catch {
+      return "—";
+    }
+  };
+
+  const formatFileSize = (value?: number | null) => {
+    if (!value) return "—";
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const renderStatusBadge = (status?: string | null) => {
+    if (!status) return <span className="pill pill-neutral">Sem status</span>;
+    const normalized = status.toUpperCase();
+    const toneMap: Record<string, string> = {
+      DONE: "pill-success",
+      COMPLETED: "pill-success",
+      IN_PROGRESS: "pill-warning",
+      PLANNED: "pill-neutral",
+      AT_RISK: "pill-danger",
+      BLOCKED: "pill-danger"
+    };
+    const labelMap: Record<string, string> = {
+      DONE: "Concluído",
+      COMPLETED: "Concluído",
+      IN_PROGRESS: "Em andamento",
+      PLANNED: "Planejado",
+      AT_RISK: "Em risco",
+      BLOCKED: "Bloqueado"
+    };
+    return <span className={`pill ${toneMap[normalized] ?? "pill-neutral"}`}>{labelMap[normalized] ?? status}</span>;
+  };
+
+  if (!projectMeta) {
+    return (
+      <section className="project-details">
+        <article className="card">
+          <h2>{projectLoading ? "Carregando dados do projeto..." : "Selecione um projeto"}</h2>
+          <p className="muted">
+            {projectLoading ? "Buscando cards do portfólio para montar o cabeçalho." : "Escolha um projeto no topo para ver os detalhes completos."}
+          </p>
+        </article>
+      </section>
+    );
+  }
+
+  const overviewHeader = (
+    <>
+      <div className="project-details__header">
+        <div>
+          <p className="eyebrow">Detalhes do projeto</p>
+          <h2>{projectMeta.projectName}</h2>
+          <p className="subtext">
+            Código {projectMeta.code ?? "—"} · Cliente {projectMeta.clientName ?? "Não informado"}
+          </p>
+          <div className="project-header__meta">
+            {renderStatusBadge(projectMeta.status)}
+            <span>Responsável: {projectMeta.responsibleName ?? "—"}</span>
+            <span>
+              Período: {formatShortDate(projectMeta.startDate)} — {formatShortDate(projectMeta.endDate)}
+            </span>
+          </div>
+        </div>
+        <div className="project-header__actions">
+          <button type="button" className="secondary-button">
+            Editar projeto
+          </button>
+          <button type="button" className="ghost-button">
+            Adicionar tarefa
+          </button>
+          <button type="button" className="ghost-button">
+            Compartilhar
+          </button>
+        </div>
+      </div>
+
+      <div className="tabs">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={activeTab === tab.id ? "is-active" : ""}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+
+  const overviewContent = (
+    <div className="tab-panel">
+      <div className="status-grid">
+        <article className="card status-card">
+          <h3>Progresso geral</h3>
+          <div className="progress-ring">
+            <svg width="140" height="140">
+              <circle cx="70" cy="70" r="54" strokeWidth="12" className="progress-ring__bg" />
+              <circle
+                cx="70"
+                cy="70"
+                r="54"
+                strokeWidth="12"
+                className="progress-ring__value"
+                strokeDasharray={`${strokeValue} ${circumference}`}
+              />
+            </svg>
+            <div className="progress-ring__label">
+              <strong>{progressPercent}%</strong>
+              <span>Concluído</span>
+            </div>
+          </div>
+          <ul className="progress-legend">
+            <li>
+              <span className="dot dot-done" />
+              {summary?.totals?.done ?? 0} concluídas
+            </li>
+            <li>
+              <span className="dot dot-inprogress" />
+              {summary?.totals?.inProgress ?? 0} em andamento
+            </li>
+            <li>
+              <span className="dot dot-backlog" />
+              {summary?.totals?.backlog ?? 0} backlog
+            </li>
+          </ul>
+        </article>
+
+        <article className="card">
+          <div className="card-header">
+            <div>
+              <h3>Burn-down / Horas</h3>
+              <p className="subtext">Visão dos últimos {filters.rangeDays} dias</p>
+            </div>
+            <label className="inline-select">
+              Intervalo
+              <select value={filters.rangeDays} onChange={(event) => onRangeChange(Number(event.target.value))}>
+                <option value={7}>7</option>
+                <option value={14}>14</option>
+                <option value={30}>30</option>
+              </select>
+            </label>
+          </div>
+          {summaryError && <p className="error-text">{summaryError}</p>}
+          {summary ? (
+            <div className="chart-grid">
+              <ResponsiveContainer width="100%" height={160}>
+                <LineChart data={summary.burnDown}>
+                  <XAxis dataKey="date" tickFormatter={formatDate} />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="done" stroke="#22c55e" />
+                  <Line type="monotone" dataKey="remaining" stroke="#ef4444" />
+                </LineChart>
+              </ResponsiveContainer>
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart data={summary.timeEntries}>
+                  <XAxis dataKey="date" tickFormatter={formatDate} />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="hours" fill="#5b3fff" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p className="muted">Selecione um projeto para ver o resumo.</p>
+          )}
+        </article>
+      </div>
+
+      {summary && (
+        <div className="summary-stats">
+          <div>
+            <span>Total</span>
+            <strong>{summary.totals.total}</strong>
+          </div>
+          <div>
+            <span>Concluídas</span>
+            <strong>{summary.totals.done}</strong>
+          </div>
+          <div>
+            <span>Em andamento</span>
+            <strong>{summary.totals.inProgress}</strong>
+          </div>
+          <div>
+            <span>Backlog</span>
+            <strong>{summary.totals.backlog}</strong>
+          </div>
+          <div>
+            <span>Bloqueadas</span>
+            <strong>{summary.totals.blocked}</strong>
+          </div>
+          <div>
+            <span>Atrasadas</span>
+            <strong>{summary.overdueTasks}</strong>
+          </div>
+        </div>
+      )}
+
+      <div className="overview-grid">
+        <article className="card">
+          <div className="card-header">
+            <h3>Marcos</h3>
+          </div>
+          {ganttMilestones?.length ? (
+            <ul className="milestone-list">
+              {ganttMilestones.slice(0, 4).map((milestone) => (
+                <li key={milestone.id}>
+                  <div>
+                    <strong>{milestone.name}</strong>
+                    <span>{formatShortDate(milestone.dueDate)}</span>
+                  </div>
+                  <span className="pill pill-neutral">{milestone.status ?? "Previsto"}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">Nenhum marco cadastrado.</p>
+          )}
+        </article>
+
+        <article className="card">
+          <div className="card-header">
+            <h3>Riscos e impedimentos</h3>
+          </div>
+          <p className="highlight-number">{projectMeta.risksOpen ?? 0}</p>
+          <p className="subtext">Riscos abertos</p>
+          <p className="muted">Acompanhe o plano de mitigação e distribua responsáveis para cada item crítico.</p>
+        </article>
+
+        <article className="card">
+          <div className="card-header">
+            <h3>Horas registradas</h3>
+          </div>
+          <p className="highlight-number">
+            {Number(projectMeta.hoursTracked ?? summary?.hoursTracked ?? 0).toFixed(1)}h
+          </p>
+          <p className="subtext">Somatório das últimas entregas</p>
+        </article>
+      </div>
+
+      <div className="split-grid">
+        <article className="card">
+          <div className="card-header">
+            <h3>Minhas tarefas</h3>
+            <button type="button" className="ghost-button">
+              Ver todas
+            </button>
+          </div>
+          {myTasks.length ? (
+            <ul className="task-list">
+              {myTasks.map((task: any) => (
+                <li key={task.id}>
+                  <div>
+                    <strong>{task.title}</strong>
+                    <span>{task.column}</span>
+                  </div>
+                  <span className={`pill ${task.status.toLowerCase()}`}>{task.status}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">Nenhuma tarefa atribuída.</p>
+          )}
+        </article>
+
+        <article className="card">
+          <div className="card-header">
+            <h3>Equipe</h3>
+          </div>
+          {membersError && <p className="error-text">{membersError}</p>}
+          {members.length ? (
+            <ul className="team-list">
+              {members.map((member: any) => (
+                <li key={member.id}>
+                  <div className="avatar">{member.name?.slice(0, 2).toUpperCase()}</div>
+                  <div>
+                    <strong>{member.name}</strong>
+                    <span>{member.role}</span>
+                  </div>
+                  <span>{member.capacityWeekly ?? 0}h</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">Nenhum membro vinculado.</p>
+          )}
+        </article>
+      </div>
+    </div>
+  );
+
+  const edtContent = (
+    <div className="tab-panel">
+      {wbsError && <p className="error-text">{wbsError}</p>}
+      <WbsTreeView nodes={wbsNodes} onMove={onMoveNode} selectedNodeId={selectedNodeId} onSelect={onSelectNode} />
+      <p className="muted">Selecione um item para comentar ou registrar horas na aba de atividade.</p>
+    </div>
+  );
+
+  const boardContent = (
+    <div className="tab-panel">
+      {boardError && <p className="error-text">{boardError}</p>}
+      <KanbanBoard
+        columns={boardColumns}
+        onDragEnd={onDragTask}
+        onCreate={onCreateTask}
+        newTaskTitle={newTaskTitle}
+        onTaskTitleChange={onTaskTitleChange}
+        newTaskColumn={newTaskColumn}
+        onTaskColumnChange={onTaskColumnChange}
+      />
+    </div>
+  );
+
+  const ganttContent = (
+    <div className="tab-panel">
+      {ganttError && <p className="error-text">{ganttError}</p>}
+      <GanttTimeline tasks={ganttTasks} milestones={ganttMilestones} />
+    </div>
+  );
+
+  const calendarContent = (
+    <div className="tab-panel">
+      {calendarEvents.length ? (
+        <ul className="calendar-list">
+          {calendarEvents.map((event) => (
+            <li key={event.id}>
+              <div className="calendar-date">
+                <span>{formatShortDate(event.date)}</span>
+                <small>{event.type}</small>
+              </div>
+              <strong>{event.title}</strong>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted">Nenhum evento agendado.</p>
+      )}
+    </div>
+  );
+
+  const docsContent = (
+    <div className="tab-panel">
+      {attachmentsError && <p className="error-text">{attachmentsError}</p>}
+      {attachmentsLoading ? (
+        <div className="docs-grid">
+          {[0, 1, 2].map((index) => (
+            <article key={index} className="doc-card skeleton-card">
+              <div className="skeleton skeleton-title" />
+              <div className="skeleton skeleton-text" />
+              <div className="skeleton skeleton-text" style={{ width: "40%" }} />
+            </article>
+          ))}
+        </div>
+      ) : attachments.length ? (
+        <div className="docs-grid">
+          {attachments.map((doc) => (
+            <article key={doc.id} className="doc-card">
+              <div>
+                <h4>{doc.fileName}</h4>
+                <p className="subtext">{doc.category ?? "Documento"}</p>
+              </div>
+              <small>
+                {doc.uploadedBy?.fullName ?? doc.uploadedBy?.email ?? "Equipe"} · {formatShortDate(doc.createdAt)}
+              </small>
+              <small>
+                {formatFileSize(doc.fileSize)} · {doc.targetType === "WBS_NODE" ? "Vinculado à WBS" : "Projeto"}
+              </small>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => window.alert("Integração de download em breve.")}
+              >
+                Baixar
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">Nenhum documento enviado ainda.</p>
+      )}
+    </div>
+  );
+
+  const activityContent = (
+    <div className="tab-panel activity-panel">
+      <article className="card">
+        <div className="card-header">
+          <h3>Timeline de atividades</h3>
+        </div>
+        {commentsError && <p className="error-text">{commentsError}</p>}
+        {activityItems.length ? (
+          <ul className="activity-timeline">
+            {activityItems.map((activity) => (
+              <li key={activity.id}>
+                <div className="activity-avatar">{activity.author?.slice(0, 2).toUpperCase()}</div>
+                <div>
+                  <strong>{activity.author}</strong>
+                  <span>{activity.role}</span>
+                  <p>{activity.body}</p>
+                  <small>{formatShortDate(activity.createdAt)}</small>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">Nenhuma atividade registrada ainda.</p>
+        )}
+      </article>
+
+      <div className="split-grid">
+        <article className="card">
+          <div className="card-header">
+            <h3>Novo comentário</h3>
+          </div>
+          <form onSubmit={onSubmitComment} className="feedback-form">
+            <p className="muted">Selecione um item na EDT para vincular o comentário.</p>
+            <textarea
+              placeholder="Anote atualizações ou decisões..."
+              value={commentBody}
+              onChange={(event) => onCommentBodyChange(event.target.value)}
+            />
+            <button type="submit" className="primary-button" disabled={!selectedNodeId || !commentBody.trim()}>
+              Registrar comentário
+            </button>
+          </form>
+        </article>
+
+        <article className="card">
+          <div className="card-header">
+            <h3>Registro rápido de horas</h3>
+          </div>
+          <form onSubmit={onLogTime} className="time-form">
+            <p className="muted">Selecione uma tarefa na EDT antes de registrar.</p>
+            <label>
+              Data
+              <input type="date" value={timeEntryDate} onChange={(event) => onTimeEntryDateChange(event.target.value)} />
+            </label>
+            <label>
+              Horas
+              <input
+                type="number"
+                min="0.25"
+                step="0.25"
+                value={timeEntryHours}
+                onChange={(event) => onTimeEntryHoursChange(event.target.value)}
+              />
+            </label>
+            <label>
+              Descrição
+              <textarea value={timeEntryDescription} onChange={(event) => onTimeEntryDescriptionChange(event.target.value)} />
+            </label>
+            <button type="submit" className="primary-button" disabled={!selectedNodeId}>
+              Registrar horas
+            </button>
+          </form>
+        </article>
+      </div>
+    </div>
+  );
+
+  const tabContentMap: Record<string, JSX.Element> = {
+    overview: overviewContent,
+    edt: edtContent,
+    board: boardContent,
+    gantt: ganttContent,
+    calendar: calendarContent,
+    docs: docsContent,
+    activity: activityContent
+  };
+
+  return (
+    <section className="project-details">
+      {overviewHeader}
+      {tabContentMap[activeTab]}
+    </section>
+  );
+};
+
+
 export const DashboardLayout = ({
   userEmail,
   organizations,
@@ -219,6 +852,9 @@ export const DashboardLayout = ({
   summaryError,
   members,
   membersError,
+  attachments,
+  attachmentsError,
+  attachmentsLoading,
   boardColumns,
   boardError,
   onCreateTask,
@@ -249,12 +885,14 @@ export const DashboardLayout = ({
   ganttError,
   portfolio,
   portfolioError,
+  portfolioLoading,
   onExportPortfolio
 }: any) => {
   const flattenedTasks = boardColumns.flatMap((column: any) =>
     column.tasks.map((task: any) => ({ ...task, column: column.label }))
   );
   const myTasks = flattenedTasks.slice(0, 6);
+  const projectMeta = (portfolio as PortfolioProject[]).find((project) => project.projectId === selectedProjectId) ?? null;
   const kpis = [
     {
       label: "Projetos ativos",
@@ -363,197 +1001,57 @@ export const DashboardLayout = ({
             ))}
           </section>
 
-          <ProjectPortfolio projects={portfolio} error={portfolioError} onExport={onExportPortfolio} />
+          <ProjectPortfolio
+            projects={portfolio}
+            error={portfolioError}
+            isLoading={portfolioLoading}
+            onExport={onExportPortfolio}
+            selectedProjectId={selectedProjectId}
+            onSelectProject={onProjectChange}
+          />
 
-          <section className="progresso-grid">
-            <article className="card">
-              <div className="card-header">
-                <div>
-                  <h2>Resumo do projeto</h2>
-                  <p className="subtext">Visão das entregas dos últimos {filters.rangeDays} dias</p>
-                </div>
-                <label className="inline-select">
-                  Intervalo
-                  <select value={filters.rangeDays} onChange={(event) => onRangeChange(Number(event.target.value))}>
-                    <option value={7}>7 dias</option>
-                    <option value={14}>14 dias</option>
-                    <option value={30}>30 dias</option>
-                  </select>
-                </label>
-              </div>
-              {summaryError && <p className="error-text">{summaryError}</p>}
-              {summary ? (
-                <div className="summary-stats">
-                  <div>
-                    <span>Total</span>
-                    <strong>{summary.totals.total}</strong>
-                  </div>
-                  <div>
-                    <span>Concluídas</span>
-                    <strong>{summary.totals.done}</strong>
-                  </div>
-                  <div>
-                    <span>Em andamento</span>
-                    <strong>{summary.totals.inProgress}</strong>
-                  </div>
-                  <div>
-                    <span>Backlog</span>
-                    <strong>{summary.totals.backlog}</strong>
-                  </div>
-                  <div>
-                    <span>Bloqueadas</span>
-                    <strong>{summary.totals.blocked}</strong>
-                  </div>
-                  <div>
-                    <span>Tarefas atrasadas</span>
-                    <strong>{summary.overdueTasks}</strong>
-                  </div>
-                </div>
-              ) : (
-                <p className="muted">Selecione um projeto para ver o resumo.</p>
-              )}
-            </article>
-
-            <article className="card">
-              <h3>Burn-down / Horas</h3>
-              {summary ? (
-                <div className="chart-grid">
-                  <ResponsiveContainer width="100%" height={180}>
-                    <LineChart data={summary.burnDown}>
-                      <XAxis dataKey="date" tickFormatter={formatDate} />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line type="monotone" dataKey="done" stroke="#22c55e" />
-                      <Line type="monotone" dataKey="remaining" stroke="#ef4444" />
-                    </LineChart>
-                  </ResponsiveContainer>
-                  <ResponsiveContainer width="100%" height={180}>
-                    <BarChart data={summary.timeEntries}>
-                      <XAxis dataKey="date" tickFormatter={formatDate} />
-                      <YAxis />
-                      <Tooltip />
-                      <Bar dataKey="hours" fill="#5b3fff" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <p className="muted">Sem dados suficientes.</p>
-              )}
-            </article>
-          </section>
-
-          <section className="split-grid">
-            <article className="card">
-              <div className="card-header">
-                <h3>Minhas tarefas</h3>
-                <button type="button" className="ghost-button">
-                  Ver todas
-                </button>
-              </div>
-              {myTasks.length ? (
-                <ul className="task-list">
-                  {myTasks.map((task: any) => (
-                    <li key={task.id}>
-                      <div>
-                        <strong>{task.title}</strong>
-                        <span>{task.column}</span>
-                      </div>
-                      <span className={`pill ${task.status.toLowerCase()}`}>{task.status}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="muted">Nenhuma tarefa atribuída.</p>
-              )}
-            </article>
-
-            <article className="card">
-              <div className="card-header">
-                <h3>Equipe</h3>
-              </div>
-              {membersError && <p className="error-text">{membersError}</p>}
-              {members.length ? (
-                <ul className="team-list">
-                  {members.map((member: any) => (
-                    <li key={member.id}>
-                      <div className="avatar">{member.name?.slice(0, 2).toUpperCase()}</div>
-                      <div>
-                        <strong>{member.name}</strong>
-                        <span>{member.role}</span>
-                      </div>
-                      <span>{member.capacityWeekly ?? 0}h</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="muted">Nenhum membro vinculado.</p>
-              )}
-            </article>
-          </section>
-
-          <section className="split-grid">
-            <article className="card">
-              <div className="card-header">
-                <h3>Kanban do projeto</h3>
-              </div>
-              {boardError && <p className="error-text">{boardError}</p>}
-              <KanbanBoard
-                columns={boardColumns}
-                onDragEnd={onDragTask}
-                onCreate={onCreateTask}
-                newTaskTitle={newTaskTitle}
-                onTaskTitleChange={onTaskTitleChange}
-                newTaskColumn={newTaskColumn}
-                onTaskColumnChange={onTaskColumnChange}
-              />
-            </article>
-
-            <article className="card">
-              <div className="card-header">
-                <h3>Registro rápido de horas</h3>
-              </div>
-              <form onSubmit={onLogTime} className="time-form">
-                <label>
-                  Data
-                  <input type="date" value={timeEntryDate} onChange={(event) => onTimeEntryDateChange(event.target.value)} />
-                </label>
-                <label>
-                  Horas
-                  <input
-                    type="number"
-                    min="0.25"
-                    step="0.25"
-                    value={timeEntryHours}
-                    onChange={(event) => onTimeEntryHoursChange(event.target.value)}
-                  />
-                </label>
-                <label>
-                  Descrição
-                  <textarea value={timeEntryDescription} onChange={(event) => onTimeEntryDescriptionChange(event.target.value)} />
-                </label>
-                <button type="submit">Registrar horas</button>
-              </form>
-            </article>
-          </section>
-
-          <section className="split-grid">
-            <article className="card">
-              <div className="card-header">
-                <h3>WBS (Resumo)</h3>
-              </div>
-              {wbsError && <p className="error-text">{wbsError}</p>}
-              <WbsTreeView nodes={wbsNodes} onMove={onMoveNode} selectedNodeId={selectedNodeId} onSelect={onSelectNode} />
-            </article>
-
-            <article className="card">
-              <div className="card-header">
-                <h3>Gantt simplificado</h3>
-              </div>
-              {ganttError && <p className="error-text">{ganttError}</p>}
-              <GanttTimeline tasks={ganttTasks} milestones={ganttMilestones} />
-            </article>
-          </section>
+          <ProjectDetailsTabs
+            projectMeta={projectMeta}
+            projectLoading={portfolioLoading}
+            summary={summary}
+            summaryError={summaryError}
+            filters={filters}
+            onRangeChange={onRangeChange}
+            myTasks={myTasks}
+            members={members}
+            membersError={membersError}
+            attachments={attachments}
+            attachmentsError={attachmentsError}
+            attachmentsLoading={attachmentsLoading}
+            boardColumns={boardColumns}
+            boardError={boardError}
+            onCreateTask={onCreateTask}
+            onDragTask={onDragTask}
+            newTaskTitle={newTaskTitle}
+            onTaskTitleChange={onTaskTitleChange}
+            newTaskColumn={newTaskColumn}
+            onTaskColumnChange={onTaskColumnChange}
+            wbsNodes={wbsNodes}
+            wbsError={wbsError}
+            onMoveNode={onMoveNode}
+            selectedNodeId={selectedNodeId}
+            onSelectNode={onSelectNode}
+            comments={comments}
+            commentsError={commentsError}
+            onSubmitComment={onSubmitComment}
+            commentBody={commentBody}
+            onCommentBodyChange={onCommentBodyChange}
+            timeEntryDate={timeEntryDate}
+            timeEntryHours={timeEntryHours}
+            timeEntryDescription={timeEntryDescription}
+            onTimeEntryDateChange={onTimeEntryDateChange}
+            onTimeEntryHoursChange={onTimeEntryHoursChange}
+            onTimeEntryDescriptionChange={onTimeEntryDescriptionChange}
+            onLogTime={onLogTime}
+            ganttTasks={ganttTasks}
+            ganttMilestones={ganttMilestones}
+            ganttError={ganttError}
+          />
         </main>
       </div>
     </div>

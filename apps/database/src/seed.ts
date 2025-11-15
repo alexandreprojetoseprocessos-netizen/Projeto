@@ -12,20 +12,36 @@ import {
   CommentTargetType,
   DependencyType,
   RiskSeverity,
-  RiskProbability
+  RiskProbability,
+  AttachmentTargetType
 } from "@prisma/client";
 import { prisma } from "./index";
 
 const seedUserId = process.env.SEED_USER_ID ?? "user-gestor";
-const seedUserEmail = process.env.SEED_USER_EMAIL ?? "gestor@gp.local";
+const seedUserEmail = process.env.SEED_USER_EMAIL ?? "alexandre.92@hotmail.com";
 const seedUserName = process.env.SEED_USER_NAME ?? "Gestor(a) Demo";
 
 async function main() {
   console.log("Seeding base data...");
 
+  await prisma.projectMember.deleteMany({
+    where: { userId: { not: seedUserId }, user: { email: seedUserEmail } }
+  });
+  await prisma.organizationMembership.deleteMany({
+    where: { userId: { not: seedUserId }, user: { email: seedUserEmail } }
+  });
+  await prisma.user.deleteMany({
+    where: { email: seedUserEmail, id: { not: seedUserId } }
+  });
+
   const adminUser = await prisma.user.upsert({
-    where: { email: seedUserEmail },
-    update: { fullName: seedUserName },
+    where: { id: seedUserId },
+    update: {
+      email: seedUserEmail,
+      fullName: seedUserName,
+      locale: "pt-BR",
+      timezone: "America/Sao_Paulo"
+    },
     create: {
       id: seedUserId,
       email: seedUserEmail,
@@ -51,7 +67,11 @@ async function main() {
 
   await prisma.organizationMembership.upsert({
     where: { id: "membership-demo" },
-    update: {},
+    update: {
+      organizationId: organization.id,
+      userId: adminUser.id,
+      role: MembershipRole.OWNER
+    },
     create: {
       id: "membership-demo",
       organizationId: organization.id,
@@ -117,7 +137,12 @@ async function main() {
 
   await prisma.projectMember.upsert({
     where: { id: "pm-gestor" },
-    update: {},
+    update: {
+      projectId: project.id,
+      userId: adminUser.id,
+      role: ProjectRole.MANAGER,
+      capacityWeekly: 35
+    },
     create: {
       id: "pm-gestor",
       projectId: project.id,
@@ -317,6 +342,37 @@ async function main() {
       template: "task-assigned",
       payload: { taskId: task.id, title: "Definir escopo detalhado" },
       read: false
+    }
+  });
+
+  await prisma.attachment.upsert({
+    where: { id: "attach-briefing" },
+    update: {},
+    create: {
+      id: "attach-briefing",
+      projectId: project.id,
+      targetType: AttachmentTargetType.PROJECT,
+      uploadedById: adminUser.id,
+      fileKey: "docs/briefing-projeto.pdf",
+      fileName: "Briefing do Projeto.pdf",
+      fileSize: 24576,
+      category: "Documentos"
+    }
+  });
+
+  await prisma.attachment.upsert({
+    where: { id: "attach-wbs" },
+    update: {},
+    create: {
+      id: "attach-wbs",
+      projectId: project.id,
+      targetType: AttachmentTargetType.WBS_NODE,
+      wbsNodeId: task.id,
+      uploadedById: adminUser.id,
+      fileKey: "docs/cronograma.xlsx",
+      fileName: "Cronograma detalhado.xlsx",
+      fileSize: 48765,
+      category: "Planilhas"
     }
   });
 }
