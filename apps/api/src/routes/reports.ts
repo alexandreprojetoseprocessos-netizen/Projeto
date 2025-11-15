@@ -151,3 +151,80 @@ reportsRouter.get("/portfolio", async (req, res) => {
     projects: rows
   });
 });
+
+reportsRouter.get("/metrics", async (req, res) => {
+  if (!req.organization || !req.user) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+
+  const range = Number(req.query.range ?? "30");
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - range);
+
+  const projects = await prisma.project.findMany({
+    where: {
+      organizationId: req.organization.id,
+      members: {
+        some: { userId: req.user.id }
+      }
+    },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      timeEntries: {
+        where: { entryDate: { gte: startDate } },
+        select: { hours: true, projectId: true }
+      },
+      risks: {
+        select: { status: true }
+      },
+      wbsNodes: {
+        where: { type: { in: ["TASK", "SUBTASK"] } },
+        select: { status: true }
+      }
+    }
+  });
+
+  const byStatus = projects.reduce<Record<string, number>>((acc, project) => {
+    acc[project.status] = (acc[project.status] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const riskSummary = projects.reduce(
+    (acc, project) => {
+      acc.open += project.risks.filter((risk) => risk.status !== "CLOSED").length;
+      acc.closed += project.risks.filter((risk) => risk.status === "CLOSED").length;
+      return acc;
+    },
+    { open: 0, closed: 0 }
+  );
+
+  const hoursByProject = projects.map((project) => ({
+    projectId: project.id,
+    projectName: project.name,
+    hours: project.timeEntries.reduce((acc, entry) => acc + Number(entry.hours), 0)
+  }));
+
+  const progressSeries = Array.from({ length: range }).map((_, index) => {
+    const day = new Date(startDate);
+    day.setDate(startDate.getDate() + index);
+    const doneTasks = projects.reduce((acc, project) => {
+      const done = project.wbsNodes.filter((node) => node.status === "DONE").length;
+      const total = project.wbsNodes.length || 1;
+      return acc + Math.round((done / total) * 100);
+    }, 0);
+    return {
+      date: day.toISOString().slice(0, 10),
+      progress: projects.length ? Math.round(doneTasks / projects.length) : 0
+    };
+  });
+
+  return res.json({
+    generatedAt: new Date(),
+    byStatus,
+    riskSummary,
+    hoursByProject,
+    progressSeries
+  });
+});

@@ -834,6 +834,312 @@ const ProjectDetailsTabs = ({
   );
 };
 
+const TeamPanel = ({
+  members,
+  membersError,
+  projectName
+}: {
+  members: any[];
+  membersError: string | null;
+  projectName: string | null;
+}) => {
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [selectedMember, setSelectedMember] = useState<any | null>(null);
+
+  const enrichedMembers = useMemo(() => {
+    const skillPool = ["Scrum", "SQL", "UX", "DevOps", "PMO", "Design Thinking", "DataViz"];
+    return members.map((member, index) => {
+      const allocation = Math.min(100, Math.round(((member.capacityWeekly ?? 40) / 40) * 100));
+      const status =
+        allocation > 90 ? "Alocado" : allocation < 50 ? "Em férias / folga" : "Disponível";
+      const skills = [
+        skillPool[index % skillPool.length],
+        skillPool[(index + 3) % skillPool.length]
+      ];
+      return {
+        ...member,
+        allocation,
+        status,
+        skills,
+        avatar: member.name?.slice(0, 2).toUpperCase() ?? "EQ",
+        workload: allocation
+      };
+    });
+  }, [members]);
+
+  const filteredMembers = useMemo(() => {
+    return enrichedMembers.filter((member) => {
+      const matchesRole = roleFilter === "all" || member.role === roleFilter;
+      const matchesStatus = statusFilter === "all" || member.status === statusFilter;
+      const matchesSearch =
+        !search ||
+        member.name?.toLowerCase().includes(search.toLowerCase()) ||
+        member.email?.toLowerCase().includes(search.toLowerCase());
+      return matchesRole && matchesStatus && matchesSearch;
+    });
+  }, [enrichedMembers, roleFilter, statusFilter, search]);
+
+  const roleOptions = useMemo(
+    () => Array.from(new Set(members.map((member) => member.role))).filter(Boolean),
+    [members]
+  );
+
+  if (!members.length && !membersError) {
+    return null;
+  }
+
+  return (
+    <section className="team-section">
+      <div className="team-section__header">
+        <div>
+          <p className="eyebrow">Equipe</p>
+          <h2>Visão da equipe do projeto</h2>
+          <p className="subtext">
+            Filtre por papel, status ou busque pessoas para abrir o painel detalhado.
+          </p>
+        </div>
+        <div className="team-summary">
+          <strong>{members.length}</strong>
+          <span>Colaboradores no projeto {projectName ?? "atual"}</span>
+        </div>
+      </div>
+
+      <div className="team-filters">
+        <label>
+          Papel
+          <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+            <option value="all">Todos</option>
+            {roleOptions.map((role) => (
+              <option key={role} value={role}>
+                {role}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Status
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="all">Todos</option>
+            <option value="Disponível">Disponível</option>
+            <option value="Alocado">Alocado</option>
+            <option value="Em férias / folga">Em férias / folga</option>
+          </select>
+        </label>
+        <label className="search-field">
+          Busca
+          <input
+            type="search"
+            placeholder="Nome ou e-mail..."
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+      </div>
+
+      {membersError && <p className="error-text">{membersError}</p>}
+
+      {filteredMembers.length ? (
+        <div className="team-grid">
+          {filteredMembers.map((member) => (
+            <article
+              key={member.id}
+              className="team-card"
+              onClick={() => setSelectedMember(member)}
+            >
+              <div className="team-card__header">
+                <div className="avatar">{member.avatar}</div>
+                <div>
+                  <strong>{member.name}</strong>
+                  <span>{member.role}</span>
+                </div>
+                <span className="pill pill-neutral">{member.status}</span>
+              </div>
+              <div className="team-card__body">
+                <p>{member.email}</p>
+                <div className="progress-bar team-card__allocation">
+                  <span style={{ width: `${member.allocation}%` }} />
+                </div>
+                <small>Alocação: {member.allocation}%</small>
+                <div className="team-card__skills">
+                  {member.skills.map((skill: string) => (
+                    <span key={`${member.id}-${skill}`}>{skill}</span>
+                  ))}
+                </div>
+              </div>
+              <button type="button" className="ghost-button">
+                Ver detalhes
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">Nenhum membro corresponde aos filtros selecionados.</p>
+      )}
+
+      {selectedMember && (
+        <div className="team-drawer" onClick={() => setSelectedMember(null)}>
+          <div className="team-drawer__content" onClick={(event) => event.stopPropagation()}>
+            <header>
+              <div className="avatar is-large">{selectedMember.avatar}</div>
+              <div>
+                <h3>{selectedMember.name}</h3>
+                <p>{selectedMember.email}</p>
+                <span className="pill pill-neutral">{selectedMember.status}</span>
+              </div>
+              <button type="button" className="ghost-button" onClick={() => setSelectedMember(null)}>
+                Fechar
+              </button>
+            </header>
+            <div className="team-drawer__details">
+              <div>
+                <strong>Papel</strong>
+                <p>{selectedMember.role}</p>
+              </div>
+              <div>
+                <strong>Capacidade semanal</strong>
+                <p>{selectedMember.capacityWeekly ?? 0}h</p>
+              </div>
+              <div>
+                <strong>Alocação</strong>
+                <p>{selectedMember.allocation}%</p>
+              </div>
+            </div>
+            <div>
+              <strong>Skills</strong>
+              <div className="team-card__skills">
+                {selectedMember.skills.map((skill: string) => (
+                  <span key={`${selectedMember.id}-${skill}`}>{skill}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+};
+
+const ReportsPanel = ({
+  metrics,
+  metricsError,
+  metricsLoading
+}: {
+  metrics: any | null;
+  metricsError: string | null;
+  metricsLoading: boolean;
+}) => {
+  const [activeTab, setActiveTab] = useState("status");
+
+  const statusData = useMemo(() => {
+    if (!metrics?.byStatus) return [];
+    return Object.entries(metrics.byStatus).map(([status, value]) => ({ status, value }));
+  }, [metrics]);
+
+  const riskData = metrics?.riskSummary ?? { open: 0, closed: 0 };
+  const hoursByProject = (metrics?.hoursByProject ?? []).slice(0, 5);
+  const progressSeries = metrics?.progressSeries ?? [];
+
+  if (!metrics && !metricsError && !metricsLoading) return null;
+
+  return (
+    <section className="reports-section">
+      <header className="reports-header">
+        <div>
+          <p className="eyebrow">Relatórios</p>
+          <h2>Visão analítica</h2>
+          <p className="subtext">Escolha o foco para comparar resultados do portfólio.</p>
+        </div>
+        <div className="reports-tabs">
+          {[
+            { id: "status", label: "Status" },
+            { id: "risks", label: "Riscos" },
+            { id: "hours", label: "Horas" },
+            { id: "progress", label: "Progresso" }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={activeTab === tab.id ? "is-active" : ""}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {metricsError && <p className="error-text">{metricsError}</p>}
+
+      {metricsLoading ? (
+        <p className="muted">Carregando relatórios...</p>
+      ) : (
+        <div className="reports-grid">
+          {activeTab === "status" && (
+            <article className="reports-card">
+              <h3>Status dos projetos</h3>
+              <ul className="reports-list">
+                {statusData.map((item) => (
+                  <li key={item.status}>
+                    <span>{item.status}</span>
+                    <strong>{item.value}</strong>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          )}
+
+          {activeTab === "risks" && (
+            <article className="reports-card">
+              <h3>Riscos</h3>
+              <div className="reports-risk">
+                <div>
+                  <span>Abertos</span>
+                  <strong>{riskData.open}</strong>
+                </div>
+                <div>
+                  <span>Fechados</span>
+                  <strong>{riskData.closed}</strong>
+                </div>
+              </div>
+            </article>
+          )}
+
+          {activeTab === "hours" && (
+            <article className="reports-card">
+              <h3>Horas por projeto</h3>
+              <ul className="reports-list">
+                {hoursByProject.map((project: any) => (
+                  <li key={project.projectId}>
+                    <span>{project.projectName}</span>
+                    <strong>{project.hours?.toFixed ? project.hours.toFixed(1) : project.hours}h</strong>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          )}
+
+          {activeTab === "progress" && (
+            <article className="reports-card">
+              <h3>Progresso médio</h3>
+              <div className="reports-sparkline">
+                {progressSeries.map((point: any) => (
+                  <span
+                    key={point.date}
+                    style={{ height: `${Math.max(5, point.progress)}%` }}
+                    title={`${point.date} - ${point.progress}%`}
+                  />
+                ))}
+              </div>
+            </article>
+          )}
+        </div>
+      )}
+    </section>
+  );
+};
+
 
 export const DashboardLayout = ({
   userEmail,
@@ -855,6 +1161,9 @@ export const DashboardLayout = ({
   attachments,
   attachmentsError,
   attachmentsLoading,
+  reportMetrics,
+  reportMetricsError,
+  reportMetricsLoading,
   boardColumns,
   boardError,
   onCreateTask,
@@ -1052,6 +1361,9 @@ export const DashboardLayout = ({
             ganttMilestones={ganttMilestones}
             ganttError={ganttError}
           />
+
+          <TeamPanel members={members} membersError={membersError} projectName={projectMeta?.projectName ?? null} />
+          <ReportsPanel metrics={reportMetrics} metricsError={reportMetricsError} metricsLoading={reportMetricsLoading} />
         </main>
       </div>
     </div>

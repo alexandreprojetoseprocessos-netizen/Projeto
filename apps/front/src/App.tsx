@@ -77,6 +77,9 @@ export const App = () => {
   const [portfolio, setPortfolio] = useState<PortfolioProject[]>([]);
   const [portfolioError, setPortfolioError] = useState<string | null>(null);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [reportMetrics, setReportMetrics] = useState<any | null>(null);
+  const [reportMetricsError, setReportMetricsError] = useState<string | null>(null);
+  const [reportMetricsLoading, setReportMetricsLoading] = useState(false);
 
   const [filters, setFilters] = useState({ rangeDays: 7 });
   const [boardRefresh, setBoardRefresh] = useState(0);
@@ -318,6 +321,7 @@ export const App = () => {
     if (status !== "authenticated" || !token || !selectedOrganizationId) {
       setPortfolio([]);
       setPortfolioLoading(false);
+      setReportMetrics(null);
       return;
     }
 
@@ -337,6 +341,31 @@ export const App = () => {
     };
 
     loadPortfolio();
+  }, [status, token, selectedOrganizationId]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !token || !selectedOrganizationId) {
+      setReportMetrics(null);
+      setReportMetricsLoading(false);
+      return;
+    }
+
+    const loadMetrics = async () => {
+      try {
+        setReportMetricsLoading(true);
+        setReportMetricsError(null);
+        const data = await fetchJson("/reports/metrics", token, undefined, selectedOrganizationId);
+        setReportMetrics(data);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao carregar relatórios";
+        setReportMetricsError(message);
+        setReportMetrics(null);
+      } finally {
+        setReportMetricsLoading(false);
+      }
+    };
+
+    loadMetrics();
   }, [status, token, selectedOrganizationId]);
 
   const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
@@ -577,6 +606,9 @@ export const App = () => {
       portfolio={portfolio}
       portfolioError={portfolioError}
       portfolioLoading={portfolioLoading}
+      reportMetrics={reportMetrics}
+      reportMetricsError={reportMetricsError}
+      reportMetricsLoading={reportMetricsLoading}
       onExportPortfolio={handleDownloadPortfolio}
     />
   );
