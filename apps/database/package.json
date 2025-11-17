@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src --ext .ts",
-    "migrate": "prisma migrate deploy",
-    "migrate:dev": "prisma migrate dev",
-    "seed": "ts-node src/seed.ts",
-    "generate": "prisma generate"
+    "migrate": "dotenv -e ../../.env -- prisma migrate deploy",
+    "migrate:dev": "dotenv -e ../../.env -- prisma migrate dev",
+    "seed": "dotenv -e ../../.env -- ts-node src/seed.ts",
+    "generate": "dotenv -e ../../.env -- prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^5.19.0"

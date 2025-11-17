@@ -138,7 +138,7 @@ wbsRouter.patch("/:nodeId", async (req, res) => {
   const access = await assertNodeAccess(req, res, nodeId, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
   if (!access) return;
 
-  const data: Prisma.WbsNodeUpdateInput = {};
+  const data: Prisma.WbsNodeUncheckedUpdateInput = {};
   if (title !== undefined) data.title = title;
   if (status !== undefined) data.status = status;
   if (priority !== undefined) data.priority = priority;

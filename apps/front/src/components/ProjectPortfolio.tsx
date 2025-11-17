@@ -60,6 +60,8 @@ export type ProjectPortfolioProps = {
   onExport?: () => void;
   selectedProjectId?: string | null;
   onSelectProject?: (projectId: string) => void;
+  onCreateProject?: () => void;
+  onViewProjectDetails?: (projectId: string) => void;
 };
 
 export const ProjectPortfolio = ({
@@ -68,7 +70,9 @@ export const ProjectPortfolio = ({
   isLoading = false,
   onExport,
   selectedProjectId,
-  onSelectProject
+  onSelectProject,
+  onCreateProject,
+  onViewProjectDetails
 }: ProjectPortfolioProps) => {
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -239,6 +243,7 @@ export const ProjectPortfolio = ({
                     onClick={(event) => {
                       event.stopPropagation();
                       onSelectProject?.(project.projectId);
+                      onViewProjectDetails?.(project.projectId);
                     }}
                   >
                     Ver detalhes
@@ -324,7 +329,7 @@ export const ProjectPortfolio = ({
           <p className="subtext">Filtros avançados e troca de visualização entre cards e tabela.</p>
         </div>
         <div className="projects-actions">
-          <button type="button" className="secondary-button">
+          <button type="button" className="secondary-button" onClick={onCreateProject} disabled={!onCreateProject}>
             + Novo Projeto
           </button>
           <button type="button" className="ghost-button" onClick={onExport} disabled={!onExport || !projects.length}>

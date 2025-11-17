@@ -3,7 +3,7 @@ import { Tree } from "@minoru/react-dnd-treeview";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, BarChart, Bar } from "recharts";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, useCallback, type FormEvent } from "react";
 import { ProjectPortfolio, type PortfolioProject } from "./ProjectPortfolio";
 import { NotFoundPage } from "./NotFoundPage";
 
@@ -46,6 +46,7 @@ type TemplateCustomField = {
 };
 
 export type TemplateNodeInput = {
+  id?: string;
   title: string;
   children?: TemplateNodeInput[];
 };
@@ -66,6 +67,19 @@ export type TemplateEditorPayload = {
   columns: string[];
   wbs: TemplateNodeInput[];
   customFields: TemplateCustomFieldInput[];
+};
+
+type TemplateSummary = {
+  id: string;
+  name: string;
+  type: string;
+  clientName?: string | null;
+  repositoryUrl?: string | null;
+  budget?: number | null;
+  columns?: string[];
+  wbs?: TemplateNodeInput[];
+  customFields?: TemplateCustomFieldInput[];
+  updatedAt?: string | null;
 };
 
 type Organization = { id: string; name: string; role: string };
@@ -126,6 +140,7 @@ type DashboardLayoutProps = {
   timeEntryDate: string;
   timeEntryHours: string;
   timeEntryDescription: string;
+  timeEntryError: string | null;
   onTimeEntryDateChange: (value: string) => void;
   onTimeEntryHoursChange: (value: string) => void;
   onTimeEntryDescriptionChange: (value: string) => void;
@@ -138,7 +153,11 @@ type DashboardLayoutProps = {
   portfolioLoading: boolean;
   onExportPortfolio?: () => void;
   onCreateProject: (payload: CreateProjectPayload) => Promise<void>;
+  onUpdateProject: (projectId: string, payload: CreateProjectPayload) => Promise<void>;
   onSaveTemplate: (templateId: string, payload: TemplateEditorPayload) => Promise<void>;
+  templates: TemplateSummary[];
+  templatesError: string | null;
+  templatesLoading: boolean;
 };
 
 const KanbanBoard = ({
@@ -292,6 +311,10 @@ const GanttTimeline = ({ tasks, milestones }: { tasks: any[]; milestones: any[] 
     .filter(Boolean)
     .map((value) => new Date(value as string));
 
+  if (!allDates.length) {
+    return <p className="muted">Defina datas para visualizar o cronograma.</p>;
+  }
+
   const minDate = allDates.reduce((acc, date) => (acc.getTime() > date.getTime() ? date : acc), allDates[0]);
   const maxDate = allDates.reduce((acc, date) => (acc.getTime() < date.getTime() ? date : acc), allDates[0]);
   const totalDays = Math.max(1, (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -339,6 +362,7 @@ const GanttTimeline = ({ tasks, milestones }: { tasks: any[]; milestones: any[] 
 type ProjectDetailsTabsProps = {
   projectMeta: PortfolioProject | null;
   projectLoading?: boolean;
+  onEditProject?: () => void;
   summary: any;
   summaryError: string | null;
   filters: { rangeDays: number };
@@ -349,6 +373,9 @@ type ProjectDetailsTabsProps = {
   attachments: any[];
   attachmentsError: string | null;
   attachmentsLoading: boolean;
+  reportMetrics: any | null;
+  reportMetricsError: string | null;
+  reportMetricsLoading: boolean;
   boardColumns: any[];
   boardError: string | null;
   onCreateTask: (event: FormEvent<HTMLFormElement>) => void;
@@ -370,6 +397,7 @@ type ProjectDetailsTabsProps = {
   timeEntryDate: string;
   timeEntryHours: string;
   timeEntryDescription: string;
+  timeEntryError: string | null;
   onTimeEntryDateChange: (value: string) => void;
   onTimeEntryHoursChange: (value: string) => void;
   onTimeEntryDescriptionChange: (value: string) => void;
@@ -382,6 +410,7 @@ type ProjectDetailsTabsProps = {
 const ProjectDetailsTabs = ({
   projectMeta,
   projectLoading,
+  onEditProject,
   summary,
   summaryError,
   filters,
@@ -416,6 +445,7 @@ const ProjectDetailsTabs = ({
   timeEntryDate,
   timeEntryHours,
   timeEntryDescription,
+  timeEntryError,
   onTimeEntryDateChange,
   onTimeEntryHoursChange,
   onTimeEntryDescriptionChange,
@@ -549,7 +579,7 @@ const ProjectDetailsTabs = ({
           </div>
         </div>
         <div className="project-header__actions">
-          <button type="button" className="secondary-button">
+          <button type="button" className="secondary-button" onClick={onEditProject} disabled={!onEditProject}>
             Editar projeto
           </button>
           <button type="button" className="ghost-button">
@@ -940,6 +970,11 @@ const ProjectDetailsTabs = ({
               Descrição
               <textarea value={timeEntryDescription} onChange={(event) => onTimeEntryDescriptionChange(event.target.value)} />
             </label>
+            {timeEntryError && (
+              <p className="error-text" role="status">
+                {timeEntryError}
+              </p>
+            )}
             <button type="submit" className="primary-button" disabled={!selectedNodeId}>
               Registrar horas
             </button>
@@ -982,15 +1017,14 @@ const TeamPanel = ({
   const [selectedMember, setSelectedMember] = useState<any | null>(null);
 
   const enrichedMembers = useMemo(() => {
-    const skillPool = ["Scrum", "SQL", "UX", "DevOps", "PMO", "Design Thinking", "DataViz"];
-    return members.map((member, index) => {
+    return members.map((member) => {
       const allocation = Math.min(100, Math.round(((member.capacityWeekly ?? 40) / 40) * 100));
       const status =
-        allocation > 90 ? "Alocado" : allocation < 50 ? "Em férias / folga" : "Disponível";
-      const skills = [
-        skillPool[index % skillPool.length],
-        skillPool[(index + 3) % skillPool.length]
-      ];
+        allocation >= 90 ? "Alta carga" : allocation <= 40 ? "Disponível" : "Balanceado";
+      const skills =
+        Array.isArray((member as any).skills) && (member as any).skills.length
+          ? (member as any).skills
+          : [member.role, `Carga ${allocation}%`];
       return {
         ...member,
         allocation,
@@ -1165,14 +1199,22 @@ const ReportsPanel = ({
 }) => {
   const [activeTab, setActiveTab] = useState("status");
 
-  const statusData = useMemo(() => {
+  const statusData = useMemo<{ status: string; value: number }[]>(() => {
     if (!metrics?.byStatus) return [];
-    return Object.entries(metrics.byStatus).map(([status, value]) => ({ status, value }));
+    return Object.entries(metrics.byStatus).map(([status, value]) => ({
+      status,
+      value: Number(value)
+    }));
   }, [metrics]);
 
   const riskData = metrics?.riskSummary ?? { open: 0, closed: 0 };
-  const hoursByProject = (metrics?.hoursByProject ?? []).slice(0, 5);
-  const progressSeries = metrics?.progressSeries ?? [];
+  const hoursByProject =
+    ((metrics?.hoursByProject as { projectId: string; projectName: string; hours: number }[] | undefined) ?? []).slice(
+      0,
+      5
+    );
+  const progressSeries =
+    (metrics?.progressSeries as { date: string; progress: number }[] | undefined) ?? [];
 
   if (!metrics && !metricsError && !metricsLoading) return null;
 
@@ -1274,8 +1316,14 @@ const ReportsPanel = ({
 };
 
 const SettingsPanel = ({
+  templates,
+  templatesError,
+  templatesLoading,
   onSaveTemplate
 }: {
+  templates: TemplateSummary[];
+  templatesError: string | null;
+  templatesLoading: boolean;
   onSaveTemplate: (templateId: string, payload: TemplateEditorPayload) => Promise<void>;
 }) => {
   const [activeSection, setActiveSection] = useState("profile");
@@ -1407,7 +1455,14 @@ const SettingsPanel = ({
             </div>
           )}
 
-          {activeSection === "templates" && <TemplatesPanel onSaveTemplate={onSaveTemplate} />}
+          {activeSection === "templates" && (
+            <TemplatesPanel
+              templates={templates}
+              isLoading={templatesLoading}
+              error={templatesError}
+              onSaveTemplate={onSaveTemplate}
+            />
+          )}
 
           {activeSection === "integrations" && (
             <div className="settings-form">
@@ -1486,6 +1541,7 @@ export const DashboardLayout = ({
   timeEntryDate,
   timeEntryHours,
   timeEntryDescription,
+  timeEntryError,
   onTimeEntryDateChange,
   onTimeEntryHoursChange,
   onTimeEntryDescriptionChange,
@@ -1498,7 +1554,11 @@ export const DashboardLayout = ({
   portfolioLoading,
   onExportPortfolio,
   onCreateProject,
-  onSaveTemplate
+  onUpdateProject,
+  onSaveTemplate,
+  templates,
+  templatesError,
+  templatesLoading
 }: DashboardLayoutProps) => {
   const flattenedTasks = boardColumns.flatMap((column: any) =>
     column.tasks.map((task: any) => ({ ...task, column: column.label }))
@@ -1512,6 +1572,8 @@ export const DashboardLayout = ({
   const [projectModalLoading, setProjectModalLoading] = useState(false);
   const [projectToast, setProjectToast] = useState<string | null>(null);
   const [showNotFound, setShowNotFound] = useState(false);
+  const [projectModalMode, setProjectModalMode] = useState<"create" | "edit">("create");
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   useEffect(() => {
     if (selectedProjectId && !projectMeta && !portfolioLoading) {
       setShowNotFound(true);
@@ -1552,16 +1614,43 @@ export const DashboardLayout = ({
   const handleProjectFieldChange = (field: keyof ReturnType<typeof createEmptyProjectForm>, value: string) =>
     setProjectForm((prev) => ({ ...prev, [field]: value }));
 
+  const resetProjectForm = () => {
+    setProjectForm(createEmptyProjectForm());
+    setEditingProjectId(null);
+    setProjectModalMode("create");
+  };
+
   const handleOpenProjectModal = () => {
     setProjectModalError(null);
+    resetProjectForm();
+    setProjectModalOpen(true);
+  };
+
+  const handleOpenEditProjectModal = () => {
+    if (!projectMeta) return;
+    setProjectModalError(null);
+    setProjectModalMode("edit");
+    setEditingProjectId(projectMeta.projectId);
+    setProjectForm({
+      name: projectMeta.projectName ?? "",
+      clientName: projectMeta.clientName ?? "",
+      budget: "",
+      repositoryUrl: "",
+      startDate: projectMeta.startDate ? projectMeta.startDate.slice(0, 10) : "",
+      endDate: projectMeta.endDate ? projectMeta.endDate.slice(0, 10) : "",
+      description: "",
+      teamMembers: ""
+    });
     setProjectModalOpen(true);
   };
 
   const handleCloseProjectModal = () => {
     setProjectModalOpen(false);
+    setProjectModalMode("create");
+    setEditingProjectId(null);
   };
 
-  const handleCreateProjectSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleProjectModalSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setProjectModalError(null);
     if (!projectForm.name.trim()) {
@@ -1573,26 +1662,33 @@ export const DashboardLayout = ({
       return;
     }
 
+    const payload = {
+      name: projectForm.name.trim(),
+      clientName: projectForm.clientName.trim(),
+      budget: Number(projectForm.budget) || 0,
+      repositoryUrl: projectForm.repositoryUrl.trim() || undefined,
+      startDate: projectForm.startDate || undefined,
+      endDate: projectForm.endDate || undefined,
+      description: projectForm.description.trim() || undefined,
+      teamMembers: projectForm.teamMembers
+        .split(",")
+        .map((member) => member.trim())
+        .filter(Boolean)
+    };
+
     setProjectModalLoading(true);
     try {
-      await onCreateProject({
-        name: projectForm.name.trim(),
-        clientName: projectForm.clientName.trim(),
-        budget: Number(projectForm.budget) || 0,
-        repositoryUrl: projectForm.repositoryUrl.trim() || undefined,
-        startDate: projectForm.startDate || undefined,
-        endDate: projectForm.endDate || undefined,
-        description: projectForm.description.trim() || undefined,
-        teamMembers: projectForm.teamMembers
-          .split(",")
-          .map((member) => member.trim())
-          .filter(Boolean)
-      });
-      setProjectToast("Projeto criado com sucesso.");
-      setProjectForm(createEmptyProjectForm());
+      if (projectModalMode === "edit" && editingProjectId) {
+        await onUpdateProject(editingProjectId, payload);
+        setProjectToast("Projeto atualizado com sucesso.");
+      } else {
+        await onCreateProject(payload);
+        setProjectToast("Projeto criado com sucesso.");
+      }
+      resetProjectForm();
       setProjectModalOpen(false);
     } catch (error) {
-      setProjectModalError(error instanceof Error ? error.message : "Erro ao criar projeto");
+      setProjectModalError(error instanceof Error ? error.message : "Erro ao salvar projeto");
     } finally {
       setProjectModalLoading(false);
     }
@@ -1644,6 +1740,7 @@ export const DashboardLayout = ({
     <ProjectDetailsTabs
       projectMeta={projectMeta}
       projectLoading={portfolioLoading}
+      onEditProject={handleOpenEditProjectModal}
       summary={summary}
       summaryError={summaryError}
       filters={filters}
@@ -1654,6 +1751,9 @@ export const DashboardLayout = ({
       attachments={attachments}
       attachmentsError={attachmentsError}
       attachmentsLoading={attachmentsLoading}
+      reportMetrics={reportMetrics}
+      reportMetricsError={reportMetricsError}
+      reportMetricsLoading={reportMetricsLoading}
       boardColumns={boardColumns}
       boardError={boardError}
       onCreateTask={onCreateTask}
@@ -1675,6 +1775,7 @@ export const DashboardLayout = ({
       timeEntryDate={timeEntryDate}
       timeEntryHours={timeEntryHours}
       timeEntryDescription={timeEntryDescription}
+      timeEntryError={timeEntryError}
       onTimeEntryDateChange={onTimeEntryDateChange}
       onTimeEntryHoursChange={onTimeEntryHoursChange}
       onTimeEntryDescriptionChange={onTimeEntryDescriptionChange}
@@ -1685,6 +1786,17 @@ export const DashboardLayout = ({
     />
   );
 
+  const handleViewProjectDetails = useCallback(
+    (projectId: string) => {
+      if (projectId && projectId !== selectedProjectId) {
+        onProjectChange(projectId);
+      }
+      setActiveSidebarView("projects");
+      setShowNotFound(false);
+    },
+    [onProjectChange, selectedProjectId]
+  );
+
   const renderProjectsList = () => (
     <ProjectPortfolio
       projects={portfolio}
@@ -1693,6 +1805,8 @@ export const DashboardLayout = ({
       onExport={onExportPortfolio}
       selectedProjectId={selectedProjectId}
       onSelectProject={onProjectChange}
+      onCreateProject={handleOpenProjectModal}
+      onViewProjectDetails={handleViewProjectDetails}
     />
   );
 
@@ -1749,9 +1863,23 @@ export const DashboardLayout = ({
       case "reports":
         return renderReportsContent();
       case "templates":
-        return <TemplatesPanel onSaveTemplate={onSaveTemplate} />;
+        return (
+          <TemplatesPanel
+            templates={templates}
+            isLoading={templatesLoading}
+            error={templatesError}
+            onSaveTemplate={onSaveTemplate}
+          />
+        );
       case "settings":
-        return <SettingsPanel onSaveTemplate={onSaveTemplate} />;
+        return (
+          <SettingsPanel
+            templates={templates}
+            templatesError={templatesError}
+            templatesLoading={templatesLoading}
+            onSaveTemplate={onSaveTemplate}
+          />
+        );
       case "dashboard":
       default:
         return renderDashboardContent();
@@ -1814,16 +1942,20 @@ export const DashboardLayout = ({
             <div className="modal">
               <header className="modal-header">
                 <div>
-                  <p className="eyebrow">Novo projeto</p>
-                  <h3>Planeje um novo trabalho</h3>
-                  <p className="subtext">Informe dados básicos para criarmos o projeto no portfólio.</p>
+                  <p className="eyebrow">{projectModalMode === "edit" ? "Editar projeto" : "Novo projeto"}</p>
+                  <h3>{projectModalMode === "edit" ? "Atualize as informações principais" : "Planeje um novo trabalho"}</h3>
+                  <p className="subtext">
+                    {projectModalMode === "edit"
+                      ? "Ajuste cliente, datas ou links principais do projeto selecionado."
+                      : "Informe dados básicos para criarmos o projeto no portfólio."}
+                  </p>
                 </div>
                 <button type="button" className="ghost-button" onClick={handleCloseProjectModal}>
                   Fechar
                 </button>
               </header>
 
-              <form className="modal-form" onSubmit={handleCreateProjectSubmit}>
+              <form className="modal-form" onSubmit={handleProjectModalSubmit}>
                 <label>
                   Nome do projeto
                   <input
@@ -1906,7 +2038,11 @@ export const DashboardLayout = ({
                     Cancelar
                   </button>
                   <button type="submit" className="primary-button" disabled={projectModalLoading}>
-                    {projectModalLoading ? "Enviando..." : "Criar projeto"}
+                    {projectModalLoading
+                      ? "Enviando..."
+                      : projectModalMode === "edit"
+                      ? "Salvar alterações"
+                      : "Criar projeto"}
                   </button>
                 </footer>
               </form>
@@ -1918,11 +2054,35 @@ export const DashboardLayout = ({
   );
 };
 const TemplatesPanel = ({
+  templates,
+  isLoading,
+  error,
   onSaveTemplate
 }: {
+  templates: TemplateSummary[];
+  isLoading: boolean;
+  error: string | null;
   onSaveTemplate: (templateId: string, payload: TemplateEditorPayload) => Promise<void>;
 }) => {
-  const templates = [
+  type TemplateCard = {
+    id: string;
+    name: string;
+    type: string;
+    clientName?: string;
+    repositoryUrl?: string;
+    defaultBudget?: number;
+    phases: number;
+    tasks: number;
+    tags: string[];
+    updatedAt: string;
+    columns: string[];
+    wbs: TemplateTreeNode[];
+    customFields: TemplateCustomField[];
+  };
+
+  const defaultColumns = ["Backlog", "Planejamento", "Execucao", "Concluido"];
+
+  const sampleTemplates: TemplateCard[] = [
     {
       id: "temp-pmo",
       name: "Projeto PMO",
@@ -2030,8 +2190,64 @@ const TemplatesPanel = ({
     }
   ];
 
-  const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0].id);
-  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId)!;
+  const countWbsNodes = (nodes: TemplateNodeInput[] = []): number =>
+    nodes.reduce((acc, node) => acc + 1 + countWbsNodes(node.children ?? []), 0);
+
+  const mapTemplateNodes = (nodes?: TemplateNodeInput[], parentPath = "tpl"): TemplateTreeNode[] =>
+    (nodes ?? []).map((node, index) => {
+      const path = `${parentPath}-${index}`;
+      return {
+        id: node.id ?? path,
+        title: node.title ?? "Entrega",
+        children: mapTemplateNodes(node.children, path)
+      };
+    });
+
+  const normalizeFieldType = (value?: string): TemplateCustomField["type"] => {
+    if (value === "number" || value === "select" || value === "date") {
+      return value;
+    }
+    return "text";
+  };
+
+  const normalizeTemplate = (template: TemplateSummary): TemplateCard => ({
+    id: template.id,
+    name: template.name,
+    type: template.type,
+    clientName: template.clientName ?? undefined,
+    repositoryUrl: template.repositoryUrl ?? undefined,
+    defaultBudget: template.budget ?? undefined,
+    phases: template.wbs?.length ?? 0,
+    tasks: countWbsNodes(template.wbs ?? []),
+    tags: (template.customFields ?? []).map((field) => field.label).filter(Boolean) as string[],
+    updatedAt: template.updatedAt ?? new Date().toISOString(),
+    columns: template.columns ?? defaultColumns,
+    wbs: mapTemplateNodes(template.wbs),
+    customFields: (template.customFields ?? []).map((field) => ({
+      id: field.id ?? `field-${Date.now()}-${Math.round(Math.random() * 1000)}`,
+      label: field.label ?? "Campo",
+      type: normalizeFieldType(field.type),
+      required: Boolean(field.required)
+    }))
+  });
+
+  const templatesToUse: TemplateCard[] = useMemo(() => {
+    if (templates.length) {
+      return templates.map(normalizeTemplate);
+    }
+    return sampleTemplates;
+  }, [templates]);
+  const initialTemplate = templatesToUse[0];
+
+  useEffect(() => {
+    if (!templates.length) return;
+    setSelectedTemplateId((current) => {
+      if (templates.some((template) => template.id === current)) {
+        return current;
+      }
+      return templates[0].id;
+    });
+  }, [templates]);
 
   const cloneNodes = (nodes: TemplateTreeNode[]): TemplateTreeNode[] =>
     nodes.map((node) => ({
@@ -2039,24 +2255,31 @@ const TemplatesPanel = ({
       children: node.children ? cloneNodes(node.children) : []
     }));
 
-  const [wbsDraft, setWbsDraft] = useState<TemplateTreeNode[]>(cloneNodes(selectedTemplate.wbs));
-  const [boardColumnsDraft, setBoardColumnsDraft] = useState<string[]>([...selectedTemplate.columns]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(() => templatesToUse[0]?.id ?? "");
+  const selectedTemplate = templatesToUse.find((template) => template.id === selectedTemplateId) ?? null;
+
+  const [wbsDraft, setWbsDraft] = useState<TemplateTreeNode[]>(initialTemplate ? cloneNodes(initialTemplate.wbs) : []);
+  const [boardColumnsDraft, setBoardColumnsDraft] = useState<string[]>(
+    initialTemplate ? [...initialTemplate.columns] : defaultColumns
+  );
   const [customFieldsDraft, setCustomFieldsDraft] = useState<TemplateCustomField[]>(
-    selectedTemplate.customFields.map((field) => ({ ...field }))
+    initialTemplate ? initialTemplate.customFields.map((field) => ({ ...field })) : []
   );
   const [templateMeta, setTemplateMeta] = useState({
-    name: selectedTemplate.name,
-    type: selectedTemplate.type,
-    clientName: selectedTemplate.clientName ?? "",
-    repositoryUrl: selectedTemplate.repositoryUrl ?? "",
-    budget: selectedTemplate.defaultBudget?.toString() ?? ""
+    name: initialTemplate?.name ?? "Novo template",
+    type: initialTemplate?.type ?? "Custom",
+    clientName: initialTemplate?.clientName ?? "",
+    repositoryUrl: initialTemplate?.repositoryUrl ?? "",
+    budget: initialTemplate?.defaultBudget?.toString() ?? ""
   });
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [templateModalError, setTemplateModalError] = useState<string | null>(null);
   const [templateModalLoading, setTemplateModalLoading] = useState(false);
   const [templateToast, setTemplateToast] = useState<string | null>(null);
+  const [isDraftTemplate, setIsDraftTemplate] = useState(false);
 
   useEffect(() => {
+    if (!selectedTemplate || isDraftTemplate) return;
     setWbsDraft(cloneNodes(selectedTemplate.wbs));
     setBoardColumnsDraft([...selectedTemplate.columns]);
     setCustomFieldsDraft(selectedTemplate.customFields.map((field) => ({ ...field })));
@@ -2067,7 +2290,7 @@ const TemplatesPanel = ({
       repositoryUrl: selectedTemplate.repositoryUrl ?? "",
       budget: selectedTemplate.defaultBudget?.toString() ?? ""
     });
-  }, [selectedTemplateId]);
+  }, [selectedTemplate, isDraftTemplate]);
 
   useEffect(() => {
     if (!templateToast) return;
@@ -2076,7 +2299,7 @@ const TemplatesPanel = ({
   }, [templateToast]);
 
   const createTreeNode = (title = "Nova etapa"): TemplateTreeNode => ({
-    id: `${selectedTemplateId}-${Date.now()}-${Math.round(Math.random() * 1000)}`,
+    id: `node-${Date.now()}-${Math.round(Math.random() * 1000)}`,
     title,
     children: []
   });
@@ -2135,7 +2358,19 @@ const TemplatesPanel = ({
 
   const handleFieldChange = (fieldId: string, key: keyof TemplateCustomField, value: string | boolean) =>
     setCustomFieldsDraft((prev) =>
-      prev.map((field) => (field.id === fieldId ? { ...field, [key]: value } : field))
+      prev.map((field) =>
+        field.id === fieldId
+          ? {
+              ...field,
+              [key]:
+                key === "type"
+                  ? (value as TemplateCustomField["type"])
+                  : key === "required"
+                  ? Boolean(value)
+                  : (value as string)
+            }
+          : field
+      )
     );
 
   const handleAddField = () =>
@@ -2150,10 +2385,29 @@ const TemplatesPanel = ({
   const handleTemplateMetaChange = (field: keyof typeof templateMeta, value: string) =>
     setTemplateMeta((prev) => ({ ...prev, [field]: value }));
 
+  const handleStartTemplate = () => {
+    setIsDraftTemplate(true);
+    const draftId = `draft-${Date.now()}`;
+    setSelectedTemplateId(draftId);
+    setTemplateMeta({
+      name: "Novo template",
+      type: "Custom",
+      clientName: "",
+      repositoryUrl: "",
+      budget: ""
+    });
+    setBoardColumnsDraft([...defaultColumns]);
+    setWbsDraft([createTreeNode("Iniciação")]);
+    setCustomFieldsDraft([]);
+    setTemplateModalError(null);
+    setTemplateModalOpen(true);
+  };
+
   const openTemplateModal = (templateId: string) => {
     if (templateId !== selectedTemplateId) {
       setSelectedTemplateId(templateId);
     }
+    setIsDraftTemplate(false);
     setTemplateModalError(null);
     setTemplateModalOpen(true);
   };
@@ -2196,7 +2450,8 @@ const TemplatesPanel = ({
 
     setTemplateModalLoading(true);
     try {
-      await onSaveTemplate(selectedTemplateId, {
+      const templateId = selectedTemplateId || `template-${Date.now()}`;
+      await onSaveTemplate(templateId, {
         name: templateMeta.name.trim(),
         type: templateMeta.type.trim(),
         clientName: templateMeta.clientName.trim() || undefined,
@@ -2212,6 +2467,8 @@ const TemplatesPanel = ({
         }))
       });
       setTemplateToast("Template atualizado com sucesso.");
+      setSelectedTemplateId(templateId);
+      setIsDraftTemplate(false);
       setTemplateModalOpen(false);
     } catch (error) {
       setTemplateModalError(error instanceof Error ? error.message : "Erro ao salvar template");
@@ -2223,7 +2480,7 @@ const TemplatesPanel = ({
   return (
     <div className="templates-panel">
       <div className="templates-actions">
-        <button type="button" className="primary-button">
+        <button type="button" className="primary-button" onClick={handleStartTemplate}>
           + Criar template
         </button>
         <button type="button" className="secondary-button">
@@ -2235,11 +2492,16 @@ const TemplatesPanel = ({
 
       <div className="templates-layout">
         <div className="templates-grid">
-          {templates.map((template) => (
-            <article
-              key={template.id}
-              className={`template-card ${selectedTemplateId === template.id ? "is-active" : ""}`}
-              onClick={() => setSelectedTemplateId(template.id)}
+          {isLoading && <p className="muted">Carregando templates...</p>}
+          {!isLoading &&
+            templatesToUse.map((template) => (
+              <article
+                key={template.id}
+                className={`template-card ${selectedTemplateId === template.id ? "is-active" : ""}`}
+                onClick={() => {
+                  setIsDraftTemplate(false);
+                  setSelectedTemplateId(template.id);
+                }}
               role="button"
               tabIndex={0}
             >
@@ -2288,7 +2550,7 @@ const TemplatesPanel = ({
         <aside className="templates-editor">
           <header>
             <p className="eyebrow">Editor do template</p>
-            <h3>{selectedTemplate.name}</h3>
+            <h3>{templateMeta.name}</h3>
             <p className="subtext">
               Pre-visualize a EDT padrao, ajuste colunas do board e defina campos customizados para novos projetos.
             </p>

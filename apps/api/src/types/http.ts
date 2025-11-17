@@ -12,3 +12,11 @@ export type RequestWithUser = Request & {
   organization?: Organization;
   organizationMembership?: OrganizationMembership;
 };
+
+declare module "express-serve-static-core" {
+  interface Request {
+    user?: AuthenticatedUser;
+    organization?: Organization;
+    organizationMembership?: OrganizationMembership;
+  }
+}

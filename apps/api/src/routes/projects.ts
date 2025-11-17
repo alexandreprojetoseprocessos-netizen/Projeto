@@ -1,10 +1,11 @@
 import { Router } from "express";
-import { Prisma, ProjectRole } from "@prisma/client";
+import { Prisma, ProjectRole, AttachmentTargetType } from "@prisma/client";
 import { prisma } from "@gestao/database";
 import { authMiddleware } from "../middleware/auth";
 import { organizationMiddleware } from "../middleware/organization";
 import { ensureProjectMembership } from "../services/rbac";
 import { logger } from "../config/logger";
+import { uploadAttachment, getPublicUrl } from "../services/storage";
 
 type FlatWbsNode = {
   id: string;
@@ -119,27 +120,24 @@ projectsRouter.post("/", async (req, res) => {
   }
 
   const normalizedRepo = typeof repositoryUrl === "string" ? repositoryUrl.trim() : "";
-  const sanitizedRepo =
-    normalizedRepo && normalizedRepo.startsWith("http")
-      ? normalizedRepo.replace(/^https?:\/\//i, "").replace(/\/$/, "")
-      : normalizedRepo || undefined;
 
   try {
     const project = await prisma.project.create({
       data: {
         organizationId: req.organization.id,
+        managerId: req.user.id,
         name: name.trim(),
         clientName: clientName.trim(),
         description: typeof description === "string" ? description.trim() : null,
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
+        repositoryUrl: normalizedRepo || undefined,
         budgetPlanned:
           typeof budget === "number"
             ? new Prisma.Decimal(budget)
             : typeof budget === "string" && budget.trim()
             ? new Prisma.Decimal(budget)
-            : undefined,
-        code: sanitizedRepo
+            : undefined
       }
     });
 
@@ -189,7 +187,7 @@ projectsRouter.post("/", async (req, res) => {
         entityId: project.id,
         diff: {
           clientName,
-          repositoryUrl: sanitizedRepo ?? null,
+          repositoryUrl: normalizedRepo || null,
           invitedMembers: invitedEmails
         }
       }
@@ -200,6 +198,7 @@ projectsRouter.post("/", async (req, res) => {
         id: project.id,
         name: project.name,
         clientName: project.clientName,
+        repositoryUrl: project.repositoryUrl,
         status: project.status,
         startDate: project.startDate,
         endDate: project.endDate
@@ -208,6 +207,74 @@ projectsRouter.post("/", async (req, res) => {
   } catch (error) {
     logger.error({ err: error }, "Failed to create project");
     return res.status(500).json({ message: "Failed to create project" });
+  }
+});
+
+projectsRouter.put("/:projectId", async (req, res) => {
+  const { projectId } = req.params;
+  const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER]);
+  if (!membership) return;
+
+  const { name, clientName, budget, repositoryUrl, startDate, endDate, description } = req.body ?? {};
+
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return res.status(400).json({ message: "Nome do projeto é obrigatório." });
+  }
+
+  if (!clientName || typeof clientName !== "string" || !clientName.trim()) {
+    return res.status(400).json({ message: "Cliente responsável é obrigatório." });
+  }
+
+  const normalizedRepo = typeof repositoryUrl === "string" ? repositoryUrl.trim() : "";
+
+  try {
+    const project = await prisma.project.update({
+      where: { id: projectId },
+      data: {
+        name: name.trim(),
+        clientName: clientName.trim(),
+        description: typeof description === "string" ? description.trim() : null,
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
+        repositoryUrl: normalizedRepo || null,
+        budgetPlanned:
+          typeof budget === "number"
+            ? new Prisma.Decimal(budget)
+            : typeof budget === "string" && budget.trim()
+            ? new Prisma.Decimal(budget)
+            : undefined
+      }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        organizationId: membership.organizationId,
+        actorId: membership.userId,
+        projectId: project.id,
+        action: "PROJECT_UPDATED",
+        entity: "PROJECT",
+        entityId: project.id,
+        diff: { name, clientName, repositoryUrl: normalizedRepo || null }
+      }
+    });
+
+    return res.json({
+      project: {
+        id: project.id,
+        name: project.name,
+        clientName: project.clientName,
+        repositoryUrl: project.repositoryUrl,
+        status: project.status,
+        startDate: project.startDate,
+        endDate: project.endDate
+      }
+    });
+  } catch (error: any) {
+    if (error?.code === "P2025") {
+      return res.status(404).json({ message: "Project not found" });
+    }
+    logger.error({ err: error }, "Failed to update project");
+    return res.status(500).json({ message: "Failed to update project" });
   }
 });
 
@@ -539,7 +606,7 @@ projectsRouter.patch("/:projectId/board/tasks/:taskId", async (req, res) => {
                     priority: priority ?? existingTask.priority
                   }
                 : {})
-            }
+            } as Prisma.WbsNodeUncheckedUpdateInput
           })
         )
       );
@@ -741,11 +808,76 @@ projectsRouter.get("/:projectId/attachments", async (req, res) => {
         createdAt: attachment.createdAt,
         targetType: attachment.targetType,
         wbsNodeId: attachment.wbsNodeId,
-        uploadedBy: attachment.uploadedBy
+        uploadedBy: attachment.uploadedBy,
+        fileUrl: getPublicUrl(attachment.fileKey)
       }))
     });
   } catch (error) {
     logger.error({ err: error }, "Failed to load attachments");
     return res.status(500).json({ message: "Failed to load attachments" });
+  }
+});
+
+projectsRouter.post("/:projectId/attachments", async (req, res) => {
+  const { projectId } = req.params;
+  const { fileName, contentType, fileBase64, targetType, wbsNodeId, category } = req.body ?? {};
+  const allowedTargetTypes = new Set(Object.values(AttachmentTargetType));
+
+  if (!fileName || !contentType || !fileBase64) {
+    return res.status(400).json({ message: "fileName, contentType e fileBase64 são obrigatórios" });
+  }
+
+  const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
+  if (!membership) return;
+  if (!req.user) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+
+  try {
+    const base64Payload = fileBase64.replace(/^data:.*;base64,/, "");
+    const buffer = Buffer.from(base64Payload, "base64");
+    if (!buffer.length) {
+      return res.status(400).json({ message: "Arquivo inválido" });
+    }
+
+    if (wbsNodeId) {
+      const node = await prisma.wbsNode.findFirst({ where: { id: wbsNodeId, projectId } });
+      if (!node) {
+        return res.status(400).json({ message: "O item de WBS informado não pertence ao projeto" });
+      }
+    }
+
+    const upload = await uploadAttachment({
+      data: buffer,
+      fileName,
+      contentType
+    });
+
+    const resolvedTargetType = allowedTargetTypes.has(targetType as AttachmentTargetType)
+      ? (targetType as AttachmentTargetType)
+      : AttachmentTargetType.PROJECT;
+
+    const attachment = await prisma.attachment.create({
+      data: {
+        projectId,
+        targetType: resolvedTargetType,
+        wbsNodeId: wbsNodeId ?? null,
+        uploadedById: req.user!.id,
+        fileKey: upload.fileKey,
+        fileName: fileName.trim(),
+        fileSize: buffer.length,
+        category: typeof category === "string" && category.trim() ? category.trim() : null
+      }
+    });
+
+    return res.status(201).json({
+      attachment: {
+        ...attachment,
+        fileUrl: upload.publicUrl
+      }
+    });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to upload attachment");
+    return res.status(500).json({ message: "Falha ao salvar anexo" });
   }
 });

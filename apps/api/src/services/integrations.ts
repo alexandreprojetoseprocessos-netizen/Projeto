@@ -37,5 +37,13 @@ export const verifyGithubSignature = (body: string, signature: string | undefine
   const hmac = crypto.createHmac("sha256", secret);
   hmac.update(body, "utf8");
   const digest = `sha256=${hmac.digest("hex")}`;
-  return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(signature));
+  const normalizedSignature = signature.startsWith("sha256=") ? signature : `sha256=${signature}`;
+  const digestBuffer = Buffer.from(digest);
+  const signatureBuffer = Buffer.from(normalizedSignature);
+
+  if (digestBuffer.length !== signatureBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(digestBuffer, signatureBuffer);
 };

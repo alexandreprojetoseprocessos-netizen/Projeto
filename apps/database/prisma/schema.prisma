@@ -1,10 +1,362 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
+model Organization {
+  id          String                   @id @default(uuid())
+  name        String
+  slug        String                   @unique
+  domain      String?
+  plan        OrganizationPlan         @default(FREE)
+  timezone    String                   @default("America/Sao_Paulo")
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+  auditLogs   AuditLog[]
+  memberships OrganizationMembership[]
+  projects    Project[]
+  templates   ProjectTemplate[]
+  tags        Tag[]
+}
+
+model User {
+  id                  String                   @id @default(uuid())
+  email               String                   @unique
+  fullName            String
+  passwordHash        String
+  locale              String                   @default("pt-BR")
+  timezone            String                   @default("America/Sao_Paulo")
+  avatarUrl           String?
+  active              Boolean                  @default(true)
+  twoFactorEnabled    Boolean                  @default(false)
+  twoFactorSecret     String?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  attachments         Attachment[]
+  auditLogs           AuditLog[]
+  comments            Comment[]
+  notifications       Notification[]
+  memberships         OrganizationMembership[]
+  managedProjects     Project[]                @relation("ProjectManager")
+  projectMembers      ProjectMember[]
+  risksOwned          Risk[]                   @relation("RiskOwner")
+  approvedTimeEntries TimeEntry[]              @relation("TimeEntryApprover")
+  timeEntries         TimeEntry[]
+  ownedNodes          WbsNode[]                @relation("NodeOwner")
+}
+
+model OrganizationMembership {
+  id             String         @id @default(uuid())
+  organizationId String
+  userId         String
+  role           MembershipRole @default(MEMBER)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+}
+
+model Project {
+  id               String            @id @default(uuid())
+  organizationId   String
+  managerId        String?
+  name             String
+  code             String?
+  clientName       String?
+  description      String?
+  status           ProjectStatus     @default(PLANNED)
+  startDate        DateTime?
+  endDate          DateTime?
+  budgetPlanned    Decimal?          @db.Decimal(14, 2)
+  budgetActual     Decimal?          @db.Decimal(14, 2)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  archivedAt       DateTime?
+  repositoryUrl    String?
+  attachments      Attachment[]
+  audits           AuditLog[]
+  boardColumns     BoardColumn[]
+  comments         Comment[]
+  costs            Cost[]
+  fieldDefinitions FieldDefinition[]
+  milestones       Milestone[]
+  notifications    Notification[]
+  manager          User?             @relation("ProjectManager", fields: [managerId], references: [id])
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members          ProjectMember[]
+  risks            Risk[]
+  timeEntries      TimeEntry[]
+  wbsNodes         WbsNode[]
+}
+
+model ProjectTemplate {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  type           String
+  clientName     String?
+  repositoryUrl  String?
+  budget         Decimal?     @db.Decimal(14, 2)
+  columns        Json
+  wbs            Json
+  customFields   Json
+  createdAt      DateTime?    @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime?    @default(now()) @updatedAt @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+}
+
+model ProjectMember {
+  id             String      @id @default(uuid())
+  projectId      String
+  userId         String
+  role           ProjectRole @default(CONTRIBUTOR)
+  capacityWeekly Int         @default(40)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  project        Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+model Milestone {
+  id          String          @id @default(uuid())
+  projectId   String
+  name        String
+  description String?
+  dueDate     DateTime
+  status      MilestoneStatus @default(PLANNED)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model WbsNode {
+  id                        String          @id @default(uuid())
+  projectId                 String
+  parentId                  String?
+  level                     Int             @default(0)
+  type                      WbsNodeType     @default(TASK)
+  order                     Int             @default(0)
+  title                     String
+  description               String?
+  status                    TaskStatus      @default(BACKLOG)
+  priority                  TaskPriority    @default(MEDIUM)
+  ownerId                   String?
+  startDate                 DateTime?
+  endDate                   DateTime?
+  estimateHours             Decimal?        @db.Decimal(10, 2)
+  actualHours               Decimal?        @db.Decimal(10, 2)
+  progress                  Float?          @default(0)
+  epicId                    String?
+  boardColumnId             String?
+  createdAt                 DateTime        @default(now())
+  updatedAt                 DateTime        @updatedAt
+  attachments               Attachment[]
+  comments                  Comment[]
+  dependenciesAsPredecessor Dependency[]    @relation("Predecessor")
+  dependenciesAsSuccessor   Dependency[]    @relation("Successor")
+  tags                      TagAssignment[]
+  taskDetail                TaskDetail?
+  timeEntries               TimeEntry[]
+  boardColumn               BoardColumn?    @relation(fields: [boardColumnId], references: [id])
+  epic                      WbsNode?        @relation("Epic", fields: [epicId], references: [id])
+  epicChildren              WbsNode[]       @relation("Epic")
+  owner                     User?           @relation("NodeOwner", fields: [ownerId], references: [id])
+  parent                    WbsNode?        @relation("WbsParent", fields: [parentId], references: [id], onDelete: Cascade)
+  children                  WbsNode[]       @relation("WbsParent")
+  project                   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model TaskDetail {
+  wbsNodeId     String    @id
+  taskType      String?
+  storyPoints   Int?
+  checklist     Json?
+  customFields  Json?
+  slaDate       DateTime?
+  blockedReason String?
+  wbsNode       WbsNode   @relation(fields: [wbsNodeId], references: [id], onDelete: Cascade)
+}
+
+model Dependency {
+  id            String         @id @default(uuid())
+  predecessorId String
+  successorId   String
+  type          DependencyType @default(FS)
+  lagDays       Int            @default(0)
+  predecessor   WbsNode        @relation("Predecessor", fields: [predecessorId], references: [id], onDelete: Cascade)
+  successor     WbsNode        @relation("Successor", fields: [successorId], references: [id], onDelete: Cascade)
+
+  @@unique([predecessorId, successorId])
+}
+
+model Comment {
+  id          String            @id @default(uuid())
+  projectId   String
+  targetType  CommentTargetType @default(PROJECT)
+  wbsNodeId   String?
+  authorId    String
+  body        String
+  mentions    String[]
+  createdAt   DateTime          @default(now())
+  attachments Attachment[]
+  author      User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  wbsNode     WbsNode?          @relation(fields: [wbsNodeId], references: [id], onDelete: Cascade)
+}
+
+model Attachment {
+  id           String               @id @default(uuid())
+  projectId    String
+  targetType   AttachmentTargetType @default(PROJECT)
+  wbsNodeId    String?
+  commentId    String?
+  uploadedById String
+  fileKey      String
+  fileName     String
+  fileSize     Int
+  version      Int                  @default(1)
+  category     String?
+  createdAt    DateTime             @default(now())
+  comment      Comment?             @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  project      Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedBy   User                 @relation(fields: [uploadedById], references: [id])
+  wbsNode      WbsNode?             @relation(fields: [wbsNodeId], references: [id], onDelete: Cascade)
+}
+
+model TimeEntry {
+  id           String    @id @default(uuid())
+  projectId    String
+  wbsNodeId    String?
+  userId       String
+  entryDate    DateTime
+  hours        Decimal   @db.Decimal(8, 2)
+  description  String?
+  approvedById String?
+  approvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  approvedBy   User?     @relation("TimeEntryApprover", fields: [approvedById], references: [id])
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wbsNode      WbsNode?  @relation(fields: [wbsNodeId], references: [id], onDelete: Cascade)
+}
+
+model Risk {
+  id          String          @id @default(uuid())
+  projectId   String
+  title       String
+  severity    RiskSeverity    @default(MEDIUM)
+  probability RiskProbability @default(MEDIUM)
+  impact      String?
+  status      RiskStatus      @default(OPEN)
+  ownerId     String?
+  mitigation  String?
+  dueDate     DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  owner       User?           @relation("RiskOwner", fields: [ownerId], references: [id])
+  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Cost {
+  id           String   @id @default(uuid())
+  projectId    String
+  category     String
+  plannedValue Decimal  @db.Decimal(14, 2)
+  actualValue  Decimal? @db.Decimal(14, 2)
+  occurredAt   DateTime
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Tag {
+  id             String          @id @default(uuid())
+  organizationId String
+  name           String
+  color          String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignments    TagAssignment[]
+
+  @@unique([organizationId, name])
+}
+
+model TagAssignment {
+  id        String   @id @default(uuid())
+  tagId     String
+  wbsNodeId String
+  createdAt DateTime @default(now())
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  wbsNode   WbsNode  @relation(fields: [wbsNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([tagId, wbsNodeId])
+}
+
+model BoardColumn {
+  id        String      @id @default(uuid())
+  projectId String
+  label     String
+  order     Int
+  wipLimit  Int?
+  status    TaskStatus?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks     WbsNode[]
+}
+
+model FieldDefinition {
+  id         String   @id @default(uuid())
+  projectId  String
+  name       String
+  type       String
+  required   Boolean  @default(false)
+  visibility String?
+  options    Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id             String        @id @default(uuid())
+  organizationId String?
+  projectId      String?
+  actorId        String?
+  action         String
+  entity         String
+  entityId       String
+  diff           Json
+  createdAt      DateTime      @default(now())
+  actor          User?         @relation(fields: [actorId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project?      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String              @id @default(uuid())
+  userId    String
+  projectId String?
+  channel   NotificationChannel @default(EMAIL)
+  template  String
+  payload   Json
+  read      Boolean             @default(false)
+  readAt    DateTime?
+  createdAt DateTime            @default(now())
+  project   Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum OrganizationPlan {
@@ -107,331 +459,4 @@ enum RiskProbability {
   LOW
   MEDIUM
   HIGH
-}
-
-model Organization {
-  id          String                 @id @default(uuid())
-  name        String
-  slug        String                 @unique
-  domain      String?
-  plan        OrganizationPlan       @default(FREE)
-  timezone    String                 @default("America/Sao_Paulo")
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
-  memberships OrganizationMembership[]
-  projects    Project[]
-  tags        Tag[]
-  auditLogs   AuditLog[]
-}
-
-model User {
-  id               String                  @id @default(uuid())
-  email            String                  @unique
-  fullName         String
-  passwordHash     String
-  locale           String                  @default("pt-BR")
-  timezone         String                  @default("America/Sao_Paulo")
-  avatarUrl        String?
-  active           Boolean                 @default(true)
-  twoFactorEnabled Boolean                 @default(false)
-  twoFactorSecret  String?
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
-  memberships      OrganizationMembership[]
-  managedProjects  Project[]               @relation("ProjectManager")
-  projectMembers   ProjectMember[]
-  ownedNodes       WbsNode[]               @relation("NodeOwner")
-  timeEntries      TimeEntry[]
-  notifications    Notification[]
-  auditLogs        AuditLog[]
-  comments         Comment[]
-  attachments      Attachment[]
-  risksOwned       Risk[]                  @relation("RiskOwner")
-  approvedTimeEntries TimeEntry[]          @relation("TimeEntryApprover")
-}
-
-model OrganizationMembership {
-  id              String         @id @default(uuid())
-  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  organizationId  String
-  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId          String
-  role            MembershipRole @default(MEMBER)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  @@unique([organizationId, userId])
-}
-
-model Project {
-  id               String         @id @default(uuid())
-  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  organizationId   String
-  manager          User?          @relation("ProjectManager", fields: [managerId], references: [id])
-  managerId        String?
-  name             String
-  code             String?
-  clientName       String?
-  description      String?
-  status           ProjectStatus  @default(PLANNED)
-  startDate        DateTime?
-  endDate          DateTime?
-  budgetPlanned    Decimal?       @db.Decimal(14,2)
-  budgetActual     Decimal?       @db.Decimal(14,2)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  archivedAt       DateTime?
-  members          ProjectMember[]
-  milestones       Milestone[]
-  wbsNodes         WbsNode[]
-  boardColumns     BoardColumn[]
-  risks            Risk[]
-  costs            Cost[]
-  timeEntries      TimeEntry[]
-  comments         Comment[]
-  attachments      Attachment[]
-  fieldDefinitions FieldDefinition[]
-  notifications    Notification[]
-  audits           AuditLog[]
-}
-
-model ProjectMember {
-  id              String       @id @default(uuid())
-  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId       String
-  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId          String
-  role            ProjectRole  @default(CONTRIBUTOR)
-  capacityWeekly  Int          @default(40)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  @@unique([projectId, userId])
-}
-
-model Milestone {
-  id          String          @id @default(uuid())
-  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId   String
-  name        String
-  description String?
-  dueDate     DateTime
-  status      MilestoneStatus @default(PLANNED)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-}
-
-model WbsNode {
-  id             String        @id @default(uuid())
-  project        Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId      String
-  parent         WbsNode?      @relation("WbsParent", fields: [parentId], references: [id], onDelete: Cascade)
-  parentId       String?
-  children       WbsNode[]     @relation("WbsParent")
-  level          Int           @default(0)
-  type           WbsNodeType   @default(TASK)
-  order          Int           @default(0)
-  title          String
-  description    String?
-  status         TaskStatus    @default(BACKLOG)
-  priority       TaskPriority  @default(MEDIUM)
-  owner          User?         @relation("NodeOwner", fields: [ownerId], references: [id])
-  ownerId        String?
-  startDate      DateTime?
-  endDate        DateTime?
-  estimateHours  Decimal?      @db.Decimal(10,2)
-  actualHours    Decimal?      @db.Decimal(10,2)
-  progress       Float?        @default(0)
-  epic           WbsNode?      @relation("Epic", fields: [epicId], references: [id])
-  epicId         String?
-  epicChildren   WbsNode[]     @relation("Epic")
-  boardColumn    BoardColumn?  @relation(fields: [boardColumnId], references: [id])
-  boardColumnId  String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  taskDetail     TaskDetail?
-  dependenciesAsSuccessor Dependency[] @relation("Successor")
-  dependenciesAsPredecessor Dependency[] @relation("Predecessor")
-  comments       Comment[]
-  attachments    Attachment[]
-  timeEntries    TimeEntry[]
-  tags           TagAssignment[]
-}
-
-model TaskDetail {
-  wbsNode    WbsNode @relation(fields: [wbsNodeId], references: [id], onDelete: Cascade)
-  wbsNodeId  String  @id
-  taskType   String?
-  storyPoints Int?
-  checklist  Json?
-  customFields Json?
-  slaDate    DateTime?
-  blockedReason String?
-}
-
-model Dependency {
-  id             String         @id @default(uuid())
-  predecessor    WbsNode        @relation("Predecessor", fields: [predecessorId], references: [id], onDelete: Cascade)
-  predecessorId  String
-  successor      WbsNode        @relation("Successor", fields: [successorId], references: [id], onDelete: Cascade)
-  successorId    String
-  type           DependencyType @default(FS)
-  lagDays        Int            @default(0)
-  @@unique([predecessorId, successorId])
-}
-
-model Comment {
-  id          String             @id @default(uuid())
-  project     Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId   String
-  targetType  CommentTargetType  @default(PROJECT)
-  wbsNode     WbsNode?           @relation(fields: [wbsNodeId], references: [id], onDelete: Cascade)
-  wbsNodeId   String?
-  author      User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  authorId    String
-  body        String
-  mentions    String[]
-  createdAt   DateTime           @default(now())
-  attachments Attachment[]
-}
-
-model Attachment {
-  id          String                @id @default(uuid())
-  project     Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId   String
-  targetType  AttachmentTargetType  @default(PROJECT)
-  wbsNode     WbsNode?              @relation(fields: [wbsNodeId], references: [id], onDelete: Cascade)
-  wbsNodeId   String?
-  comment     Comment?              @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  commentId   String?
-  uploadedBy  User                  @relation(fields: [uploadedById], references: [id])
-  uploadedById String
-  fileKey     String
-  fileName    String
-  fileSize    Int
-  version     Int                   @default(1)
-  category    String?
-  createdAt   DateTime              @default(now())
-}
-
-model TimeEntry {
-  id           String   @id @default(uuid())
-  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId    String
-  wbsNode      WbsNode? @relation(fields: [wbsNodeId], references: [id], onDelete: Cascade)
-  wbsNodeId    String?
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId       String
-  entryDate    DateTime
-  hours        Decimal  @db.Decimal(8,2)
-  description  String?
-  approvedBy   User?    @relation("TimeEntryApprover", fields: [approvedById], references: [id])
-  approvedById String?
-  approvedAt   DateTime?
-  createdAt    DateTime @default(now())
-}
-
-model Risk {
-  id           String        @id @default(uuid())
-  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId    String
-  title        String
-  severity     RiskSeverity  @default(MEDIUM)
-  probability  RiskProbability @default(MEDIUM)
-  impact       String?
-  status       RiskStatus    @default(OPEN)
-  owner        User?         @relation("RiskOwner", fields: [ownerId], references: [id])
-  ownerId      String?
-  mitigation   String?
-  dueDate      DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-}
-
-model Cost {
-  id            String   @id @default(uuid())
-  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId     String
-  category      String
-  plannedValue  Decimal  @db.Decimal(14,2)
-  actualValue   Decimal? @db.Decimal(14,2)
-  occurredAt    DateTime
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-}
-
-model Tag {
-  id             String      @id @default(uuid())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  organizationId String
-  name           String
-  color          String
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  assignments    TagAssignment[]
-  @@unique([organizationId, name])
-}
-
-model TagAssignment {
-  id        String  @id @default(uuid())
-  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
-  tagId     String
-  wbsNode   WbsNode @relation(fields: [wbsNodeId], references: [id], onDelete: Cascade)
-  wbsNodeId String
-  createdAt DateTime @default(now())
-  @@unique([tagId, wbsNodeId])
-}
-
-model BoardColumn {
-  id         String   @id @default(uuid())
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId  String
-  label      String
-  order      Int
-  wipLimit   Int?
-  status     TaskStatus?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  tasks      WbsNode[]
-}
-
-model FieldDefinition {
-  id           String    @id @default(uuid())
-  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId    String
-  name         String
-  type         String
-  required     Boolean   @default(false)
-  visibility   String?   // e.g. PUBLIC/PRIVATE/INTERNAL
-  options      Json?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-}
-
-model AuditLog {
-  id             String   @id @default(uuid())
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  organizationId String?
-  project        Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId      String?
-  actor          User?    @relation(fields: [actorId], references: [id])
-  actorId        String?
-  action         String
-  entity         String
-  entityId       String
-  diff           Json
-  createdAt      DateTime @default(now())
-}
-
-model Notification {
-  id          String              @id @default(uuid())
-  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId      String
-  project     Project?            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  projectId   String?
-  channel     NotificationChannel @default(EMAIL)
-  template    String
-  payload     Json
-  read        Boolean             @default(false)
-  readAt      DateTime?
-  createdAt   DateTime            @default(now())
 }

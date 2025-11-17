@@ -14,7 +14,11 @@ meRouter.get("/", async (req, res) => {
   const memberships = await prisma.organizationMembership.findMany({
     where: { userId: req.user.id },
     include: {
-      organization: true
+      organization: {
+        include: {
+          _count: { select: { projects: true } }
+        }
+      }
     }
   });
 
@@ -23,7 +27,8 @@ meRouter.get("/", async (req, res) => {
     organizations: memberships.map((membership) => ({
       id: membership.organizationId,
       name: membership.organization.name,
-      role: membership.role
+      role: membership.role,
+      projectCount: membership.organization._count?.projects ?? 0
     }))
   });
 });

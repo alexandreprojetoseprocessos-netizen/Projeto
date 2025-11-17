@@ -12,7 +12,9 @@
       - db_data:/var/lib/postgresql/data
 
   api:
-    build: ./apps/api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
     command: npm run dev
     env_file: .env
     environment:
@@ -23,7 +25,9 @@
       - "4000:4000"
 
   front:
-    build: ./apps/front
+    build:
+      context: .
+      dockerfile: apps/front/Dockerfile
     command: npm run dev -- --host 0.0.0.0
     env_file: .env
     environment:

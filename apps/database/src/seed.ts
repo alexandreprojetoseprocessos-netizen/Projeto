@@ -89,6 +89,7 @@ async function main() {
       managerId: adminUser.id,
       name: "Implantacao do Sistema",
       code: "GP-001",
+      repositoryUrl: "github.com/demo-org/implantacao-sistema",
       clientName: "Cliente Exemplo",
       description: "Projeto de referencia com WBS completa.",
       status: ProjectStatus.IN_PROGRESS,
@@ -373,6 +374,29 @@ async function main() {
       fileName: "Cronograma detalhado.xlsx",
       fileSize: 48765,
       category: "Planilhas"
+    }
+  });
+
+  await prisma.projectTemplate.upsert({
+    where: { id: "template-demo" },
+    update: {},
+    create: {
+      id: "template-demo",
+      organizationId: organization.id,
+      name: "Template PMO Base",
+      type: "PMO",
+      clientName: "Organizacao Demo",
+      repositoryUrl: "github.com/demo-org/templates",
+      budget: new Prisma.Decimal(250000),
+      columns: ["Backlog", "Planejamento", "Execucao", "QA", "Concluido"],
+      wbs: [
+        { title: "Iniciacao", children: [{ title: "Business case" }, { title: "Stakeholders" }] },
+        { title: "Planejamento", children: [{ title: "Plano de projeto" }, { title: "Gestao de riscos" }] }
+      ],
+      customFields: [
+        { id: "field-risk", label: "Nivel de risco", type: "select", required: true },
+        { id: "field-owner", label: "Patrocinador", type: "text" }
+      ]
     }
   });
 }

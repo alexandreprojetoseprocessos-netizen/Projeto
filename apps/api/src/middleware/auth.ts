@@ -1,10 +1,8 @@
 import { type NextFunction, type Response } from "express";
-import { createClient, type User } from "@supabase/supabase-js";
-import { config } from "../config/env";
+import type { User } from "@supabase/supabase-js";
 import { logger } from "../config/logger";
 import type { RequestWithUser } from "../types/http";
-
-const supabaseAdmin = createClient(config.supabase.url, config.supabase.serviceRoleKey);
+import { supabaseAdmin } from "../lib/supabase";
 
 const mapSupabaseUser = (user: User | null) => {
   if (!user) {

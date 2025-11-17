@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DropResult } from "@hello-pangea/dnd";
 import { DashboardLayout, type CreateProjectPayload, type TemplateEditorPayload } from "./components/DashboardLayout";
 import { AuthPage } from "./components/AuthPage";
@@ -11,10 +11,23 @@ type Organization = { id: string; name: string; role: string; activeProjects?: n
 type Project = { id: string; name: string };
 type BoardColumn = { id: string; label: string; tasks: any[]; wipLimit?: number };
 type WbsNode = { id: string; title: string; type: string; status: string; parentId: string | null; children: WbsNode[] };
+type BoardResponse = { columns: BoardColumn[] };
+type ProjectTemplateRecord = {
+  id: string;
+  name: string;
+  type: string;
+  clientName?: string | null;
+  repositoryUrl?: string | null;
+  budget?: number | null;
+  columns?: string[];
+  wbs?: any[];
+  customFields?: any[];
+  updatedAt?: string | null;
+};
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
-async function fetchJson<TResponse>(
+async function fetchJson<TResponse = any>(
   path: string,
   token: string,
   options?: RequestInit,
@@ -85,6 +98,12 @@ export const App = () => {
   const [boardRefresh, setBoardRefresh] = useState(0);
   const [wbsRefresh, setWbsRefresh] = useState(0);
   const [commentsRefresh, setCommentsRefresh] = useState(0);
+  const [summaryRefresh, setSummaryRefresh] = useState(0);
+  const [templates, setTemplates] = useState<ProjectTemplateRecord[]>([]);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesRefresh, setTemplatesRefresh] = useState(0);
+  const [organizationsRefresh, setOrganizationsRefresh] = useState(0);
 
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskColumn, setNewTaskColumn] = useState("");
@@ -92,6 +111,7 @@ export const App = () => {
   const [timeEntryHours, setTimeEntryHours] = useState("");
   const [timeEntryDate, setTimeEntryDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [timeEntryDescription, setTimeEntryDescription] = useState("");
+  const [timeEntryError, setTimeEntryError] = useState<string | null>(null);
 
   useEffect(() => {
     if (status !== "authenticated" || !token) {
@@ -109,13 +129,12 @@ export const App = () => {
           activeProjects: org.activeProjects ?? (org as any).projectCount ?? 0
         }));
         setOrganizations(normalized);
-
-        const hasSelected = normalized.some((org) => org.id === selectedOrganizationId);
-        if (normalized.length === 1) {
-          setSelectedOrganizationId(normalized[0]?.id ?? "");
-        } else if (!hasSelected) {
-          setSelectedOrganizationId("");
-        }
+        setSelectedOrganizationId((current) => {
+          if (normalized.length === 0) return "";
+          if (normalized.length === 1) return normalized[0].id;
+          const exists = normalized.some((org) => org.id === current);
+          return exists ? current : "";
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Falha ao carregar organizações";
         setOrgError(message);
@@ -125,7 +144,52 @@ export const App = () => {
     };
 
     loadOrganizations();
-  }, [status, token, selectedOrganizationId]);
+  }, [status, token, organizationsRefresh]);
+
+  const previousOrganizationId = useRef<string | null>(null);
+  useEffect(() => {
+    if (previousOrganizationId.current === selectedOrganizationId) {
+      return;
+    }
+    previousOrganizationId.current = selectedOrganizationId;
+    setSelectedProjectId("");
+    setProjects([]);
+    setProjectSummary(null);
+    setSummaryError(null);
+    setMembers([]);
+    setMembersError(null);
+    setWbsNodes([]);
+    setWbsError(null);
+    setSelectedNodeId(null);
+    setComments([]);
+    setCommentsError(null);
+    setBoardColumns([]);
+    setBoardError(null);
+    setGanttTasks([]);
+    setGanttMilestones([]);
+    setGanttError(null);
+    setAttachments([]);
+    setAttachmentsError(null);
+    setAttachmentsLoading(false);
+    setPortfolio([]);
+    setPortfolioError(null);
+    setPortfolioLoading(false);
+    setReportMetrics(null);
+    setReportMetricsError(null);
+    setReportMetricsLoading(false);
+    setTemplates([]);
+    setTemplatesError(null);
+    setTemplatesLoading(false);
+    setNewTaskTitle("");
+    setNewTaskColumn("");
+    setCommentBody("");
+    setTimeEntryDescription("");
+    setTimeEntryError(null);
+    setBoardRefresh(0);
+    setWbsRefresh(0);
+    setCommentsRefresh(0);
+    setSummaryRefresh(0);
+  }, [selectedOrganizationId]);
 
   useEffect(() => {
     if (status !== "authenticated" || !token || !selectedOrganizationId) {
@@ -138,14 +202,13 @@ export const App = () => {
       try {
         setProjectsError(null);
         const data = await fetchJson<{ projects: Project[] }>("/projects", token, undefined, selectedOrganizationId);
-        setProjects(data.projects ?? []);
-
-        if (data.projects?.length) {
-          const exists = data.projects.find((project) => project.id === selectedProjectId);
-          if (!exists) setSelectedProjectId(data.projects[0].id);
-        } else {
-          setSelectedProjectId("");
-        }
+        const list = data.projects ?? [];
+        setProjects(list);
+        setSelectedProjectId((current) => {
+          if (list.length === 0) return "";
+          const exists = list.some((project) => project.id === current);
+          return exists ? current : list[0].id;
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Falha ao carregar projetos";
         setProjectsError(message);
@@ -153,7 +216,7 @@ export const App = () => {
     };
 
     loadProjects();
-  }, [status, token, selectedOrganizationId, selectedProjectId]);
+  }, [status, token, selectedOrganizationId]);
 
   useEffect(() => {
     if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
@@ -175,7 +238,7 @@ export const App = () => {
     };
 
     loadSummary();
-  }, [status, token, selectedProjectId, selectedOrganizationId, filters.rangeDays]);
+  }, [status, token, selectedProjectId, selectedOrganizationId, filters.rangeDays, summaryRefresh]);
 
   useEffect(() => {
     if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
@@ -210,7 +273,9 @@ export const App = () => {
         const data = await fetchJson(`/projects/${selectedProjectId}/wbs`, token, undefined, selectedOrganizationId);
         const nodes = data.nodes ?? [];
         setWbsNodes(nodes);
-        if (!selectedNodeId && nodes.length) setSelectedNodeId(nodes[0].id);
+        if (nodes.length) {
+          setSelectedNodeId((current) => current ?? nodes[0].id);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro ao carregar WBS";
         setWbsError(message);
@@ -218,7 +283,7 @@ export const App = () => {
     };
 
     loadWbs();
-  }, [status, token, selectedProjectId, selectedOrganizationId, wbsRefresh, selectedNodeId]);
+  }, [status, token, selectedProjectId, selectedOrganizationId, wbsRefresh]);
 
   useEffect(() => {
     if (!selectedNodeId || status !== "authenticated" || !token || !selectedOrganizationId) {
@@ -249,13 +314,25 @@ export const App = () => {
     const loadBoard = async () => {
       try {
         setBoardError(null);
-        const data = await fetchJson(`/projects/${selectedProjectId}/board`, token, undefined, selectedOrganizationId);
+        const data = await fetchJson<BoardResponse>(
+          `/projects/${selectedProjectId}/board`,
+          token,
+          undefined,
+          selectedOrganizationId
+        );
         const normalized = (data.columns ?? []).map((column: any) => ({
           ...column,
           tasks: [...(column.tasks ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
         }));
         setBoardColumns(normalized);
-        if (!newTaskColumn && normalized.length) setNewTaskColumn(normalized[0].id);
+        if (normalized.length) {
+          setNewTaskColumn((current) => {
+            if (current && normalized.some((column) => column.id === current)) {
+              return current;
+            }
+            return normalized[0].id;
+          });
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro ao carregar quadro";
         setBoardError(message);
@@ -263,7 +340,7 @@ export const App = () => {
     };
 
     loadBoard();
-  }, [status, token, selectedProjectId, selectedOrganizationId, boardRefresh, newTaskColumn]);
+  }, [status, token, selectedProjectId, selectedOrganizationId, boardRefresh]);
 
   useEffect(() => {
     if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
@@ -316,6 +393,36 @@ export const App = () => {
 
     loadAttachments();
   }, [status, token, selectedProjectId, selectedOrganizationId]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !token || !selectedOrganizationId) {
+      setTemplates([]);
+      setTemplatesLoading(false);
+      return;
+    }
+
+    const loadTemplates = async () => {
+      try {
+        setTemplatesLoading(true);
+        setTemplatesError(null);
+        const data = await fetchJson<{ templates: ProjectTemplateRecord[] }>(
+          "/templates",
+          token,
+          undefined,
+          selectedOrganizationId
+        );
+        setTemplates(data.templates ?? []);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao carregar templates";
+        setTemplatesError(message);
+        setTemplates([]);
+      } finally {
+        setTemplatesLoading(false);
+      }
+    };
+
+    loadTemplates();
+  }, [status, token, selectedOrganizationId, templatesRefresh]);
 
   useEffect(() => {
     if (status !== "authenticated" || !token || !selectedOrganizationId) {
@@ -420,6 +527,7 @@ export const App = () => {
     if (!token || !selectedNodeId || !selectedOrganizationId || !timeEntryHours || !timeEntryDate) return;
 
     try {
+      setTimeEntryError(null);
       await fetchJson(
         `/wbs/${selectedNodeId}/time-entries`,
         token,
@@ -436,9 +544,10 @@ export const App = () => {
       setTimeEntryHours("");
       setTimeEntryDescription("");
       setTimeEntryDate(new Date().toISOString().split("T")[0]);
+      setSummaryRefresh((value) => value + 1);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro ao registrar horas";
-      setCommentsError(message);
+      setTimeEntryError(message);
     }
   };
 
@@ -484,6 +593,41 @@ export const App = () => {
     setSelectedProjectId(createdProject.id);
   };
 
+  const handleUpdateProject = async (projectId: string, payload: CreateProjectPayload) => {
+    if (!token || !selectedOrganizationId) {
+      throw new Error("Selecione uma organização antes de editar projeto.");
+    }
+
+    const response = await fetchJson(
+      `/projects/${projectId}`,
+      token,
+      {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      },
+      selectedOrganizationId
+    );
+    const updatedProject = (response as any).project ?? response;
+
+    setProjects((current) =>
+      current.map((project) => (project.id === projectId ? { ...project, name: updatedProject.name } : project))
+    );
+
+    setPortfolio((current) =>
+      current.map((project) =>
+        project.projectId === projectId
+          ? {
+              ...project,
+              projectName: updatedProject.name ?? project.projectName,
+              clientName: payload.clientName,
+              startDate: payload.startDate || project.startDate,
+              endDate: payload.endDate || project.endDate
+            }
+          : project
+      )
+    );
+  };
+
   const handleSaveTemplate = async (templateId: string, payload: TemplateEditorPayload) => {
     if (!token || !selectedOrganizationId) {
       throw new Error("Selecione uma organização para salvar templates.");
@@ -498,6 +642,45 @@ export const App = () => {
       },
       selectedOrganizationId
     );
+    setTemplatesRefresh((value) => value + 1);
+  };
+
+  const handleCreateOrganization = async () => {
+    if (!token) return;
+    const name = window.prompt("Nome da nova organização?");
+    if (!name || !name.trim()) return;
+    const domain = window.prompt("Domínio (opcional)") ?? "";
+
+    try {
+      const response = await fetchJson<{ organization: { id: string; name: string } }>(
+        "/organizations",
+        token,
+        {
+          method: "POST",
+          body: JSON.stringify({ name: name.trim(), domain: domain.trim() || undefined })
+        }
+      );
+      const newOrg = response.organization;
+      setOrganizations((current) => {
+        if (current.some((organization) => organization.id === newOrg.id)) {
+          return current;
+        }
+        return [
+          ...current,
+          {
+            id: newOrg.id,
+            name: newOrg.name,
+            role: "OWNER",
+            activeProjects: 0
+          }
+        ];
+      });
+      setOrganizationsRefresh((value) => value + 1);
+      setSelectedOrganizationId(newOrg.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao criar organização";
+      setOrgError(message);
+    }
   };
 
   const handleDragEnd = async (result: DropResult) => {
@@ -606,7 +789,7 @@ export const App = () => {
       <OrganizationSelector
         organizations={organizationCards}
         onSelect={(organizationId: string) => setSelectedOrganizationId(organizationId)}
-        onCreateOrganization={() => alert("Fluxo de criação de organização em breve.")}
+        onCreateOrganization={handleCreateOrganization}
         userEmail={user?.email ?? null}
       />
     );
@@ -658,6 +841,7 @@ export const App = () => {
       onTimeEntryHoursChange={setTimeEntryHours}
       onTimeEntryDescriptionChange={setTimeEntryDescription}
       onLogTime={handleCreateTimeEntry}
+      timeEntryError={timeEntryError}
       ganttTasks={ganttTasks}
       ganttMilestones={ganttMilestones}
       ganttError={ganttError}
@@ -669,7 +853,11 @@ export const App = () => {
       reportMetricsLoading={reportMetricsLoading}
       onExportPortfolio={handleDownloadPortfolio}
       onCreateProject={handleCreateProject}
+      onUpdateProject={handleUpdateProject}
       onSaveTemplate={handleSaveTemplate}
+      templates={templates}
+      templatesError={templatesError}
+      templatesLoading={templatesLoading}
     />
   );
 };
@@ -718,12 +906,13 @@ function updateNodeParent(nodes: WbsNode[], nodeId: string, parentId: string | n
 
   const withoutItem = removeFromTree(cloned);
   if (!itemToMove) return nodes;
+  const movable = itemToMove as WbsNode;
 
   const insertIntoTree = (items: WbsNode[]): WbsNode[] =>
     items.map((node) => {
       if (node.id === parentId) {
         const children = [...node.children];
-        children.splice(position, 0, { ...itemToMove!, parentId: node.id });
+        children.splice(position, 0, { ...movable, parentId: node.id });
         return { ...node, children };
       }
       return { ...node, children: insertIntoTree(node.children ?? []) };
@@ -731,7 +920,7 @@ function updateNodeParent(nodes: WbsNode[], nodeId: string, parentId: string | n
 
   if (!parentId) {
     const topLevel = [...withoutItem];
-    topLevel.splice(position, 0, { ...itemToMove, parentId: null });
+    topLevel.splice(position, 0, { ...movable, parentId: null });
     return topLevel;
   }
 

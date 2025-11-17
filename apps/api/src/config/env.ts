@@ -12,6 +12,7 @@ const envSchema = z.object({
   SUPABASE_URL: z.string(),
   SUPABASE_ANON_KEY: z.string(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
+  SUPABASE_STORAGE_BUCKET: z.string().default("project-attachments"),
   SUPABASE_DB_HOST: z.string(),
   SUPABASE_DB_PORT: z.string().default("5432"),
   SUPABASE_DB_NAME: z.string(),
@@ -40,6 +41,7 @@ export const config = {
     url: parsed.data.SUPABASE_URL,
     anonKey: parsed.data.SUPABASE_ANON_KEY,
     serviceRoleKey: parsed.data.SUPABASE_SERVICE_ROLE_KEY,
+    storageBucket: parsed.data.SUPABASE_STORAGE_BUCKET,
     db: {
       host: parsed.data.SUPABASE_DB_HOST,
       port: Number(parsed.data.SUPABASE_DB_PORT),
