@@ -1,7 +1,4 @@
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
-import { Tree } from "@minoru/react-dnd-treeview";
-import { DndProvider } from "react-dnd";
-import { HTML5Backend } from "react-dnd-html5-backend";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, BarChart, Bar } from "recharts";
 import { useEffect, useMemo, useState, useCallback, type FormEvent } from "react";
 import { ProjectPortfolio, type PortfolioProject } from "./ProjectPortfolio";
@@ -17,7 +14,6 @@ const sidebarNavigation = [
   { id: "projects", label: "Projetos" },
   { id: "team", label: "Equipe" },
   { id: "reports", label: "Relatórios" },
-  { id: "templates", label: "Templates" },
   { id: "settings", label: "Configurações" }
 ];
 
@@ -121,12 +117,21 @@ type DashboardLayoutProps = {
   reportMetricsLoading: boolean;
   boardColumns: any[];
   boardError: string | null;
-  onCreateTask: (event: FormEvent<HTMLFormElement>) => void;
+  onCreateTask: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
+  onReloadBoard?: () => Promise<void>;
   onDragTask: (result: DropResult) => void;
   newTaskTitle: string;
   onTaskTitleChange: (value: string) => void;
   newTaskColumn: string;
   onTaskColumnChange: (value: string) => void;
+  newTaskStartDate: string;
+  onTaskStartDateChange: (value: string) => void;
+  newTaskEndDate: string;
+  onTaskEndDateChange: (value: string) => void;
+  newTaskAssignee: string;
+  onTaskAssigneeChange: (value: string) => void;
+  newTaskEstimateHours: string;
+  onTaskEstimateHoursChange: (value: string) => void;
   wbsNodes: any[];
   wbsError: string | null;
   onMoveNode: (id: string, parentId: string | null, position: number) => void;
@@ -154,10 +159,6 @@ type DashboardLayoutProps = {
   onExportPortfolio?: () => void;
   onCreateProject: (payload: CreateProjectPayload) => Promise<void>;
   onUpdateProject: (projectId: string, payload: CreateProjectPayload) => Promise<void>;
-  onSaveTemplate: (templateId: string, payload: TemplateEditorPayload) => Promise<void>;
-  templates: TemplateSummary[];
-  templatesError: string | null;
-  templatesLoading: boolean;
 };
 
 const KanbanBoard = ({
@@ -171,7 +172,7 @@ const KanbanBoard = ({
 }: {
   columns: any[];
   onDragEnd: (result: DropResult) => void;
-  onCreate: (event: FormEvent<HTMLFormElement>) => void;
+  onCreate: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
   newTaskTitle: string;
   onTaskTitleChange: (value: string) => void;
   newTaskColumn: string;
@@ -248,7 +249,7 @@ const KanbanBoard = ({
 
 const WbsTreeView = ({
   nodes,
-  onMove,
+  onMove: _onMove,
   selectedNodeId,
   onSelect
 }: {
@@ -259,45 +260,143 @@ const WbsTreeView = ({
 }) => {
   if (!nodes.length) return <p className="muted">Nenhum item cadastrado.</p>;
 
-  const flatten = (tree: any[]): any[] =>
-    tree.flatMap((node) => [
-      node,
-      ...flatten(node.children ?? []).map((child) => ({
-        ...child,
-        parentId: node.id
-      }))
-    ]);
+  const buildRows = (tree: any[], path: number[] = []): Array<{ node: any; displayId: string; level: number }> =>
+    tree.flatMap((node, index) => {
+      const marker = [...path, index + 1];
+      const children = Array.isArray(node.children) ? node.children : [];
+      return [
+        {
+          node,
+          displayId: marker.join("."),
+          level: marker.length - 1
+        },
+        ...buildRows(children, marker)
+      ];
+    });
 
-  const treeNodes = flatten(nodes).map((node) => ({
-    id: node.id,
-    parent: node.parentId ?? 0,
-    text: node.title,
-    droppable: true,
-    data: node
-  }));
+  const rows = buildRows(nodes);
+  void _onMove;
+
+  const formatDuration = (start?: string | null, end?: string | null) => {
+    if (!start || !end) return "—";
+    const diff = Math.max(
+      1,
+      Math.round((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24))
+    );
+    return `${diff}d`;
+  };
+
+  const getStatusStyles = (status?: string | null) => {
+    if (!status) {
+      return { backgroundColor: "#E5E7EB", color: "#374151" };
+    }
+    const normalized = status.toUpperCase();
+    const map: Record<string, { bg: string; color: string }> = {
+      DONE: { bg: "#dcfce7", color: "#166534" },
+      COMPLETED: { bg: "#dcfce7", color: "#166534" },
+      IN_PROGRESS: { bg: "#dbeafe", color: "#1d4ed8" },
+      PLANNED: { bg: "#e0e7ff", color: "#4338ca" },
+      AT_RISK: { bg: "#fee2e2", color: "#b91c1c" },
+      BLOCKED: { bg: "#fee2e2", color: "#b91c1c" }
+    };
+    const styles = map[normalized] ?? { bg: "#E5E7EB", color: "#374151" };
+    return { backgroundColor: styles.bg, color: styles.color };
+  };
 
   return (
-    <DndProvider backend={HTML5Backend}>
-      <Tree
-        tree={treeNodes}
-        rootId={0}
-        onDrop={(_event, options) => {
-          const nodeId = options.dragSource?.id as string | undefined;
-          if (!nodeId) return;
-          const parentId = options.dropTarget?.id && options.dropTarget.id !== 0 ? (options.dropTarget.id as string) : null;
-          onMove(nodeId, parentId, options.destinationIndex ?? 0);
-        }}
-        render={(node) => (
-          <button
-            type="button"
-            className={`wbs-node ${selectedNodeId === node.id ? "is-active" : ""}`}
-            onClick={() => onSelect(node.id as string)}
-          >
-            <strong>{node.data?.title}</strong> · {node.data?.type} ({node.data?.status})
-          </button>
-        )}
-      />
-    </DndProvider>
+    <div
+      style={{
+        overflowX: "auto",
+        border: "1px solid #e5e7eb",
+        borderRadius: "12px",
+        backgroundColor: "#fff"
+      }}
+    >
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ backgroundColor: "#f9fafb", textAlign: "left", fontSize: "0.875rem", color: "#6b7280" }}>
+            <th style={{ padding: "12px" }}>ID</th>
+            <th style={{ padding: "12px" }}>Nível</th>
+            <th style={{ padding: "12px" }}>Nome da Tarefa</th>
+            <th style={{ padding: "12px" }}>Situação</th>
+            <th style={{ padding: "12px" }}>Duração</th>
+            <th style={{ padding: "12px" }}>Início</th>
+            <th style={{ padding: "12px" }}>Término</th>
+            <th style={{ padding: "12px" }}>Responsável</th>
+            <th style={{ padding: "12px" }}>Progresso</th>
+            <th style={{ padding: "12px" }}>Depend.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const progress = typeof row.node.progress === "number" ? Math.max(0, Math.min(100, row.node.progress)) : 0;
+            const statusStyles = getStatusStyles(row.node.status);
+            const isActive = selectedNodeId === row.node.id;
+            return (
+              <tr
+                key={row.node.id}
+                onClick={() => onSelect(row.node.id)}
+                style={{
+                  backgroundColor: isActive ? "#eef2ff" : "transparent",
+                  cursor: "pointer",
+                  fontSize: "0.95rem"
+                }}
+              >
+                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>{row.displayId}</td>
+                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>{row.level}</td>
+                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6", paddingLeft: `${row.level * 20}px` }}>
+                  <strong>{row.node.title}</strong>
+                </td>
+                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>
+                  <span
+                    style={{
+                      padding: "2px 10px",
+                      borderRadius: "999px",
+                      fontSize: "0.75rem",
+                      fontWeight: 500,
+                      backgroundColor: statusStyles.backgroundColor,
+                      color: statusStyles.color
+                    }}
+                  >
+                    {row.node.status ?? "—"}
+                  </span>
+                </td>
+                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>
+                  {formatDuration(row.node.startDate, row.node.endDate)}
+                </td>
+                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>{formatDate(row.node.startDate)}</td>
+                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>{formatDate(row.node.endDate)}</td>
+                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>{row.node.owner?.name ?? "—"}</td>
+                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div
+                      style={{
+                        flexGrow: 1,
+                        height: "6px",
+                        backgroundColor: "#e5e7eb",
+                        borderRadius: "999px"
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "block",
+                          height: "100%",
+                          width: `${progress}%`,
+                          borderRadius: "999px",
+                          backgroundColor: "#3b82f6"
+                        }}
+                      />
+                    </div>
+                    <small style={{ color: "#374151" }}>{progress}%</small>
+                  </div>
+                </td>
+                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>—</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 };
 
@@ -363,6 +462,7 @@ type ProjectDetailsTabsProps = {
   projectMeta: PortfolioProject | null;
   projectLoading?: boolean;
   onEditProject?: () => void;
+  onAddTask?: () => void;
   summary: any;
   summaryError: string | null;
   filters: { rangeDays: number };
@@ -378,12 +478,21 @@ type ProjectDetailsTabsProps = {
   reportMetricsLoading: boolean;
   boardColumns: any[];
   boardError: string | null;
-  onCreateTask: (event: FormEvent<HTMLFormElement>) => void;
+  onCreateTask: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
+  onReloadBoard?: () => Promise<void>;
   onDragTask: (result: DropResult) => void;
   newTaskTitle: string;
   onTaskTitleChange: (value: string) => void;
   newTaskColumn: string;
   onTaskColumnChange: (value: string) => void;
+  newTaskStartDate: string;
+  onTaskStartDateChange: (value: string) => void;
+  newTaskEndDate: string;
+  onTaskEndDateChange: (value: string) => void;
+  newTaskAssignee: string;
+  onTaskAssigneeChange: (value: string) => void;
+  newTaskEstimateHours: string;
+  onTaskEstimateHoursChange: (value: string) => void;
   wbsNodes: any[];
   wbsError: string | null;
   onMoveNode: (nodeId: string, parentId: string | null, position: number) => void;
@@ -411,6 +520,7 @@ const ProjectDetailsTabs = ({
   projectMeta,
   projectLoading,
   onEditProject,
+  onAddTask,
   summary,
   summaryError,
   filters,
@@ -427,11 +537,20 @@ const ProjectDetailsTabs = ({
   boardColumns,
   boardError,
   onCreateTask,
+  onReloadBoard,
   onDragTask,
   newTaskTitle,
   onTaskTitleChange,
   newTaskColumn,
   onTaskColumnChange,
+  newTaskStartDate,
+  onTaskStartDateChange,
+  newTaskEndDate,
+  onTaskEndDateChange,
+  newTaskAssignee,
+  onTaskAssigneeChange,
+  newTaskEstimateHours,
+  onTaskEstimateHoursChange,
   wbsNodes,
   wbsError,
   onMoveNode,
@@ -582,7 +701,7 @@ const ProjectDetailsTabs = ({
           <button type="button" className="secondary-button" onClick={onEditProject} disabled={!onEditProject}>
             Editar projeto
           </button>
-          <button type="button" className="ghost-button">
+          <button type="button" className="ghost-button" onClick={onAddTask}>
             Adicionar tarefa
           </button>
           <button type="button" className="ghost-button">
@@ -1315,17 +1434,7 @@ const ReportsPanel = ({
   );
 };
 
-const SettingsPanel = ({
-  templates,
-  templatesError,
-  templatesLoading,
-  onSaveTemplate
-}: {
-  templates: TemplateSummary[];
-  templatesError: string | null;
-  templatesLoading: boolean;
-  onSaveTemplate: (templateId: string, payload: TemplateEditorPayload) => Promise<void>;
-}) => {
+const SettingsPanel = () => {
   const [activeSection, setActiveSection] = useState("profile");
 
   const sections = [
@@ -1333,7 +1442,6 @@ const SettingsPanel = ({
     { id: "notifications", label: "Notificações" },
     { id: "organization", label: "Organização" },
     { id: "permissions", label: "Permissões" },
-    { id: "templates", label: "Templates" },
     { id: "integrations", label: "Integrações" },
     { id: "billing", label: "Faturamento" }
   ];
@@ -1455,15 +1563,6 @@ const SettingsPanel = ({
             </div>
           )}
 
-          {activeSection === "templates" && (
-            <TemplatesPanel
-              templates={templates}
-              isLoading={templatesLoading}
-              error={templatesError}
-              onSaveTemplate={onSaveTemplate}
-            />
-          )}
-
           {activeSection === "integrations" && (
             <div className="settings-form">
               <h3>Integrações</h3>
@@ -1523,11 +1622,20 @@ export const DashboardLayout = ({
   boardColumns,
   boardError,
   onCreateTask,
+  onReloadBoard,
   onDragTask,
   newTaskTitle,
   onTaskTitleChange,
   newTaskColumn,
   onTaskColumnChange,
+  newTaskStartDate,
+  onTaskStartDateChange,
+  newTaskEndDate,
+  onTaskEndDateChange,
+  newTaskAssignee,
+  onTaskAssigneeChange,
+  newTaskEstimateHours,
+  onTaskEstimateHoursChange,
   wbsNodes,
   wbsError,
   onMoveNode,
@@ -1555,10 +1663,6 @@ export const DashboardLayout = ({
   onExportPortfolio,
   onCreateProject,
   onUpdateProject,
-  onSaveTemplate,
-  templates,
-  templatesError,
-  templatesLoading
 }: DashboardLayoutProps) => {
   const flattenedTasks = boardColumns.flatMap((column: any) =>
     column.tasks.map((task: any) => ({ ...task, column: column.label }))
@@ -1574,6 +1678,8 @@ export const DashboardLayout = ({
   const [showNotFound, setShowNotFound] = useState(false);
   const [projectModalMode, setProjectModalMode] = useState<"create" | "edit">("create");
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [isTaskModalOpen, setTaskModalOpen] = useState(false);
+  const [taskModalLoading, setTaskModalLoading] = useState(false);
   useEffect(() => {
     if (selectedProjectId && !projectMeta && !portfolioLoading) {
       setShowNotFound(true);
@@ -1581,6 +1687,12 @@ export const DashboardLayout = ({
       setShowNotFound(false);
     }
   }, [selectedProjectId, projectMeta, portfolioLoading]);
+
+  useEffect(() => {
+    if (!newTaskColumn && boardColumns.length) {
+      onTaskColumnChange(boardColumns[0].id);
+    }
+  }, [boardColumns, newTaskColumn, onTaskColumnChange]);
 
   useEffect(() => {
     if (!projectToast) return;
@@ -1650,6 +1762,21 @@ export const DashboardLayout = ({
     setEditingProjectId(null);
   };
 
+  const handleOpenTaskModal = async () => {
+    if (!boardColumns.length && onReloadBoard) {
+      await onReloadBoard();
+    }
+    if (!newTaskColumn && boardColumns.length) {
+      onTaskColumnChange(boardColumns[0].id);
+    }
+    setTaskModalOpen(true);
+  };
+
+  const handleCloseTaskModal = () => {
+    setTaskModalOpen(false);
+    setTaskModalLoading(false);
+  };
+
   const handleProjectModalSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setProjectModalError(null);
@@ -1691,6 +1818,16 @@ export const DashboardLayout = ({
       setProjectModalError(error instanceof Error ? error.message : "Erro ao salvar projeto");
     } finally {
       setProjectModalLoading(false);
+    }
+  };
+
+  const handleTaskModalSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setTaskModalLoading(true);
+    const success = await onCreateTask(event);
+    setTaskModalLoading(false);
+    if (success) {
+      setTaskModalOpen(false);
     }
   };
 
@@ -1741,6 +1878,7 @@ export const DashboardLayout = ({
       projectMeta={projectMeta}
       projectLoading={portfolioLoading}
       onEditProject={handleOpenEditProjectModal}
+      onAddTask={handleOpenTaskModal}
       summary={summary}
       summaryError={summaryError}
       filters={filters}
@@ -1757,11 +1895,20 @@ export const DashboardLayout = ({
       boardColumns={boardColumns}
       boardError={boardError}
       onCreateTask={onCreateTask}
+      onReloadBoard={onReloadBoard}
       onDragTask={onDragTask}
       newTaskTitle={newTaskTitle}
       onTaskTitleChange={onTaskTitleChange}
       newTaskColumn={newTaskColumn}
       onTaskColumnChange={onTaskColumnChange}
+      newTaskStartDate={newTaskStartDate}
+      onTaskStartDateChange={onTaskStartDateChange}
+      newTaskEndDate={newTaskEndDate}
+      onTaskEndDateChange={onTaskEndDateChange}
+      newTaskAssignee={newTaskAssignee}
+      onTaskAssigneeChange={onTaskAssigneeChange}
+      newTaskEstimateHours={newTaskEstimateHours}
+      onTaskEstimateHoursChange={onTaskEstimateHoursChange}
       wbsNodes={wbsNodes}
       wbsError={wbsError}
       onMoveNode={onMoveNode}
@@ -1862,23 +2009,9 @@ export const DashboardLayout = ({
         return renderTeamContent();
       case "reports":
         return renderReportsContent();
-      case "templates":
-        return (
-          <TemplatesPanel
-            templates={templates}
-            isLoading={templatesLoading}
-            error={templatesError}
-            onSaveTemplate={onSaveTemplate}
-          />
-        );
       case "settings":
         return (
-          <SettingsPanel
-            templates={templates}
-            templatesError={templatesError}
-            templatesLoading={templatesLoading}
-            onSaveTemplate={onSaveTemplate}
-          />
+          <SettingsPanel />
         );
       case "dashboard":
       default:
@@ -2049,11 +2182,123 @@ export const DashboardLayout = ({
             </div>
           </div>
         )}
+
+        {isTaskModalOpen && (
+          <div className="modal-overlay" role="dialog" aria-modal="true">
+            <div className="modal">
+              <header className="modal-header">
+                <div>
+                  <p className="eyebrow">Nova tarefa</p>
+                  <h3>Adicionar item ao quadro</h3>
+                  <p className="subtext">Informe o título e escolha a coluna inicial.</p>
+                </div>
+                <button type="button" className="ghost-button" onClick={handleCloseTaskModal}>
+                  Fechar
+                </button>
+              </header>
+
+              {boardColumns.length ? (
+                <form className="modal-form" onSubmit={handleTaskModalSubmit}>
+                  <label>
+                    Título da tarefa
+                    <input
+                      type="text"
+                      value={newTaskTitle}
+                      onChange={(event) => onTaskTitleChange(event.target.value)}
+                      placeholder="Configurar ambiente, revisar contrato..."
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    Coluna inicial
+                    <select value={newTaskColumn} onChange={(event) => onTaskColumnChange(event.target.value)}>
+                      {boardColumns.map((column) => (
+                        <option key={column.id} value={column.id}>
+                          {column.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="modal-grid">
+                    <label>
+                      Início planejado
+                      <input
+                        type="date"
+                        value={newTaskStartDate}
+                        onChange={(event) => onTaskStartDateChange(event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Fim planejado
+                      <input
+                        type="date"
+                        value={newTaskEndDate}
+                        onChange={(event) => onTaskEndDateChange(event.target.value)}
+                      />
+                    </label>
+                  </div>
+
+                  <label>
+                    Responsável
+                    <select value={newTaskAssignee} onChange={(event) => onTaskAssigneeChange(event.target.value)}>
+                      <option value="">Selecione...</option>
+                      {members.map((member: any) => (
+                        <option key={member.id} value={member.userId ?? member.id}>
+                          {member.name ?? member.fullName ?? member.email}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Horas estimadas
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={newTaskEstimateHours}
+                      onChange={(event) => onTaskEstimateHoursChange(event.target.value)}
+                      placeholder="Ex.: 4"
+                    />
+                  </label>
+
+                  {boardError && (
+                    <p className="error-text" role="status">
+                      {boardError}
+                    </p>
+                  )}
+
+                  <footer className="modal-actions">
+                    <button type="button" className="ghost-button" onClick={handleCloseTaskModal}>
+                      Cancelar
+                    </button>
+                    <button type="submit" className="primary-button" disabled={taskModalLoading || !newTaskTitle.trim()}>
+                      {taskModalLoading ? "Salvando..." : "Criar tarefa"}
+                    </button>
+                  </footer>
+                </form>
+              ) : (
+                <div className="modal-form">
+                  <p className="muted">
+                    Este projeto ainda não possui colunas configuradas. Configure o quadro para criar tarefas.
+                  </p>
+                  <footer className="modal-actions">
+                    <button type="button" className="ghost-button" onClick={handleCloseTaskModal}>
+                      Fechar
+                    </button>
+                  </footer>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 };
-const TemplatesPanel = ({
+export const TemplatesPanel = ({
   templates,
   isLoading,
   error,

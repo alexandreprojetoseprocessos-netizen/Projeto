@@ -1,7 +1,7 @@
 import type { FormEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DropResult } from "@hello-pangea/dnd";
-import { DashboardLayout, type CreateProjectPayload, type TemplateEditorPayload } from "./components/DashboardLayout";
+import { DashboardLayout, type CreateProjectPayload } from "./components/DashboardLayout";
 import { AuthPage } from "./components/AuthPage";
 import { OrganizationSelector } from "./components/OrganizationSelector";
 import type { PortfolioProject } from "./components/ProjectPortfolio";
@@ -10,21 +10,21 @@ import { useAuth } from "./contexts/AuthContext";
 type Organization = { id: string; name: string; role: string; activeProjects?: number };
 type Project = { id: string; name: string };
 type BoardColumn = { id: string; label: string; tasks: any[]; wipLimit?: number };
-type WbsNode = { id: string; title: string; type: string; status: string; parentId: string | null; children: WbsNode[] };
-type BoardResponse = { columns: BoardColumn[] };
-type ProjectTemplateRecord = {
+type WbsNode = {
   id: string;
-  name: string;
+  title: string;
   type: string;
-  clientName?: string | null;
-  repositoryUrl?: string | null;
-  budget?: number | null;
-  columns?: string[];
-  wbs?: any[];
-  customFields?: any[];
-  updatedAt?: string | null;
+  status: string;
+  parentId: string | null;
+  children: WbsNode[];
+  level?: number;
+  startDate?: string | null;
+  endDate?: string | null;
+  owner?: { id: string; name: string; email?: string | null } | null;
+  actualHours?: number | null;
+  documents?: number | null;
 };
-
+type BoardResponse = { columns: BoardColumn[] };
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 async function fetchJson<TResponse = any>(
@@ -99,14 +99,14 @@ export const App = () => {
   const [wbsRefresh, setWbsRefresh] = useState(0);
   const [commentsRefresh, setCommentsRefresh] = useState(0);
   const [summaryRefresh, setSummaryRefresh] = useState(0);
-  const [templates, setTemplates] = useState<ProjectTemplateRecord[]>([]);
-  const [templatesError, setTemplatesError] = useState<string | null>(null);
-  const [templatesLoading, setTemplatesLoading] = useState(false);
-  const [templatesRefresh, setTemplatesRefresh] = useState(0);
   const [organizationsRefresh, setOrganizationsRefresh] = useState(0);
 
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskColumn, setNewTaskColumn] = useState("");
+  const [newTaskStartDate, setNewTaskStartDate] = useState("");
+  const [newTaskEndDate, setNewTaskEndDate] = useState("");
+  const [newTaskAssignee, setNewTaskAssignee] = useState("");
+  const [newTaskEstimateHours, setNewTaskEstimateHours] = useState("");
   const [commentBody, setCommentBody] = useState("");
   const [timeEntryHours, setTimeEntryHours] = useState("");
   const [timeEntryDate, setTimeEntryDate] = useState(() => new Date().toISOString().split("T")[0]);
@@ -177,11 +177,12 @@ export const App = () => {
     setReportMetrics(null);
     setReportMetricsError(null);
     setReportMetricsLoading(false);
-    setTemplates([]);
-    setTemplatesError(null);
-    setTemplatesLoading(false);
     setNewTaskTitle("");
     setNewTaskColumn("");
+    setNewTaskStartDate("");
+    setNewTaskEndDate("");
+    setNewTaskAssignee("");
+    setNewTaskEstimateHours("");
     setCommentBody("");
     setTimeEntryDescription("");
     setTimeEntryError(null);
@@ -305,42 +306,46 @@ export const App = () => {
     loadComments();
   }, [status, token, selectedNodeId, selectedOrganizationId, commentsRefresh]);
 
+  const loadBoardColumns = useCallback(async () => {
+    if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+      return;
+    }
+
+    try {
+      setBoardError(null);
+      const data = await fetchJson<BoardResponse>(
+        `/projects/${selectedProjectId}/board`,
+        token,
+        undefined,
+        selectedOrganizationId
+      );
+      const normalized = (data.columns ?? []).map((column: any) => ({
+        ...column,
+        tasks: [...(column.tasks ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      }));
+      setBoardColumns(normalized);
+      if (normalized.length) {
+        setNewTaskColumn((current) => {
+          if (current && normalized.some((column) => column.id === current)) {
+            return current;
+          }
+          return normalized[0].id;
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao carregar quadro";
+      setBoardError(message);
+    }
+  }, [status, token, selectedProjectId, selectedOrganizationId]);
+
   useEffect(() => {
     if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
       setBoardColumns([]);
       return;
     }
 
-    const loadBoard = async () => {
-      try {
-        setBoardError(null);
-        const data = await fetchJson<BoardResponse>(
-          `/projects/${selectedProjectId}/board`,
-          token,
-          undefined,
-          selectedOrganizationId
-        );
-        const normalized = (data.columns ?? []).map((column: any) => ({
-          ...column,
-          tasks: [...(column.tasks ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-        }));
-        setBoardColumns(normalized);
-        if (normalized.length) {
-          setNewTaskColumn((current) => {
-            if (current && normalized.some((column) => column.id === current)) {
-              return current;
-            }
-            return normalized[0].id;
-          });
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Erro ao carregar quadro";
-        setBoardError(message);
-      }
-    };
-
-    loadBoard();
-  }, [status, token, selectedProjectId, selectedOrganizationId, boardRefresh]);
+    loadBoardColumns();
+  }, [status, token, selectedProjectId, selectedOrganizationId, boardRefresh, loadBoardColumns]);
 
   useEffect(() => {
     if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
@@ -394,35 +399,6 @@ export const App = () => {
     loadAttachments();
   }, [status, token, selectedProjectId, selectedOrganizationId]);
 
-  useEffect(() => {
-    if (status !== "authenticated" || !token || !selectedOrganizationId) {
-      setTemplates([]);
-      setTemplatesLoading(false);
-      return;
-    }
-
-    const loadTemplates = async () => {
-      try {
-        setTemplatesLoading(true);
-        setTemplatesError(null);
-        const data = await fetchJson<{ templates: ProjectTemplateRecord[] }>(
-          "/templates",
-          token,
-          undefined,
-          selectedOrganizationId
-        );
-        setTemplates(data.templates ?? []);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Erro ao carregar templates";
-        setTemplatesError(message);
-        setTemplates([]);
-      } finally {
-        setTemplatesLoading(false);
-      }
-    };
-
-    loadTemplates();
-  }, [status, token, selectedOrganizationId, templatesRefresh]);
 
   useEffect(() => {
     if (status !== "authenticated" || !token || !selectedOrganizationId) {
@@ -477,7 +453,9 @@ export const App = () => {
 
   const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!token || !selectedProjectId || !selectedOrganizationId || !newTaskColumn || !newTaskTitle.trim()) return;
+    if (!token || !selectedProjectId || !selectedOrganizationId || !newTaskColumn || !newTaskTitle.trim()) {
+      return false;
+    }
 
     try {
       await fetchJson(
@@ -485,17 +463,30 @@ export const App = () => {
         token,
         {
           method: "POST",
-          body: JSON.stringify({ title: newTaskTitle, columnId: newTaskColumn })
+          body: JSON.stringify({
+            title: newTaskTitle,
+            columnId: newTaskColumn,
+            startDate: newTaskStartDate || undefined,
+            endDate: newTaskEndDate || undefined,
+            ownerId: newTaskAssignee || undefined,
+            estimateHours: newTaskEstimateHours ? Number(newTaskEstimateHours) : undefined
+          })
         },
         selectedOrganizationId
       );
       setNewTaskTitle("");
+      setNewTaskStartDate("");
+      setNewTaskEndDate("");
+      setNewTaskAssignee("");
+      setNewTaskEstimateHours("");
       setBoardRefresh((value) => value + 1);
       setWbsRefresh((value) => value + 1);
       setBoardError(null);
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao criar tarefa";
       setBoardError(message);
+      return false;
     }
   };
 
@@ -626,23 +617,6 @@ export const App = () => {
           : project
       )
     );
-  };
-
-  const handleSaveTemplate = async (templateId: string, payload: TemplateEditorPayload) => {
-    if (!token || !selectedOrganizationId) {
-      throw new Error("Selecione uma organização para salvar templates.");
-    }
-
-    await fetchJson(
-      `/templates/${templateId}`,
-      token,
-      {
-        method: "PUT",
-        body: JSON.stringify(payload)
-      },
-      selectedOrganizationId
-    );
-    setTemplatesRefresh((value) => value + 1);
   };
 
   const handleCreateOrganization = async () => {
@@ -819,11 +793,20 @@ export const App = () => {
       boardColumns={boardColumns}
       boardError={boardError}
       onCreateTask={handleCreateTask}
+      onReloadBoard={loadBoardColumns}
       onDragTask={handleDragEnd}
       newTaskTitle={newTaskTitle}
       onTaskTitleChange={setNewTaskTitle}
       newTaskColumn={newTaskColumn}
       onTaskColumnChange={setNewTaskColumn}
+      newTaskStartDate={newTaskStartDate}
+      onTaskStartDateChange={setNewTaskStartDate}
+      newTaskEndDate={newTaskEndDate}
+      onTaskEndDateChange={setNewTaskEndDate}
+      newTaskAssignee={newTaskAssignee}
+      onTaskAssigneeChange={setNewTaskAssignee}
+      newTaskEstimateHours={newTaskEstimateHours}
+      onTaskEstimateHoursChange={setNewTaskEstimateHours}
       wbsNodes={wbsNodes}
       wbsError={wbsError}
       onMoveNode={handleWbsMove}
@@ -854,10 +837,6 @@ export const App = () => {
       onExportPortfolio={handleDownloadPortfolio}
       onCreateProject={handleCreateProject}
       onUpdateProject={handleUpdateProject}
-      onSaveTemplate={handleSaveTemplate}
-      templates={templates}
-      templatesError={templatesError}
-      templatesLoading={templatesLoading}
     />
   );
 };

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { Prisma, ProjectRole, AttachmentTargetType } from "@prisma/client";
+import { Prisma, ProjectRole, AttachmentTargetType, TaskStatus } from "@prisma/client";
 import { prisma } from "@gestao/database";
 import { authMiddleware } from "../middleware/auth";
 import { organizationMiddleware } from "../middleware/organization";
@@ -18,11 +18,18 @@ type FlatWbsNode = {
   startDate: Date | null;
   endDate: Date | null;
   ownerId: string | null;
+  owner?: {
+    id: string;
+    name: string;
+    email?: string | null;
+  } | null;
   boardColumnId: string | null;
   estimateHours: string | null;
   progress: number | null;
   taskType?: string | null;
   storyPoints?: number | null;
+  actualHours?: number;
+  documents?: number;
 };
 
 type WbsTreeNode = FlatWbsNode & { children: WbsTreeNode[] };
@@ -53,6 +60,28 @@ const subtractDays = (date: Date, amount: number) => {
 };
 
 const endOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+
+const DEFAULT_BOARD_COLUMNS: Array<{ label: string; status: TaskStatus; wipLimit?: number | null }> = [
+  { label: "Backlog", status: TaskStatus.BACKLOG },
+  { label: "Planejamento", status: TaskStatus.TODO },
+  { label: "Em andamento", status: TaskStatus.IN_PROGRESS, wipLimit: 6 },
+  { label: "Revisão", status: TaskStatus.REVIEW, wipLimit: 4 },
+  { label: "Concluído", status: TaskStatus.DONE }
+];
+
+const ensureBoardColumns = async (projectId: string) => {
+  const count = await prisma.boardColumn.count({ where: { projectId } });
+  if (count > 0) return;
+  await prisma.boardColumn.createMany({
+    data: DEFAULT_BOARD_COLUMNS.map((column, index) => ({
+      projectId,
+      label: column.label,
+      order: index,
+      status: column.status,
+      wipLimit: column.wipLimit ?? null
+    }))
+  });
+};
 
 export const projectsRouter = Router();
 
@@ -423,6 +452,7 @@ projectsRouter.get("/:projectId/board", async (req, res) => {
   if (!membership) return;
 
   try {
+    await ensureBoardColumns(projectId);
     const [columns, tasks] = await Promise.all([
       prisma.boardColumn.findMany({
         where: { projectId },
@@ -469,12 +499,15 @@ projectsRouter.get("/:projectId/board", async (req, res) => {
 
 projectsRouter.post("/:projectId/board/tasks", async (req, res) => {
   const { projectId } = req.params;
-  const { title, columnId, parentId, priority = "MEDIUM", estimateHours } = req.body as {
+  const { title, columnId, parentId, priority = "MEDIUM", estimateHours, startDate, endDate, ownerId } = req.body as {
     title?: string;
     columnId?: string;
     parentId?: string | null;
     priority?: string;
     estimateHours?: number | string;
+    startDate?: string;
+    endDate?: string;
+    ownerId?: string | null;
   };
 
   if (!title || !columnId) {
@@ -507,6 +540,15 @@ projectsRouter.post("/:projectId/board/tasks", async (req, res) => {
     where: { projectId, parentId: parentId ?? null }
   });
 
+  if (ownerId) {
+    const member = await prisma.projectMember.findFirst({
+      where: { projectId, userId: ownerId }
+    });
+    if (!member) {
+      return res.status(400).json({ message: "Responsável informado não pertence ao projeto" });
+    }
+  }
+
   try {
     const task = await prisma.wbsNode.create({
       data: {
@@ -519,7 +561,12 @@ projectsRouter.post("/:projectId/board/tasks", async (req, res) => {
         status: column.status ?? "TODO",
         priority: priority as any,
         boardColumnId: column.id,
-        estimateHours: estimateHours ? new Prisma.Decimal(estimateHours) : undefined
+        estimateHours: estimateHours
+          ? new Prisma.Decimal(estimateHours)
+          : undefined,
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
+        ownerId: ownerId ?? null
       }
     });
 
@@ -630,7 +677,20 @@ projectsRouter.get("/:projectId/wbs", async (req, res) => {
   const nodes = await prisma.wbsNode.findMany({
     where: { projectId },
     include: {
-      taskDetail: true
+      taskDetail: true,
+      owner: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true
+        }
+      },
+      timeEntries: {
+        select: { hours: true }
+      },
+      attachments: {
+        select: { id: true }
+      }
     },
     orderBy: [{ level: "asc" }, { order: "asc" }, { createdAt: "asc" }]
   });
@@ -646,11 +706,20 @@ projectsRouter.get("/:projectId/wbs", async (req, res) => {
     startDate: node.startDate,
     endDate: node.endDate,
     ownerId: node.ownerId,
+    owner: node.owner
+      ? {
+          id: node.owner.id,
+          name: node.owner.fullName ?? node.owner.email ?? "",
+          email: node.owner.email
+        }
+      : null,
     boardColumnId: node.boardColumnId,
     estimateHours: node.estimateHours?.toString() ?? null,
     progress: node.progress ?? null,
     taskType: node.taskDetail?.taskType ?? null,
-    storyPoints: node.taskDetail?.storyPoints ?? null
+    storyPoints: node.taskDetail?.storyPoints ?? null,
+    actualHours: node.timeEntries.reduce((acc, entry) => acc + Number(entry.hours), 0),
+    documents: node.attachments.length
   }));
 
   return res.json({
