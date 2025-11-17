@@ -1,4 +1,4 @@
-﻿# Arquitetura da Plataforma G&P
+# Arquitetura da Plataforma G&P
 
 ## Visão Geral
 - **Frontend (apps/front)**: React + Vite + Supabase Realtime para dashboards, Kanban e Gantt.

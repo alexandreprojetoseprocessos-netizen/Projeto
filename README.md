@@ -1,4 +1,4 @@
-﻿# 🧭 G&P — Sistema de Gestão de Projetos
+# 🧭 G&P — Sistema de Gestão de Projetos
 
 Monorepositório que reúne API, frontend e camada de banco (Prisma) para a plataforma de gestão de projetos profissionais integrada ao Supabase e GitHub.
 

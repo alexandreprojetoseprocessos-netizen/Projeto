@@ -1,6 +1,6 @@
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, BarChart, Bar } from "recharts";
-import { useEffect, useMemo, useState, useCallback, type FormEvent } from "react";
+import { Fragment, useEffect, useMemo, useState, useCallback, type FormEvent, type MouseEvent } from "react";
 import { ProjectPortfolio, type PortfolioProject } from "./ProjectPortfolio";
 import { NotFoundPage } from "./NotFoundPage";
 
@@ -136,7 +136,7 @@ type DashboardLayoutProps = {
   wbsError: string | null;
   onMoveNode: (id: string, parentId: string | null, position: number) => void;
   selectedNodeId: string | null;
-  onSelectNode: (nodeId: string) => void;
+  onSelectNode: (nodeId: string | null) => void;
   comments: any[];
   commentsError: string | null;
   onSubmitComment: (event: FormEvent<HTMLFormElement>) => void;
@@ -247,6 +247,81 @@ const KanbanBoard = ({
   );
 };
 
+
+
+
+const CalendarIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="3" y="5.5" width="18" height="15" rx="2" ry="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    <line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" strokeWidth="1.5" />
+    <line x1="8" y1="3" x2="8" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <line x1="16" y1="3" x2="16" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+const FolderIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      d="M3 7.5a2.5 2.5 0 012.5-2.5H10l2.3 2.3c.3.3.7.5 1.1.5h7.1A1.5 1.5 0 0122 8.8v8.2A3 3 0 0119 20H5a3 3 0 01-3-3Z"
+      fill="currentColor"
+      opacity="0.15"
+    />
+    <path
+      d="M4.5 6H10a2 2 0 011.4.6l1.2 1.3c.4.4.9.6 1.4.6h5.7A1.5 1.5 0 0120 10v7a3.5 3.5 0 01-3.5 3.5h-11A3.5 3.5 0 012 17V9.5A3.5 3.5 0 015.5 6Z"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const TaskIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="4" y="6" width="16" height="12" rx="2" ry="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M8 10h8M8 14h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+const MoreIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="5" cy="12" r="1.6" fill="currentColor" />
+    <circle cx="12" cy="12" r="1.6" fill="currentColor" />
+    <circle cx="19" cy="12" r="1.6" fill="currentColor" />
+  </svg>
+);
+
+const DetailsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      d="M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1zm7 4v6m0-6V8m0 0h.01M7 12h4m-4 4h10"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+type StatusTone = "success" | "info" | "neutral" | "danger" | "warning";
+
+const statusDictionary: Record<string, { label: string; tone: StatusTone }> = {
+  DONE: { label: "Finalizado", tone: "success" },
+  COMPLETED: { label: "Finalizado", tone: "success" },
+  FINISHED: { label: "Finalizado", tone: "success" },
+  IN_PROGRESS: { label: "Em andamento", tone: "info" },
+  WORKING: { label: "Em andamento", tone: "info" },
+  BACKLOG: { label: "Não iniciado", tone: "neutral" },
+  PLANNED: { label: "Não iniciado", tone: "neutral" },
+  NOT_STARTED: { label: "Não iniciado", tone: "neutral" },
+  WAITING: { label: "Não iniciado", tone: "neutral" },
+  LATE: { label: "Em atraso", tone: "danger" },
+  OVERDUE: { label: "Em atraso", tone: "danger" },
+  AT_RISK: { label: "Em risco", tone: "warning" },
+  BLOCKED: { label: "Em risco", tone: "warning" }
+};
+
 const WbsTreeView = ({
   nodes,
   onMove: _onMove,
@@ -256,26 +331,82 @@ const WbsTreeView = ({
   nodes: any[];
   onMove: (id: string, parentId: string | null, position: number) => void;
   selectedNodeId: string | null;
-  onSelect: (nodeId: string) => void;
+  onSelect: (nodeId: string | null) => void;
 }) => {
-  if (!nodes.length) return <p className="muted">Nenhum item cadastrado.</p>;
-
-  const buildRows = (tree: any[], path: number[] = []): Array<{ node: any; displayId: string; level: number }> =>
-    tree.flatMap((node, index) => {
-      const marker = [...path, index + 1];
-      const children = Array.isArray(node.children) ? node.children : [];
-      return [
-        {
-          node,
-          displayId: marker.join("."),
-          level: marker.length - 1
-        },
-        ...buildRows(children, marker)
-      ];
-    });
-
-  const rows = buildRows(nodes);
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   void _onMove;
+
+  type Row = {
+    node: any;
+    displayId: string;
+    level: number;
+    parentId: string | null;
+    hasChildren: boolean;
+  };
+
+  const allRows = useMemo(() => {
+    const buildRows = (tree: any[], marker: number[] = [], parentId: string | null = null, level = 0): Row[] =>
+      tree.flatMap((node, index) => {
+        const wbsMarker = [...marker, index + 1];
+        const children = Array.isArray(node.children) ? node.children : [];
+        const current: Row = {
+          node,
+          displayId: wbsMarker.join("."),
+          level,
+          parentId,
+          hasChildren: children.length > 0
+        };
+        return [current, ...buildRows(children, wbsMarker, node.id, level + 1)];
+      });
+
+    return buildRows(nodes);
+  }, [nodes]);
+
+  const rowMap = useMemo(() => {
+    const map = new Map<string, Row>();
+    allRows.forEach((row) => map.set(row.node.id, row));
+    return map;
+  }, [allRows]);
+
+  const progressMap = useMemo(() => {
+    const cache = new Map<string, number>();
+    const compute = (node: any): number => {
+      if (cache.has(node.id)) return cache.get(node.id)!;
+      let value = 0;
+      if (typeof node.progress === "number" && Number.isFinite(node.progress)) {
+        value = Math.max(0, Math.min(100, Math.round(node.progress)));
+      } else if (Array.isArray(node.children) && node.children.length) {
+        const total = node.children.reduce((sum: number, child: any) => sum + compute(child), 0);
+        value = node.children.length ? Math.round(total / node.children.length) : 0;
+      }
+      cache.set(node.id, value);
+      return value;
+    };
+    nodes.forEach((node) => compute(node));
+    return cache;
+  }, [nodes]);
+
+  const visibleRows = useMemo(() => {
+    return allRows.filter((row) => {
+      if (row.level === 0) return true;
+      let parentId = row.parentId;
+      while (parentId) {
+        const parentRow = rowMap.get(parentId);
+        if (!parentRow) break;
+        const isExpanded = expandedNodes[parentId] ?? parentRow.level < 1;
+        if (!isExpanded) return false;
+        parentId = parentRow.parentId;
+      }
+      return true;
+    });
+  }, [allRows, rowMap, expandedNodes]);
+
+  const resolveStatus = (status?: string | null) => {
+    if (!status) return { label: "Não iniciado", tone: "neutral" as StatusTone };
+    const normalized = status.toUpperCase();
+    return statusDictionary[normalized] ?? { label: status, tone: "neutral" };
+  };
 
   const formatDuration = (start?: string | null, end?: string | null) => {
     if (!start || !end) return "—";
@@ -286,120 +417,348 @@ const WbsTreeView = ({
     return `${diff}d`;
   };
 
-  const getStatusStyles = (status?: string | null) => {
-    if (!status) {
-      return { backgroundColor: "#E5E7EB", color: "#374151" };
-    }
-    const normalized = status.toUpperCase();
-    const map: Record<string, { bg: string; color: string }> = {
-      DONE: { bg: "#dcfce7", color: "#166534" },
-      COMPLETED: { bg: "#dcfce7", color: "#166534" },
-      IN_PROGRESS: { bg: "#dbeafe", color: "#1d4ed8" },
-      PLANNED: { bg: "#e0e7ff", color: "#4338ca" },
-      AT_RISK: { bg: "#fee2e2", color: "#b91c1c" },
-      BLOCKED: { bg: "#fee2e2", color: "#b91c1c" }
-    };
-    const styles = map[normalized] ?? { bg: "#E5E7EB", color: "#374151" };
-    return { backgroundColor: styles.bg, color: styles.color };
+  const selectedRow = selectedNodeId ? rowMap.get(selectedNodeId) ?? null : null;
+  const selectedNode = selectedRow?.node ?? null;
+  const selectedStatus = resolveStatus(selectedNode?.status);
+  const selectedProgress = selectedNode ? progressMap.get(selectedNode.id) ?? 0 : 0;
+  const selectedChecklist = Array.isArray(selectedNode?.checklist) ? selectedNode.checklist : [];
+
+  const ensureAncestorsExpanded = useCallback(
+    (nodeId: string) => {
+      setExpandedNodes((current) => {
+        const next = { ...current };
+        let parentId = rowMap.get(nodeId)?.parentId ?? null;
+        while (parentId) {
+          next[parentId] = true;
+          parentId = rowMap.get(parentId)?.parentId ?? null;
+        }
+        return next;
+      });
+    },
+    [rowMap]
+  );
+
+  const handleToggle = (event: MouseEvent<HTMLButtonElement>, nodeId: string, level: number) => {
+    event.stopPropagation();
+    setExpandedNodes((prev) => ({
+      ...prev,
+      [nodeId]: !(prev[nodeId] ?? level < 1)
+    }));
   };
 
+  const handleRowSelect = (nodeId: string) => {
+    const isSame = selectedNodeId === nodeId;
+    onSelect(isSame ? null : nodeId);
+    setOpenMenuId(null);
+  };
+
+  const handleDependencyClick = (event: MouseEvent<HTMLButtonElement>, dependencyId: string) => {
+    event.stopPropagation();
+    ensureAncestorsExpanded(dependencyId);
+    onSelect(dependencyId);
+    setOpenMenuId(null);
+  };
+
+  const handleMenuToggle = (event: MouseEvent<HTMLButtonElement>, nodeId: string) => {
+    event.stopPropagation();
+    setOpenMenuId((current) => (current === nodeId ? null : nodeId));
+  };
+
+  const handleMenuAction = (event: MouseEvent<HTMLButtonElement>, label: string, node: any) => {
+    event.stopPropagation();
+    window.alert(`Ação "${label}" para ${node.title} disponível em breve.`);
+    setOpenMenuId(null);
+  };
+
+  const handleCloseDetails = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onSelect(null);
+    setOpenMenuId(null);
+  };
+
+  const handleDetailsButton = (event: MouseEvent<HTMLButtonElement>, nodeId: string) => {
+    event.stopPropagation();
+    handleRowSelect(nodeId);
+  };
+
+  if (!nodes.length) {
+    return <p className="muted">Nenhum item cadastrado.</p>;
+  }
+
   return (
-    <div
-      style={{
-        overflowX: "auto",
-        border: "1px solid #e5e7eb",
-        borderRadius: "12px",
-        backgroundColor: "#fff"
-      }}
-    >
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ backgroundColor: "#f9fafb", textAlign: "left", fontSize: "0.875rem", color: "#6b7280" }}>
-            <th style={{ padding: "12px" }}>ID</th>
-            <th style={{ padding: "12px" }}>Nível</th>
-            <th style={{ padding: "12px" }}>Nome da Tarefa</th>
-            <th style={{ padding: "12px" }}>Situação</th>
-            <th style={{ padding: "12px" }}>Duração</th>
-            <th style={{ padding: "12px" }}>Início</th>
-            <th style={{ padding: "12px" }}>Término</th>
-            <th style={{ padding: "12px" }}>Responsável</th>
-            <th style={{ padding: "12px" }}>Progresso</th>
-            <th style={{ padding: "12px" }}>Depend.</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            const progress = typeof row.node.progress === "number" ? Math.max(0, Math.min(100, row.node.progress)) : 0;
-            const statusStyles = getStatusStyles(row.node.status);
-            const isActive = selectedNodeId === row.node.id;
-            return (
-              <tr
-                key={row.node.id}
-                onClick={() => onSelect(row.node.id)}
-                style={{
-                  backgroundColor: isActive ? "#eef2ff" : "transparent",
-                  cursor: "pointer",
-                  fontSize: "0.95rem"
-                }}
-              >
-                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>{row.displayId}</td>
-                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>{row.level}</td>
-                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6", paddingLeft: `${row.level * 20}px` }}>
-                  <strong>{row.node.title}</strong>
-                </td>
-                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>
-                  <span
-                    style={{
-                      padding: "2px 10px",
-                      borderRadius: "999px",
-                      fontSize: "0.75rem",
-                      fontWeight: 500,
-                      backgroundColor: statusStyles.backgroundColor,
-                      color: statusStyles.color
-                    }}
-                  >
-                    {row.node.status ?? "—"}
-                  </span>
-                </td>
-                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>
-                  {formatDuration(row.node.startDate, row.node.endDate)}
-                </td>
-                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>{formatDate(row.node.startDate)}</td>
-                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>{formatDate(row.node.endDate)}</td>
-                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>{row.node.owner?.name ?? "—"}</td>
-                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <div
-                      style={{
-                        flexGrow: 1,
-                        height: "6px",
-                        backgroundColor: "#e5e7eb",
-                        borderRadius: "999px"
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "block",
-                          height: "100%",
-                          width: `${progress}%`,
-                          borderRadius: "999px",
-                          backgroundColor: "#3b82f6"
-                        }}
-                      />
-                    </div>
-                    <small style={{ color: "#374151" }}>{progress}%</small>
-                  </div>
-                </td>
-                <td style={{ padding: "12px", borderTop: "1px solid #f3f4f6" }}>—</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="wbs-table-card">
+      <div className="wbs-table-scroll">
+        <table className="wbs-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nível</th>
+              <th>Nome da tarefa</th>
+              <th>Status</th>
+              <th>Duração</th>
+              <th>Início</th>
+              <th>Término</th>
+              <th>Responsável</th>
+              <th>Progresso</th>
+              <th>Dependências</th>
+              <th>Detalhes</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((row) => {
+              const progress = progressMap.get(row.node.id) ?? 0;
+              const status = resolveStatus(row.node.status);
+              const isExpanded = row.hasChildren ? expandedNodes[row.node.id] ?? row.level < 1 : false;
+              const isActive = selectedNodeId === row.node.id;
+              const ownerName = row.node.owner?.name ?? null;
+              const ownerEmail = row.node.owner?.email ?? null;
+              const initials = ownerName
+                ? ownerName
+                    .split(" ")
+                    .map((part: string) => part[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase()
+                : null;
+              const dependencyBadges = Array.isArray(row.node.dependencies) ? row.node.dependencies : [];
+
+              return (
+                <Fragment key={row.node.id}>
+                  <tr className={`wbs-row ${isActive ? "is-active" : ""}`}>
+                    <td>{row.displayId}</td>
+                    <td>
+                      <span className="wbs-level-tag">Nível {row.level}</span>
+                    </td>
+                    <td>
+                      <div className={`wbs-task-name ${row.level <= 1 ? "is-phase" : ""}`} style={{ paddingLeft: `${row.level * 18}px` }}>
+                        {row.hasChildren ? (
+                          <button
+                            type="button"
+                            className="wbs-toggle"
+                            onClick={(event) => handleToggle(event, row.node.id, row.level)}
+                            aria-label={isExpanded ? "Recolher subtarefas" : "Expandir subtarefas"}
+                          >
+                            {isExpanded ? "▾" : "▸"}
+                          </button>
+                        ) : (
+                          <span className="wbs-toggle placeholder" />
+                        )}
+                        <span className={`wbs-node-icon ${row.hasChildren ? "is-folder" : "is-task"}`}>
+                          {row.hasChildren ? <FolderIcon /> : <TaskIcon />}
+                        </span>
+                        <div>
+                          <strong>{row.node.title}</strong>
+                          {row.node.description && <small>{row.node.description}</small>}
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`wbs-status wbs-status--${status.tone}`}>{status.label}</span>
+                    </td>
+                    <td>
+                      <span className="wbs-chip">{formatDuration(row.node.startDate, row.node.endDate)}</span>
+                    </td>
+                    <td>
+                      <span className="wbs-date-chip" title={row.node.startDate ?? "Sem data definida"}>
+                        <CalendarIcon />
+                        {formatDate(row.node.startDate)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="wbs-date-chip" title={row.node.endDate ?? "Sem data definida"}>
+                        <CalendarIcon />
+                        {formatDate(row.node.endDate)}
+                      </span>
+                    </td>
+                    <td>
+                      {ownerName ? (
+                        <div className="wbs-owner">
+                          <span className="wbs-owner__avatar">{initials}</span>
+                          <div>
+                            <strong>{ownerName}</strong>
+                            {ownerEmail && <small>{ownerEmail}</small>}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="muted">Sem responsável</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="wbs-progress">
+                        <div className="wbs-progress__track">
+                          <span className="wbs-progress__bar" style={{ width: `${progress}%` }} />
+                        </div>
+                        <strong>{progress}%</strong>
+                      </div>
+                    </td>
+                    <td>
+                      {dependencyBadges.length ? (
+                        <div className="wbs-dependencies">
+                          {dependencyBadges.map((dependencyId: string) => {
+                            const dependencyRow = rowMap.get(dependencyId);
+                            if (!dependencyRow) {
+                              return (
+                                <span key={`${row.node.id}-${dependencyId}`} className="wbs-chip muted">
+                                  —
+                                </span>
+                              );
+                            }
+                            return (
+                              <button
+                                key={`${row.node.id}-${dependencyId}`}
+                                type="button"
+                                className="wbs-chip is-link"
+                                title={`Depende de ${dependencyRow.node.title}`}
+                                onClick={(event) => handleDependencyClick(event, dependencyId)}
+                              >
+                                {dependencyRow.displayId}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <span className="muted">Sem dependências</span>
+                      )}
+                    </td>
+                    <td className="wbs-details-cell">
+                      <button
+                        type="button"
+                        className={`wbs-details-button ${isActive ? "is-active" : ""}`}
+                        onClick={(event) => handleDetailsButton(event, row.node.id)}
+                      >
+                        <DetailsIcon />
+                        Ver detalhes
+                      </button>
+                    </td>
+                    <td>
+                      <div className="wbs-actions">
+                        <button
+                          type="button"
+                          className="wbs-actions__trigger"
+                          onClick={(event) => handleMenuToggle(event, row.node.id)}
+                          aria-label="Opções da tarefa"
+                        >
+                          <MoreIcon />
+                        </button>
+                        {openMenuId === row.node.id && (
+                          <div className="wbs-actions__menu">
+                            {[
+                              "Editar tarefa",
+                              "Mover nível",
+                              "Adicionar subtarefa",
+                              "Duplicar",
+                              "Excluir"
+                            ].map((label) => (
+                              <button type="button" key={label} onClick={(event) => handleMenuAction(event, label, row.node)}>
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                  {isActive && selectedNode && (
+                    <tr className="wbs-detail-row">
+                      <td colSpan={11}>
+                        <div className="wbs-detail-card">
+                          <header className="wbs-detail-card__header">
+                            <div>
+                              <span className="wbs-level-tag">{selectedRow?.displayId}</span>
+                              <h4>{selectedNode.title}</h4>
+                              <span className={`wbs-status wbs-status--${selectedStatus.tone}`}>{selectedStatus.label}</span>
+                            </div>
+                            <button type="button" className="ghost-button" onClick={handleCloseDetails}>
+                              Fechar
+                            </button>
+                          </header>
+                          <p className="wbs-detail-card__description">
+                            {selectedNode.description ?? "Nenhuma descrição registrada para esta tarefa."}
+                          </p>
+                          <div className="wbs-detail-card__grid">
+                            <div>
+                              <span className="subtext">Início</span>
+                              <strong>{formatDate(selectedNode.startDate)}</strong>
+                            </div>
+                            <div>
+                              <span className="subtext">Término</span>
+                              <strong>{formatDate(selectedNode.endDate)}</strong>
+                            </div>
+                            <div>
+                              <span className="subtext">Duração</span>
+                              <strong>{formatDuration(selectedNode.startDate, selectedNode.endDate)}</strong>
+                            </div>
+                            <div>
+                              <span className="subtext">Progresso</span>
+                              <strong>{selectedProgress}%</strong>
+                            </div>
+                            <div>
+                              <span className="subtext">Horas registradas</span>
+                              <strong>{selectedNode.actualHours ?? 0}h</strong>
+                            </div>
+                            <div>
+                              <span className="subtext">Documentos</span>
+                              <strong>{selectedNode.documents ?? 0}</strong>
+                            </div>
+                          </div>
+                          <div className="wbs-detail-card__responsible">
+                            <h5>Responsável</h5>
+                            {selectedNode.owner ? (
+                              <div className="wbs-owner">
+                                <span className="wbs-owner__avatar">
+                                  {selectedNode.owner.name
+                                    ?.split(" ")
+                                    .map((part: string) => part[0])
+                                    .join("")
+                                    .slice(0, 2)
+                                    .toUpperCase()}
+                                </span>
+                                <div>
+                                  <strong>{selectedNode.owner.name}</strong>
+                                  {selectedNode.owner.email && <small>{selectedNode.owner.email}</small>}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="muted">Defina um responsável para acompanhar esta atividade.</p>
+                            )}
+                          </div>
+                          <div className="wbs-detail-card__checklist">
+                            <h5>Checklist</h5>
+                            {selectedChecklist.length ? (
+                              <ul className="wbs-checklist">
+                                {selectedChecklist.map((item: any) => (
+                                  <li key={item.id ?? item.title}>
+                                    <input type="checkbox" checked={Boolean(item.done)} readOnly />
+                                    <span>{item.title}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="muted">Nenhum item de checklist cadastrado.</p>
+                            )}
+                          </div>
+                          <div className="wbs-detail-card__documents">
+                            <h5>Documentos</h5>
+                            <p className="muted">
+                              {selectedNode.documents
+                                ? `${selectedNode.documents} arquivos vinculados a esta entrega.`
+                                : "Sem anexos até o momento."}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
-
 const GanttTimeline = ({ tasks, milestones }: { tasks: any[]; milestones: any[] }) => {
   if (!tasks.length) return <p className="muted">Nenhuma tarefa com datas definidas.</p>;
 
@@ -497,7 +856,7 @@ type ProjectDetailsTabsProps = {
   wbsError: string | null;
   onMoveNode: (nodeId: string, parentId: string | null, position: number) => void;
   selectedNodeId: string | null;
-  onSelectNode: (nodeId: string) => void;
+  onSelectNode: (nodeId: string | null) => void;
   comments: any[];
   commentsError: string | null;
   onSubmitComment: (event: FormEvent<HTMLFormElement>) => void;
@@ -932,7 +1291,9 @@ const ProjectDetailsTabs = ({
     <div className="tab-panel">
       {wbsError && <p className="error-text">{wbsError}</p>}
       <WbsTreeView nodes={wbsNodes} onMove={onMoveNode} selectedNodeId={selectedNodeId} onSelect={onSelectNode} />
-      <p className="muted">Selecione um item para comentar ou registrar horas na aba de atividade.</p>
+      <p className="muted">
+        Selecione uma tarefa para visualizar detalhes, adicionar comentários, anexar arquivos ou registrar horas.
+      </p>
     </div>
   );
 
@@ -2050,7 +2411,7 @@ export const DashboardLayout = ({
           <input type="search" placeholder="Buscar projetos, tarefas, pessoas..." />
           <div className="topbar-actions">
             <button type="button">?</button>
-            <button type="button">🔔</button>
+            <button type="button">ðŸ””</button>
             <div className="avatar">{userEmail?.slice(0, 2).toUpperCase()}</div>
           </div>
         </header>

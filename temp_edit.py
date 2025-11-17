@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 from pathlib import Path
 path = Path('apps/front/src/App.tsx')
 text = path.read_text(encoding='utf-8')

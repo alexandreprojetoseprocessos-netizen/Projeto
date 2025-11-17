@@ -23,6 +23,9 @@ type WbsNode = {
   owner?: { id: string; name: string; email?: string | null } | null;
   actualHours?: number | null;
   documents?: number | null;
+  description?: string | null;
+  progress?: number | null;
+  dependencies?: string[] | null;
 };
 type BoardResponse = { columns: BoardColumn[] };
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";

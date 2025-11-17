@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { prisma } from "@gestao/database";
 
 export const healthRouter = Router();

@@ -1,4 +1,4 @@
-﻿import { createApp } from "./app";
+import { createApp } from "./app";
 import { config } from "./config/env";
 import { logger } from "./config/logger";
 
