@@ -3,8 +3,9 @@ import { Tree } from "@minoru/react-dnd-treeview";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, BarChart, Bar } from "recharts";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ProjectPortfolio, type PortfolioProject } from "./ProjectPortfolio";
+import { NotFoundPage } from "./NotFoundPage";
 
 const formatDate = (value?: string | null) => {
   if (!value) return "N/A";
@@ -19,6 +20,126 @@ const sidebarNavigation = [
   { id: "templates", label: "Templates" },
   { id: "settings", label: "Configurações" }
 ];
+
+export type CreateProjectPayload = {
+  name: string;
+  clientName: string;
+  budget: number;
+  repositoryUrl?: string;
+  startDate?: string;
+  endDate?: string;
+  description?: string;
+  teamMembers: string[];
+};
+
+type TemplateTreeNode = {
+  id: string;
+  title: string;
+  children?: TemplateTreeNode[];
+};
+
+type TemplateCustomField = {
+  id: string;
+  label: string;
+  type: "text" | "number" | "date" | "select";
+  required?: boolean;
+};
+
+export type TemplateNodeInput = {
+  title: string;
+  children?: TemplateNodeInput[];
+};
+
+export type TemplateCustomFieldInput = {
+  id?: string;
+  label: string;
+  type: "text" | "number" | "date" | "select";
+  required?: boolean;
+};
+
+export type TemplateEditorPayload = {
+  name: string;
+  type: string;
+  clientName?: string;
+  repositoryUrl?: string;
+  budget?: number;
+  columns: string[];
+  wbs: TemplateNodeInput[];
+  customFields: TemplateCustomFieldInput[];
+};
+
+type Organization = { id: string; name: string; role: string };
+type Project = { id: string; name: string };
+
+const createEmptyProjectForm = () => ({
+  name: "",
+  clientName: "",
+  budget: "",
+  repositoryUrl: "",
+  startDate: "",
+  endDate: "",
+  description: "",
+  teamMembers: ""
+});
+
+type DashboardLayoutProps = {
+  userEmail: string | null;
+  organizations: Organization[];
+  selectedOrganizationId: string;
+  onOrganizationChange: (organizationId: string) => void;
+  orgError: string | null;
+  onSignOut: () => void;
+  projects: Project[];
+  selectedProjectId: string;
+  onProjectChange: (projectId: string) => void;
+  projectsError: string | null;
+  filters: { rangeDays: number };
+  onRangeChange: (rangeDays: number) => void;
+  summary: any | null;
+  summaryError: string | null;
+  members: any[];
+  membersError: string | null;
+  attachments: any[];
+  attachmentsError: string | null;
+  attachmentsLoading: boolean;
+  reportMetrics: any | null;
+  reportMetricsError: string | null;
+  reportMetricsLoading: boolean;
+  boardColumns: any[];
+  boardError: string | null;
+  onCreateTask: (event: FormEvent<HTMLFormElement>) => void;
+  onDragTask: (result: DropResult) => void;
+  newTaskTitle: string;
+  onTaskTitleChange: (value: string) => void;
+  newTaskColumn: string;
+  onTaskColumnChange: (value: string) => void;
+  wbsNodes: any[];
+  wbsError: string | null;
+  onMoveNode: (id: string, parentId: string | null, position: number) => void;
+  selectedNodeId: string | null;
+  onSelectNode: (nodeId: string) => void;
+  comments: any[];
+  commentsError: string | null;
+  onSubmitComment: (event: FormEvent<HTMLFormElement>) => void;
+  commentBody: string;
+  onCommentBodyChange: (value: string) => void;
+  timeEntryDate: string;
+  timeEntryHours: string;
+  timeEntryDescription: string;
+  onTimeEntryDateChange: (value: string) => void;
+  onTimeEntryHoursChange: (value: string) => void;
+  onTimeEntryDescriptionChange: (value: string) => void;
+  onLogTime: (event: FormEvent<HTMLFormElement>) => void;
+  ganttTasks: any[];
+  ganttMilestones: any[];
+  ganttError: string | null;
+  portfolio: PortfolioProject[];
+  portfolioError: string | null;
+  portfolioLoading: boolean;
+  onExportPortfolio?: () => void;
+  onCreateProject: (payload: CreateProjectPayload) => Promise<void>;
+  onSaveTemplate: (templateId: string, payload: TemplateEditorPayload) => Promise<void>;
+};
 
 const KanbanBoard = ({
   columns,
@@ -1152,7 +1273,11 @@ const ReportsPanel = ({
   );
 };
 
-const SettingsPanel = () => {
+const SettingsPanel = ({
+  onSaveTemplate
+}: {
+  onSaveTemplate: (templateId: string, payload: TemplateEditorPayload) => Promise<void>;
+}) => {
   const [activeSection, setActiveSection] = useState("profile");
 
   const sections = [
@@ -1282,9 +1407,7 @@ const SettingsPanel = () => {
             </div>
           )}
 
-          {activeSection === "templates" && (
-            <TemplatesPanel />
-          )}
+          {activeSection === "templates" && <TemplatesPanel onSaveTemplate={onSaveTemplate} />}
 
           {activeSection === "integrations" && (
             <div className="settings-form">
@@ -1373,14 +1496,35 @@ export const DashboardLayout = ({
   portfolio,
   portfolioError,
   portfolioLoading,
-  onExportPortfolio
-}: any) => {
+  onExportPortfolio,
+  onCreateProject,
+  onSaveTemplate
+}: DashboardLayoutProps) => {
   const flattenedTasks = boardColumns.flatMap((column: any) =>
     column.tasks.map((task: any) => ({ ...task, column: column.label }))
   );
   const myTasks = flattenedTasks.slice(0, 6);
   const projectMeta = (portfolio as PortfolioProject[]).find((project) => project.projectId === selectedProjectId) ?? null;
   const [activeSidebarView, setActiveSidebarView] = useState("dashboard");
+  const [isProjectModalOpen, setProjectModalOpen] = useState(false);
+  const [projectForm, setProjectForm] = useState(createEmptyProjectForm());
+  const [projectModalError, setProjectModalError] = useState<string | null>(null);
+  const [projectModalLoading, setProjectModalLoading] = useState(false);
+  const [projectToast, setProjectToast] = useState<string | null>(null);
+  const [showNotFound, setShowNotFound] = useState(false);
+  useEffect(() => {
+    if (selectedProjectId && !projectMeta && !portfolioLoading) {
+      setShowNotFound(true);
+    } else {
+      setShowNotFound(false);
+    }
+  }, [selectedProjectId, projectMeta, portfolioLoading]);
+
+  useEffect(() => {
+    if (!projectToast) return;
+    const timeout = setTimeout(() => setProjectToast(null), 4000);
+    return () => clearTimeout(timeout);
+  }, [projectToast]);
 
   const kpis = [
     {
@@ -1404,6 +1548,55 @@ export const DashboardLayout = ({
       sub: "Últimos 14 dias"
     }
   ];
+
+  const handleProjectFieldChange = (field: keyof ReturnType<typeof createEmptyProjectForm>, value: string) =>
+    setProjectForm((prev) => ({ ...prev, [field]: value }));
+
+  const handleOpenProjectModal = () => {
+    setProjectModalError(null);
+    setProjectModalOpen(true);
+  };
+
+  const handleCloseProjectModal = () => {
+    setProjectModalOpen(false);
+  };
+
+  const handleCreateProjectSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setProjectModalError(null);
+    if (!projectForm.name.trim()) {
+      setProjectModalError("O nome do projeto é obrigatório.");
+      return;
+    }
+    if (!projectForm.clientName.trim()) {
+      setProjectModalError("Informe o cliente responsável.");
+      return;
+    }
+
+    setProjectModalLoading(true);
+    try {
+      await onCreateProject({
+        name: projectForm.name.trim(),
+        clientName: projectForm.clientName.trim(),
+        budget: Number(projectForm.budget) || 0,
+        repositoryUrl: projectForm.repositoryUrl.trim() || undefined,
+        startDate: projectForm.startDate || undefined,
+        endDate: projectForm.endDate || undefined,
+        description: projectForm.description.trim() || undefined,
+        teamMembers: projectForm.teamMembers
+          .split(",")
+          .map((member) => member.trim())
+          .filter(Boolean)
+      });
+      setProjectToast("Projeto criado com sucesso.");
+      setProjectForm(createEmptyProjectForm());
+      setProjectModalOpen(false);
+    } catch (error) {
+      setProjectModalError(error instanceof Error ? error.message : "Erro ao criar projeto");
+    } finally {
+      setProjectModalLoading(false);
+    }
+  };
 
   const heroSection = (
     <section className="hero-card">
@@ -1437,7 +1630,7 @@ export const DashboardLayout = ({
         )}
       </div>
       <div className="hero-meta">
-        <button type="button" className="secondary-button">
+        <button type="button" className="secondary-button" onClick={handleOpenProjectModal}>
           Criar projeto
         </button>
         <button type="button" className="ghost-button" onClick={onSignOut}>
@@ -1534,6 +1727,19 @@ export const DashboardLayout = ({
     <ReportsPanel metrics={reportMetrics} metricsError={reportMetricsError} metricsLoading={reportMetricsLoading} />
   );
 
+  const handleBackToDashboard = () => {
+    setActiveSidebarView("dashboard");
+    if (selectedProjectId) {
+      onProjectChange("");
+    }
+    setShowNotFound(false);
+  };
+
+  const handleGoToProjects = () => {
+    setActiveSidebarView("projects");
+    setShowNotFound(false);
+  };
+
   const getMainContent = () => {
     switch (activeSidebarView) {
       case "projects":
@@ -1543,9 +1749,9 @@ export const DashboardLayout = ({
       case "reports":
         return renderReportsContent();
       case "templates":
-        return <TemplatesPanel />;
+        return <TemplatesPanel onSaveTemplate={onSaveTemplate} />;
       case "settings":
-        return <SettingsPanel />;
+        return <SettingsPanel onSaveTemplate={onSaveTemplate} />;
       case "dashboard":
       default:
         return renderDashboardContent();
@@ -1591,48 +1797,428 @@ export const DashboardLayout = ({
         <main>
           {heroSection}
 
+          {projectToast && <p className="success-text">{projectToast}</p>}
+
           {orgError && <p className="error-text">{orgError}</p>}
           {projectsError && <p className="error-text">{projectsError}</p>}
 
-          {getMainContent()}
+          {showNotFound ? (
+            <NotFoundPage onBackToDashboard={handleBackToDashboard} onViewProjects={handleGoToProjects} />
+          ) : (
+            getMainContent()
+          )}
         </main>
+
+        {isProjectModalOpen && (
+          <div className="modal-overlay" role="dialog" aria-modal="true">
+            <div className="modal">
+              <header className="modal-header">
+                <div>
+                  <p className="eyebrow">Novo projeto</p>
+                  <h3>Planeje um novo trabalho</h3>
+                  <p className="subtext">Informe dados básicos para criarmos o projeto no portfólio.</p>
+                </div>
+                <button type="button" className="ghost-button" onClick={handleCloseProjectModal}>
+                  Fechar
+                </button>
+              </header>
+
+              <form className="modal-form" onSubmit={handleCreateProjectSubmit}>
+                <label>
+                  Nome do projeto
+                  <input
+                    type="text"
+                    value={projectForm.name}
+                    onChange={(event) => handleProjectFieldChange("name", event.target.value)}
+                    placeholder="Implementação ERP 2025"
+                    required
+                  />
+                </label>
+                <label>
+                  Cliente / unidade
+                  <input
+                    type="text"
+                    value={projectForm.clientName}
+                    onChange={(event) => handleProjectFieldChange("clientName", event.target.value)}
+                    placeholder="Corp Holding"
+                    required
+                  />
+                </label>
+                <label>
+                  Orçamento aprovado (R$)
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={projectForm.budget}
+                    onChange={(event) => handleProjectFieldChange("budget", event.target.value)}
+                    placeholder="250000"
+                  />
+                </label>
+                <label>
+                  Repositório GitHub
+                  <input
+                    type="url"
+                    value={projectForm.repositoryUrl}
+                    onChange={(event) => handleProjectFieldChange("repositoryUrl", event.target.value)}
+                    placeholder="https://github.com/org/projeto"
+                  />
+                </label>
+                <div className="modal-grid">
+                  <label>
+                    Início planejado
+                    <input
+                      type="date"
+                      value={projectForm.startDate}
+                      onChange={(event) => handleProjectFieldChange("startDate", event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Conclusão prevista
+                    <input
+                      type="date"
+                      value={projectForm.endDate}
+                      onChange={(event) => handleProjectFieldChange("endDate", event.target.value)}
+                    />
+                  </label>
+                </div>
+                <label>
+                  Equipe (e-mails separados por vírgula)
+                  <textarea
+                    value={projectForm.teamMembers}
+                    onChange={(event) => handleProjectFieldChange("teamMembers", event.target.value)}
+                    placeholder="ana@empresa.com, joao@empresa.com"
+                  />
+                </label>
+                <label>
+                  Descrição
+                  <textarea
+                    value={projectForm.description}
+                    onChange={(event) => handleProjectFieldChange("description", event.target.value)}
+                    placeholder="Objetivos, entregas e premissas iniciais..."
+                  />
+                </label>
+
+                {projectModalError && <p className="error-text">{projectModalError}</p>}
+
+                <footer className="modal-actions">
+                  <button type="button" className="ghost-button" onClick={handleCloseProjectModal}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="primary-button" disabled={projectModalLoading}>
+                    {projectModalLoading ? "Enviando..." : "Criar projeto"}
+                  </button>
+                </footer>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 };
-const TemplatesPanel = () => {
+const TemplatesPanel = ({
+  onSaveTemplate
+}: {
+  onSaveTemplate: (templateId: string, payload: TemplateEditorPayload) => Promise<void>;
+}) => {
   const templates = [
     {
       id: "temp-pmo",
       name: "Projeto PMO",
-      type: "PMO / Governança",
+      type: "PMO / Governanca",
+      clientName: "Corp PMO",
+      repositoryUrl: "https://github.com/gp/templates-pmo",
+      defaultBudget: 250000,
       phases: 5,
       tasks: 42,
-      tags: ["PMO", "Governança", "Compliance"],
+      tags: ["PMO", "Governanca", "Compliance"],
       updatedAt: "2025-02-10",
-      columns: ["Backlog", "Planejamento", "Execução", "Aprovação", "Concluído"]
+      columns: ["Backlog", "Planejamento", "Execucao", "Aprovacao", "Concluido"],
+      wbs: [
+        {
+          id: "temp-pmo-1",
+          title: "Iniciacao",
+          children: [
+            { id: "temp-pmo-1-1", title: "Business case" },
+            { id: "temp-pmo-1-2", title: "Stakeholders" }
+          ]
+        },
+        {
+          id: "temp-pmo-2",
+          title: "Planejamento",
+          children: [
+            { id: "temp-pmo-2-1", title: "Plano do projeto" },
+            { id: "temp-pmo-2-2", title: "Estrategia de riscos" }
+          ]
+        }
+      ],
+      customFields: [
+        { id: "field-owner", label: "Patrocinador", type: "text", required: true },
+        { id: "field-budget", label: "Orcamento aprovado", type: "number" }
+      ]
     },
     {
       id: "temp-ti",
-      name: "Implantação de TI",
+      name: "Implantacao de TI",
       type: "Tecnologia",
+      clientName: "Squad Infra",
+      repositoryUrl: "https://github.com/gp/templates-ti",
+      defaultBudget: 180000,
       phases: 4,
       tasks: 30,
-      tags: ["Infra", "Segurança", "Deploy"],
+      tags: ["Infra", "Seguranca", "Deploy"],
       updatedAt: "2025-02-08",
-      columns: ["Backlog", "Planejamento", "Em andamento", "QA", "Done"]
+      columns: ["Backlog", "Planejamento", "Em andamento", "QA", "Done"],
+      wbs: [
+        {
+          id: "temp-ti-1",
+          title: "Discovery",
+          children: [
+            { id: "temp-ti-1-1", title: "Mapear sistemas" },
+            { id: "temp-ti-1-2", title: "Inventario de acessos" }
+          ]
+        },
+        {
+          id: "temp-ti-2",
+          title: "Deploy",
+          children: [
+            { id: "temp-ti-2-1", title: "Ambiente de staging" },
+            { id: "temp-ti-2-2", title: "Go live" }
+          ]
+        }
+      ],
+      customFields: [
+        { id: "field-env", label: "Ambiente alvo", type: "select" },
+        { id: "field-risk", label: "Nivel de risco", type: "select" }
+      ]
     },
     {
       id: "temp-mkt",
       name: "Campanha de Marketing",
       type: "Marketing",
+      clientName: "Equipe Growth",
+      repositoryUrl: "https://github.com/gp/templates-mkt",
+      defaultBudget: 120000,
       phases: 3,
       tasks: 24,
       tags: ["Growth", "Social", "Paid Media"],
       updatedAt: "2025-02-05",
-      columns: ["Ideias", "Criação", "Produção", "Publicação", "Mensuração"]
+      columns: ["Ideias", "Criacao", "Producao", "Publicacao", "Mensuracao"],
+      wbs: [
+        {
+          id: "temp-mkt-1",
+          title: "Briefing",
+          children: [
+            { id: "temp-mkt-1-1", title: "Mapear publico" },
+            { id: "temp-mkt-1-2", title: "Definir verba" }
+          ]
+        },
+        {
+          id: "temp-mkt-2",
+          title: "Execucao",
+          children: [
+            { id: "temp-mkt-2-1", title: "Pecas criativas" },
+            { id: "temp-mkt-2-2", title: "Veiculacao" }
+          ]
+        }
+      ],
+      customFields: [
+        { id: "field-channel", label: "Canal principal", type: "text" },
+        { id: "field-kpi", label: "KPI alvo", type: "text", required: true }
+      ]
     }
   ];
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0].id);
+  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId)!;
+
+  const cloneNodes = (nodes: TemplateTreeNode[]): TemplateTreeNode[] =>
+    nodes.map((node) => ({
+      ...node,
+      children: node.children ? cloneNodes(node.children) : []
+    }));
+
+  const [wbsDraft, setWbsDraft] = useState<TemplateTreeNode[]>(cloneNodes(selectedTemplate.wbs));
+  const [boardColumnsDraft, setBoardColumnsDraft] = useState<string[]>([...selectedTemplate.columns]);
+  const [customFieldsDraft, setCustomFieldsDraft] = useState<TemplateCustomField[]>(
+    selectedTemplate.customFields.map((field) => ({ ...field }))
+  );
+  const [templateMeta, setTemplateMeta] = useState({
+    name: selectedTemplate.name,
+    type: selectedTemplate.type,
+    clientName: selectedTemplate.clientName ?? "",
+    repositoryUrl: selectedTemplate.repositoryUrl ?? "",
+    budget: selectedTemplate.defaultBudget?.toString() ?? ""
+  });
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [templateModalError, setTemplateModalError] = useState<string | null>(null);
+  const [templateModalLoading, setTemplateModalLoading] = useState(false);
+  const [templateToast, setTemplateToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    setWbsDraft(cloneNodes(selectedTemplate.wbs));
+    setBoardColumnsDraft([...selectedTemplate.columns]);
+    setCustomFieldsDraft(selectedTemplate.customFields.map((field) => ({ ...field })));
+    setTemplateMeta({
+      name: selectedTemplate.name,
+      type: selectedTemplate.type,
+      clientName: selectedTemplate.clientName ?? "",
+      repositoryUrl: selectedTemplate.repositoryUrl ?? "",
+      budget: selectedTemplate.defaultBudget?.toString() ?? ""
+    });
+  }, [selectedTemplateId]);
+
+  useEffect(() => {
+    if (!templateToast) return;
+    const timeout = setTimeout(() => setTemplateToast(null), 4000);
+    return () => clearTimeout(timeout);
+  }, [templateToast]);
+
+  const createTreeNode = (title = "Nova etapa"): TemplateTreeNode => ({
+    id: `${selectedTemplateId}-${Date.now()}-${Math.round(Math.random() * 1000)}`,
+    title,
+    children: []
+  });
+
+  const updateNodeTitle = (nodes: TemplateTreeNode[], nodeId: string, value: string): TemplateTreeNode[] =>
+    nodes.map((node) => {
+      if (node.id === nodeId) {
+        return { ...node, title: value };
+      }
+      return {
+        ...node,
+        children: node.children ? updateNodeTitle(node.children, nodeId, value) : []
+      };
+    });
+
+  const addChildToTree = (nodes: TemplateTreeNode[], nodeId: string, child: TemplateTreeNode): TemplateTreeNode[] =>
+    nodes.map((node) => {
+      if (node.id === nodeId) {
+        return { ...node, children: [...(node.children ?? []), child] };
+      }
+      return {
+        ...node,
+        children: node.children ? addChildToTree(node.children, nodeId, child) : []
+      };
+    });
+
+  const removeNodeFromTree = (nodes: TemplateTreeNode[], nodeId: string): TemplateTreeNode[] =>
+    nodes
+      .filter((node) => node.id !== nodeId)
+      .map((node) => ({
+        ...node,
+        children: node.children ? removeNodeFromTree(node.children, nodeId) : []
+      }));
+
+  const handleNodeTitleChange = (nodeId: string, value: string) =>
+    setWbsDraft((prev) => updateNodeTitle(prev, nodeId, value));
+
+  const handleAddChild = (nodeId: string) =>
+    setWbsDraft((prev) => addChildToTree(prev, nodeId, createTreeNode("Nova entrega")));
+
+  const handleRemoveNode = (nodeId: string) => setWbsDraft((prev) => removeNodeFromTree(prev, nodeId));
+
+  const handleAddStage = () => setWbsDraft((prev) => [...prev, createTreeNode()]);
+
+  const handleColumnChange = (index: number, value: string) =>
+    setBoardColumnsDraft((prev) => {
+      const clone = [...prev];
+      clone[index] = value;
+      return clone;
+    });
+
+  const handleAddColumn = () => setBoardColumnsDraft((prev) => [...prev, `Etapa ${prev.length + 1}`]);
+
+  const handleRemoveColumn = (index: number) =>
+    setBoardColumnsDraft((prev) => prev.filter((_, columnIndex) => columnIndex !== index));
+
+  const handleFieldChange = (fieldId: string, key: keyof TemplateCustomField, value: string | boolean) =>
+    setCustomFieldsDraft((prev) =>
+      prev.map((field) => (field.id === fieldId ? { ...field, [key]: value } : field))
+    );
+
+  const handleAddField = () =>
+    setCustomFieldsDraft((prev) => [
+      ...prev,
+      { id: `field-${Date.now()}`, label: "Novo campo", type: "text", required: false }
+    ]);
+
+  const handleRemoveField = (fieldId: string) =>
+    setCustomFieldsDraft((prev) => prev.filter((field) => field.id !== fieldId));
+
+  const handleTemplateMetaChange = (field: keyof typeof templateMeta, value: string) =>
+    setTemplateMeta((prev) => ({ ...prev, [field]: value }));
+
+  const openTemplateModal = (templateId: string) => {
+    if (templateId !== selectedTemplateId) {
+      setSelectedTemplateId(templateId);
+    }
+    setTemplateModalError(null);
+    setTemplateModalOpen(true);
+  };
+
+  const closeTemplateModal = () => setTemplateModalOpen(false);
+
+  const renderWbsNodes = (nodes: TemplateTreeNode[]) => (
+    <ul>
+      {nodes.map((node) => (
+        <li key={node.id}>
+          <div className="wbs-node">
+            <input value={node.title} onChange={(event) => handleNodeTitleChange(node.id, event.target.value)} />
+            <div className="wbs-node__actions">
+              <button type="button" className="ghost-button" onClick={() => handleAddChild(node.id)}>
+                + Subtarefa
+              </button>
+              <button type="button" className="ghost-button" onClick={() => handleRemoveNode(node.id)}>
+                Remover
+              </button>
+            </div>
+          </div>
+          {node.children && node.children.length > 0 && renderWbsNodes(node.children)}
+        </li>
+      ))}
+    </ul>
+  );
+
+  const mapNodesToPayload = (nodes: TemplateTreeNode[]): TemplateNodeInput[] =>
+    nodes.map((node) => ({
+      title: node.title.trim(),
+      children: node.children && node.children.length ? mapNodesToPayload(node.children) : undefined
+    }));
+
+  const handleTemplateSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!templateMeta.name.trim()) {
+      setTemplateModalError("O nome do template é obrigatório.");
+      return;
+    }
+
+    setTemplateModalLoading(true);
+    try {
+      await onSaveTemplate(selectedTemplateId, {
+        name: templateMeta.name.trim(),
+        type: templateMeta.type.trim(),
+        clientName: templateMeta.clientName.trim() || undefined,
+        repositoryUrl: templateMeta.repositoryUrl.trim() || undefined,
+        budget: templateMeta.budget ? Number(templateMeta.budget) : undefined,
+        columns: boardColumnsDraft,
+        wbs: mapNodesToPayload(wbsDraft),
+        customFields: customFieldsDraft.map((field) => ({
+          id: field.id,
+          label: field.label.trim(),
+          type: field.type,
+          required: field.required
+        }))
+      });
+      setTemplateToast("Template atualizado com sucesso.");
+      setTemplateModalOpen(false);
+    } catch (error) {
+      setTemplateModalError(error instanceof Error ? error.message : "Erro ao salvar template");
+    } finally {
+      setTemplateModalLoading(false);
+    }
+  };
 
   return (
     <div className="templates-panel">
@@ -1644,43 +2230,223 @@ const TemplatesPanel = () => {
           Importar modelo
         </button>
       </div>
-      <div className="templates-grid">
-        {templates.map((template) => (
-          <article key={template.id} className="template-card">
-            <header>
-              <div>
-                <p className="eyebrow">{template.type}</p>
-                <h4>{template.name}</h4>
+
+      {templateToast && <p className="success-text">{templateToast}</p>}
+
+      <div className="templates-layout">
+        <div className="templates-grid">
+          {templates.map((template) => (
+            <article
+              key={template.id}
+              className={`template-card ${selectedTemplateId === template.id ? "is-active" : ""}`}
+              onClick={() => setSelectedTemplateId(template.id)}
+              role="button"
+              tabIndex={0}
+            >
+              <header>
+                <div>
+                  <p className="eyebrow">{template.type}</p>
+                  <h4>{template.name}</h4>
+                </div>
+                <span className="pill pill-neutral">{template.phases} fases</span>
+              </header>
+              <p className="muted">
+                {template.tasks} tarefas - Atualizado em {new Date(template.updatedAt).toLocaleDateString("pt-BR")}
+              </p>
+              <div className="template-tags">
+                {template.tags.map((tag) => (
+                  <span key={`${template.id}-${tag}`}>{tag}</span>
+                ))}
               </div>
-              <span className="pill pill-neutral">{template.phases} fases</span>
-            </header>
-            <p className="muted">
-              {template.tasks} tarefas · Atualizado em {new Date(template.updatedAt).toLocaleDateString("pt-BR")}
+              <div className="template-columns">
+                {template.columns.map((column) => (
+                  <small key={`${template.id}-${column}`}>{column}</small>
+                ))}
+              </div>
+              <div className="template-actions">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openTemplateModal(template.id);
+                  }}
+                >
+                  Editar
+                </button>
+                <button type="button" className="ghost-button">
+                  Duplicar
+                </button>
+                <button type="button" className="ghost-button">
+                  Excluir
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <aside className="templates-editor">
+          <header>
+            <p className="eyebrow">Editor do template</p>
+            <h3>{selectedTemplate.name}</h3>
+            <p className="subtext">
+              Pre-visualize a EDT padrao, ajuste colunas do board e defina campos customizados para novos projetos.
             </p>
-            <div className="template-tags">
-              {template.tags.map((tag) => (
-                <span key={`${template.id}-${tag}`}>{tag}</span>
-              ))}
+          </header>
+
+          <article className="editor-card">
+            <div className="editor-card__header">
+              <h4>Previa da EDT</h4>
+              <button type="button" className="ghost-button" onClick={handleAddStage}>
+                + Adicionar etapa
+              </button>
             </div>
-            <div className="template-columns">
-              {template.columns.map((column) => (
-                <small key={`${template.id}-${column}`}>{column}</small>
-              ))}
+            <div className="wbs-preview">{renderWbsNodes(wbsDraft)}</div>
+          </article>
+
+          <article className="editor-card">
+            <div className="editor-card__header">
+              <h4>Colunas do board</h4>
+              <button type="button" className="ghost-button" onClick={handleAddColumn}>
+                + Nova coluna
+              </button>
             </div>
-            <div className="template-actions">
-              <button type="button" className="secondary-button">
-                Editar
+            <ul className="board-columns-editor">
+              {boardColumnsDraft.map((column, index) => (
+                <li key={`${selectedTemplateId}-column-${column}-${index}`}>
+                  <input value={column} onChange={(event) => handleColumnChange(index, event.target.value)} />
+                  <button type="button" className="ghost-button" onClick={() => handleRemoveColumn(index)}>
+                    Remover
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </article>
+
+          <article className="editor-card">
+            <div className="editor-card__header">
+              <h4>Campos customizados</h4>
+              <button type="button" className="ghost-button" onClick={handleAddField}>
+                + Novo campo
               </button>
-              <button type="button" className="ghost-button">
-                Duplicar
-              </button>
-              <button type="button" className="ghost-button">
-                Excluir
-              </button>
+            </div>
+            <div className="custom-fields-editor">
+              {customFieldsDraft.map((field) => (
+                <div key={field.id} className="custom-field-card">
+                  <label>
+                    Nome
+                    <input value={field.label} onChange={(event) => handleFieldChange(field.id, "label", event.target.value)} />
+                  </label>
+                  <label>
+                    Tipo
+                    <select value={field.type} onChange={(event) => handleFieldChange(field.id, "type", event.target.value)}>
+                      <option value="text">Texto</option>
+                      <option value="number">Numero</option>
+                      <option value="date">Data</option>
+                      <option value="select">Lista</option>
+                    </select>
+                  </label>
+                  <label className="settings-toggle">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(field.required)}
+                      onChange={(event) => handleFieldChange(field.id, "required", event.target.checked)}
+                    />
+                    <span>Obrigatorio</span>
+                  </label>
+                  <button type="button" className="ghost-button" onClick={() => handleRemoveField(field.id)}>
+                    Remover
+                  </button>
+                </div>
+              ))}
             </div>
           </article>
-        ))}
+        </aside>
       </div>
+
+      {templateModalOpen && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal">
+            <header className="modal-header">
+              <div>
+                <p className="eyebrow">Editar template</p>
+                <h3>{templateMeta.name}</h3>
+                <p className="subtext">
+                  Ajuste os metadados do template e sincronize com o backend para novos projetos.
+                </p>
+              </div>
+              <button type="button" className="ghost-button" onClick={closeTemplateModal}>
+                Fechar
+              </button>
+            </header>
+
+            <form className="modal-form" onSubmit={handleTemplateSubmit}>
+              <label>
+                Nome
+                <input
+                  type="text"
+                  value={templateMeta.name}
+                  onChange={(event) => handleTemplateMetaChange("name", event.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                Categoria
+                <input
+                  type="text"
+                  value={templateMeta.type}
+                  onChange={(event) => handleTemplateMetaChange("type", event.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                Cliente/área padrão
+                <input
+                  type="text"
+                  value={templateMeta.clientName}
+                  onChange={(event) => handleTemplateMetaChange("clientName", event.target.value)}
+                  placeholder="Ex.: Corp PMO"
+                />
+              </label>
+              <label>
+                Repositório GitHub
+                <input
+                  type="url"
+                  value={templateMeta.repositoryUrl}
+                  onChange={(event) => handleTemplateMetaChange("repositoryUrl", event.target.value)}
+                  placeholder="https://github.com/org/template"
+                />
+              </label>
+              <label>
+                Orçamento base (R$)
+                <input
+                  type="number"
+                  min="0"
+                  step="1000"
+                  value={templateMeta.budget}
+                  onChange={(event) => handleTemplateMetaChange("budget", event.target.value)}
+                  placeholder="150000"
+                />
+              </label>
+
+              <p className="subtext">
+                Este envio inclui a estrutura da EDT, colunas do board e campos customizados configurados nesta tela.
+              </p>
+
+              {templateModalError && <p className="error-text">{templateModalError}</p>}
+
+              <footer className="modal-actions">
+                <button type="button" className="ghost-button" onClick={closeTemplateModal}>
+                  Cancelar
+                </button>
+                <button type="submit" className="primary-button" disabled={templateModalLoading}>
+                  {templateModalLoading ? "Salvando..." : "Salvar template"}
+                </button>
+              </footer>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

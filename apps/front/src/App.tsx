@@ -1,7 +1,7 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import type { DropResult } from "@hello-pangea/dnd";
-import { DashboardLayout } from "./components/DashboardLayout";
+import { DashboardLayout, type CreateProjectPayload, type TemplateEditorPayload } from "./components/DashboardLayout";
 import { AuthPage } from "./components/AuthPage";
 import { OrganizationSelector } from "./components/OrganizationSelector";
 import type { PortfolioProject } from "./components/ProjectPortfolio";
@@ -442,6 +442,64 @@ export const App = () => {
     }
   };
 
+  const handleCreateProject = async (payload: CreateProjectPayload) => {
+    if (!token || !selectedOrganizationId) {
+      throw new Error("Selecione uma organização para criar projetos.");
+    }
+
+    const response = await fetchJson<{ project: Project & { clientName?: string } }>(
+      "/projects",
+      token,
+      {
+        method: "POST",
+        body: JSON.stringify(payload)
+      },
+      selectedOrganizationId
+    );
+
+    const createdProject = (response as any).project ?? response;
+    if (!createdProject?.id) {
+      throw new Error("Projeto criado, mas resposta inesperada da API.");
+    }
+
+    setProjects((prev) => {
+      if (prev.some((project) => project.id === createdProject.id)) return prev;
+      return [...prev, { id: createdProject.id, name: createdProject.name }];
+    });
+    setPortfolio((prev) => {
+      if (!Array.isArray(prev)) return prev;
+      if (prev.some((project) => project.projectId === createdProject.id)) return prev;
+      return [
+        ...prev,
+        {
+          projectId: createdProject.id,
+          projectName: createdProject.name,
+          clientName: payload.clientName,
+          hoursTracked: 0,
+          tasksTotal: 0,
+          tags: []
+        }
+      ];
+    });
+    setSelectedProjectId(createdProject.id);
+  };
+
+  const handleSaveTemplate = async (templateId: string, payload: TemplateEditorPayload) => {
+    if (!token || !selectedOrganizationId) {
+      throw new Error("Selecione uma organização para salvar templates.");
+    }
+
+    await fetchJson(
+      `/templates/${templateId}`,
+      token,
+      {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      },
+      selectedOrganizationId
+    );
+  };
+
   const handleDragEnd = async (result: DropResult) => {
     const { destination, source, draggableId } = result;
     if (
@@ -610,6 +668,8 @@ export const App = () => {
       reportMetricsError={reportMetricsError}
       reportMetricsLoading={reportMetricsLoading}
       onExportPortfolio={handleDownloadPortfolio}
+      onCreateProject={handleCreateProject}
+      onSaveTemplate={handleSaveTemplate}
     />
   );
 };

@@ -103,6 +103,114 @@ projectsRouter.get("/", async (req, res) => {
   });
 });
 
+projectsRouter.post("/", async (req, res) => {
+  if (!req.organization || !req.user) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+
+  const { name, clientName, budget, repositoryUrl, startDate, endDate, description, teamMembers } = req.body ?? {};
+
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return res.status(400).json({ message: "Nome do projeto é obrigatório." });
+  }
+
+  if (!clientName || typeof clientName !== "string" || !clientName.trim()) {
+    return res.status(400).json({ message: "Cliente responsável é obrigatório." });
+  }
+
+  const normalizedRepo = typeof repositoryUrl === "string" ? repositoryUrl.trim() : "";
+  const sanitizedRepo =
+    normalizedRepo && normalizedRepo.startsWith("http")
+      ? normalizedRepo.replace(/^https?:\/\//i, "").replace(/\/$/, "")
+      : normalizedRepo || undefined;
+
+  try {
+    const project = await prisma.project.create({
+      data: {
+        organizationId: req.organization.id,
+        name: name.trim(),
+        clientName: clientName.trim(),
+        description: typeof description === "string" ? description.trim() : null,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+        budgetPlanned:
+          typeof budget === "number"
+            ? new Prisma.Decimal(budget)
+            : typeof budget === "string" && budget.trim()
+            ? new Prisma.Decimal(budget)
+            : undefined,
+        code: sanitizedRepo
+      }
+    });
+
+    await prisma.projectMember.create({
+      data: {
+        projectId: project.id,
+        userId: req.user.id,
+        role: ProjectRole.MANAGER
+      }
+    });
+
+    const invitedEmails = Array.isArray(teamMembers)
+      ? teamMembers.filter((value: unknown): value is string => typeof value === "string").map((email) => email.trim().toLowerCase())
+      : [];
+
+    if (invitedEmails.length) {
+      const users = await prisma.user.findMany({
+        where: {
+          email: {
+            in: invitedEmails
+          }
+        }
+      });
+
+      const membersData = users
+        .filter((user) => user.id !== req.user!.id)
+        .map((user) => ({
+          projectId: project.id,
+          userId: user.id,
+          role: ProjectRole.CONTRIBUTOR
+        }));
+
+      if (membersData.length) {
+        await prisma.projectMember.createMany({
+          data: membersData,
+          skipDuplicates: true
+        });
+      }
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        organizationId: req.organization.id,
+        actorId: req.user.id,
+        action: "PROJECT_CREATED",
+        entity: "PROJECT",
+        entityId: project.id,
+        diff: {
+          clientName,
+          repositoryUrl: sanitizedRepo ?? null,
+          invitedMembers: invitedEmails
+        }
+      }
+    });
+
+    return res.status(201).json({
+      project: {
+        id: project.id,
+        name: project.name,
+        clientName: project.clientName,
+        status: project.status,
+        startDate: project.startDate,
+        endDate: project.endDate
+      }
+    });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to create project");
+    return res.status(500).json({ message: "Failed to create project" });
+  }
+});
+
 projectsRouter.get("/:projectId/members", async (req, res) => {
   const { projectId } = req.params;
 

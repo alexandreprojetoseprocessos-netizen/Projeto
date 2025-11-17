@@ -9,6 +9,7 @@ import { wbsRouter } from "./routes/wbs";
 import { reportsRouter } from "./routes/reports";
 import { integrationsRouter } from "./routes/integrations";
 import { meRouter } from "./routes/me";
+import { templatesRouter } from "./routes/templates";
 import { logger } from "./config/logger";
 
 export const createApp = () => {
@@ -31,6 +32,7 @@ export const createApp = () => {
   app.use("/wbs", wbsRouter);
   app.use("/reports", reportsRouter);
   app.use("/integrations", integrationsRouter);
+  app.use("/templates", templatesRouter);
   app.use("/me", meRouter);
 
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
