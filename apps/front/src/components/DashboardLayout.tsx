@@ -11,6 +11,15 @@ const formatDate = (value?: string | null) => {
   return new Date(value).toLocaleDateString("pt-BR");
 };
 
+const sidebarNavigation = [
+  { id: "dashboard", label: "Dashboard" },
+  { id: "projects", label: "Projetos" },
+  { id: "team", label: "Equipe" },
+  { id: "reports", label: "Relatórios" },
+  { id: "templates", label: "Templates" },
+  { id: "settings", label: "Configurações" }
+];
+
 const KanbanBoard = ({
   columns,
   onDragEnd,
@@ -262,6 +271,9 @@ const ProjectDetailsTabs = ({
   attachments,
   attachmentsError,
   attachmentsLoading,
+  reportMetrics,
+  reportMetricsError,
+  reportMetricsLoading,
   boardColumns,
   boardError,
   onCreateTask,
@@ -1140,6 +1152,172 @@ const ReportsPanel = ({
   );
 };
 
+const SettingsPanel = () => {
+  const [activeSection, setActiveSection] = useState("profile");
+
+  const sections = [
+    { id: "profile", label: "Perfil" },
+    { id: "notifications", label: "Notificações" },
+    { id: "organization", label: "Organização" },
+    { id: "permissions", label: "Permissões" },
+    { id: "templates", label: "Templates" },
+    { id: "integrations", label: "Integrações" },
+    { id: "billing", label: "Faturamento" }
+  ];
+
+  return (
+    <section className="settings-section">
+      <header>
+        <div>
+          <p className="eyebrow">Configurações</p>
+          <h2>Central de ajustes</h2>
+          <p className="subtext">Gerencie perfil, notificações, organização e integrações.</p>
+        </div>
+      </header>
+
+      <div className="settings-layout">
+        <nav className="settings-menu">
+          {sections.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              className={activeSection === section.id ? "is-active" : ""}
+              onClick={() => setActiveSection(section.id)}
+            >
+              {section.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="settings-content">
+          {activeSection === "profile" && (
+            <form className="settings-form">
+              <h3>Perfil</h3>
+              <label>
+                Nome completo
+                <input type="text" placeholder="Seu nome" />
+              </label>
+              <label>
+                E-mail
+                <input type="email" placeholder="voce@empresa.com" />
+              </label>
+              <label>
+                Idioma
+                <select>
+                  <option>Português (Brasil)</option>
+                  <option>Inglês</option>
+                </select>
+              </label>
+              <button type="button" className="primary-button">
+                Atualizar perfil
+              </button>
+            </form>
+          )}
+
+          {activeSection === "notifications" && (
+            <div className="settings-form">
+              <h3>Notificações</h3>
+              <label className="settings-toggle">
+                <input type="checkbox" defaultChecked />
+                <span>E-mails sobre tarefas atribuídas</span>
+              </label>
+              <label className="settings-toggle">
+                <input type="checkbox" />
+                <span>Mensagens em canais do Slack</span>
+              </label>
+              <label className="settings-toggle">
+                <input type="checkbox" defaultChecked />
+                <span>Alertas de riscos</span>
+              </label>
+            </div>
+          )}
+
+          {activeSection === "organization" && (
+            <div className="settings-form">
+              <h3>Organização</h3>
+              <label>
+                Nome da organização
+                <input type="text" placeholder="Organização Demo" />
+              </label>
+              <label>
+                Domínio
+                <input type="text" placeholder="demo.local" />
+              </label>
+              <button type="button" className="secondary-button">
+                Salvar
+              </button>
+            </div>
+          )}
+
+          {activeSection === "permissions" && (
+            <div className="settings-form">
+              <h3>Permissões e papéis</h3>
+              <p className="muted">Gerencie quem pode criar projetos, alterar WBS e exportar dados.</p>
+              <table className="settings-table">
+                <thead>
+                  <tr>
+                    <th>Papel</th>
+                    <th>Criar projeto</th>
+                    <th>Editar WBS</th>
+                    <th>Ver relatórios</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {["OWNER", "ADMIN", "MEMBER", "VIEWER"].map((role) => (
+                    <tr key={role}>
+                      <td>{role}</td>
+                      <td>
+                        <input type="checkbox" defaultChecked={role !== "VIEWER"} />
+                      </td>
+                      <td>
+                        <input type="checkbox" defaultChecked={role === "OWNER" || role === "ADMIN"} />
+                      </td>
+                      <td>
+                        <input type="checkbox" defaultChecked={role !== "VIEWER"} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {activeSection === "templates" && (
+            <TemplatesPanel />
+          )}
+
+          {activeSection === "integrations" && (
+            <div className="settings-form">
+              <h3>Integrações</h3>
+              <div className="integrations-grid">
+                {["GitHub", "Google Drive", "Slack", "Google Calendar"].map((integration) => (
+                  <article key={integration}>
+                    <strong>{integration}</strong>
+                    <p className="muted">Sincronize dados e automatize o fluxo.</p>
+                    <button type="button" className="secondary-button">
+                      Conectar
+                    </button>
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeSection === "billing" && (
+            <div className="settings-form">
+              <h3>Faturamento / Plano</h3>
+              <p className="muted">Plano atual: <strong>Pro – 20/50 projetos</strong></p>
+              <button type="button" className="secondary-button">
+                Gerenciar plano
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+};
+
 
 export const DashboardLayout = ({
   userEmail,
@@ -1202,6 +1380,8 @@ export const DashboardLayout = ({
   );
   const myTasks = flattenedTasks.slice(0, 6);
   const projectMeta = (portfolio as PortfolioProject[]).find((project) => project.projectId === selectedProjectId) ?? null;
+  const [activeSidebarView, setActiveSidebarView] = useState("dashboard");
+
   const kpis = [
     {
       label: "Projetos ativos",
@@ -1225,6 +1405,153 @@ export const DashboardLayout = ({
     }
   ];
 
+  const heroSection = (
+    <section className="hero-card">
+      <div>
+        <p className="eyebrow">Bem-vindo(a)</p>
+        <h1>Visão geral do trabalho</h1>
+        <p className="subtext">Acompanhe o progresso dos projetos, tarefas e riscos em tempo real.</p>
+      </div>
+      <div className="hero-selectors">
+        <label>
+          Organização
+          <select value={selectedOrganizationId} onChange={(event) => onOrganizationChange(event.target.value)}>
+            {organizations.map((org: Organization) => (
+              <option key={org.id} value={org.id}>
+                {org.name} ({org.role})
+              </option>
+            ))}
+          </select>
+        </label>
+        {projects.length > 0 && (
+          <label>
+            Projeto
+            <select value={selectedProjectId} onChange={(event) => onProjectChange(event.target.value)}>
+              {projects.map((project: Project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
+      <div className="hero-meta">
+        <button type="button" className="secondary-button">
+          Criar projeto
+        </button>
+        <button type="button" className="ghost-button" onClick={onSignOut}>
+          Sair
+        </button>
+      </div>
+    </section>
+  );
+
+  const renderProjectDetails = () => (
+    <ProjectDetailsTabs
+      projectMeta={projectMeta}
+      projectLoading={portfolioLoading}
+      summary={summary}
+      summaryError={summaryError}
+      filters={filters}
+      onRangeChange={onRangeChange}
+      myTasks={myTasks}
+      members={members}
+      membersError={membersError}
+      attachments={attachments}
+      attachmentsError={attachmentsError}
+      attachmentsLoading={attachmentsLoading}
+      boardColumns={boardColumns}
+      boardError={boardError}
+      onCreateTask={onCreateTask}
+      onDragTask={onDragTask}
+      newTaskTitle={newTaskTitle}
+      onTaskTitleChange={onTaskTitleChange}
+      newTaskColumn={newTaskColumn}
+      onTaskColumnChange={onTaskColumnChange}
+      wbsNodes={wbsNodes}
+      wbsError={wbsError}
+      onMoveNode={onMoveNode}
+      selectedNodeId={selectedNodeId}
+      onSelectNode={onSelectNode}
+      comments={comments}
+      commentsError={commentsError}
+      onSubmitComment={onSubmitComment}
+      commentBody={commentBody}
+      onCommentBodyChange={onCommentBodyChange}
+      timeEntryDate={timeEntryDate}
+      timeEntryHours={timeEntryHours}
+      timeEntryDescription={timeEntryDescription}
+      onTimeEntryDateChange={onTimeEntryDateChange}
+      onTimeEntryHoursChange={onTimeEntryHoursChange}
+      onTimeEntryDescriptionChange={onTimeEntryDescriptionChange}
+      onLogTime={onLogTime}
+      ganttTasks={ganttTasks}
+      ganttMilestones={ganttMilestones}
+      ganttError={ganttError}
+    />
+  );
+
+  const renderProjectsList = () => (
+    <ProjectPortfolio
+      projects={portfolio}
+      error={portfolioError}
+      isLoading={portfolioLoading}
+      onExport={onExportPortfolio}
+      selectedProjectId={selectedProjectId}
+      onSelectProject={onProjectChange}
+    />
+  );
+
+  const renderDashboardContent = () => (
+    <>
+      <section className="summary-grid">
+        {kpis.map((kpi) => (
+          <article key={kpi.label} className="summary-card">
+            <span>{kpi.label}</span>
+            <strong>{kpi.value}</strong>
+            <small>{kpi.sub}</small>
+          </article>
+        ))}
+      </section>
+
+      {renderProjectsList()}
+    </>
+  );
+
+  const renderProjectsContent = () => (
+    <>
+      {renderProjectsList()}
+      {renderProjectDetails()}
+    </>
+  );
+
+  const renderTeamContent = () => (
+    <TeamPanel members={members} membersError={membersError} projectName={projectMeta?.projectName ?? null} />
+  );
+
+  const renderReportsContent = () => (
+    <ReportsPanel metrics={reportMetrics} metricsError={reportMetricsError} metricsLoading={reportMetricsLoading} />
+  );
+
+  const getMainContent = () => {
+    switch (activeSidebarView) {
+      case "projects":
+        return renderProjectsContent();
+      case "team":
+        return renderTeamContent();
+      case "reports":
+        return renderReportsContent();
+      case "templates":
+        return <TemplatesPanel />;
+      case "settings":
+        return <SettingsPanel />;
+      case "dashboard":
+      default:
+        return renderDashboardContent();
+    }
+  };
+
   return (
     <div className="app-shell">
       <aside className="dashboard-sidebar">
@@ -1233,9 +1560,14 @@ export const DashboardLayout = ({
           <small>Gestão de Projetos</small>
         </div>
         <nav>
-          {["Dashboard", "Projetos", "Equipe", "Relatórios", "Templates", "Configurações"].map((item) => (
-            <button key={item} type="button" className={`sidebar-link ${item === "Dashboard" ? "is-active" : ""}`}>
-              {item}
+          {sidebarNavigation.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`sidebar-link ${activeSidebarView === item.id ? "is-active" : ""}`}
+              onClick={() => setActiveSidebarView(item.id)}
+            >
+              {item.label}
             </button>
           ))}
         </nav>
@@ -1257,114 +1589,97 @@ export const DashboardLayout = ({
         </header>
 
         <main>
-          <section className="hero-card">
-            <div>
-              <p className="eyebrow">Bem-vindo(a)</p>
-              <h1>Visão geral do trabalho</h1>
-              <p className="subtext">Acompanhe o progresso dos projetos, tarefas e riscos em tempo real.</p>
-            </div>
-            <div className="hero-selectors">
-              <label>
-                Organização
-                <select value={selectedOrganizationId} onChange={(event) => onOrganizationChange(event.target.value)}>
-                  {organizations.map((org: Organization) => (
-                    <option key={org.id} value={org.id}>
-                      {org.name} ({org.role})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {projects.length > 0 && (
-                <label>
-                  Projeto
-                  <select value={selectedProjectId} onChange={(event) => onProjectChange(event.target.value)}>
-                    {projects.map((project: Project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-            </div>
-            <div className="hero-meta">
-              <button type="button" className="secondary-button">
-                Criar projeto
-              </button>
-              <button type="button" className="ghost-button" onClick={onSignOut}>
-                Sair
-              </button>
-            </div>
-          </section>
+          {heroSection}
 
           {orgError && <p className="error-text">{orgError}</p>}
           {projectsError && <p className="error-text">{projectsError}</p>}
 
-          <section className="summary-grid">
-            {kpis.map((kpi) => (
-              <article key={kpi.label} className="summary-card">
-                <span>{kpi.label}</span>
-                <strong>{kpi.value}</strong>
-                <small>{kpi.sub}</small>
-              </article>
-            ))}
-          </section>
-
-          <ProjectPortfolio
-            projects={portfolio}
-            error={portfolioError}
-            isLoading={portfolioLoading}
-            onExport={onExportPortfolio}
-            selectedProjectId={selectedProjectId}
-            onSelectProject={onProjectChange}
-          />
-
-          <ProjectDetailsTabs
-            projectMeta={projectMeta}
-            projectLoading={portfolioLoading}
-            summary={summary}
-            summaryError={summaryError}
-            filters={filters}
-            onRangeChange={onRangeChange}
-            myTasks={myTasks}
-            members={members}
-            membersError={membersError}
-            attachments={attachments}
-            attachmentsError={attachmentsError}
-            attachmentsLoading={attachmentsLoading}
-            boardColumns={boardColumns}
-            boardError={boardError}
-            onCreateTask={onCreateTask}
-            onDragTask={onDragTask}
-            newTaskTitle={newTaskTitle}
-            onTaskTitleChange={onTaskTitleChange}
-            newTaskColumn={newTaskColumn}
-            onTaskColumnChange={onTaskColumnChange}
-            wbsNodes={wbsNodes}
-            wbsError={wbsError}
-            onMoveNode={onMoveNode}
-            selectedNodeId={selectedNodeId}
-            onSelectNode={onSelectNode}
-            comments={comments}
-            commentsError={commentsError}
-            onSubmitComment={onSubmitComment}
-            commentBody={commentBody}
-            onCommentBodyChange={onCommentBodyChange}
-            timeEntryDate={timeEntryDate}
-            timeEntryHours={timeEntryHours}
-            timeEntryDescription={timeEntryDescription}
-            onTimeEntryDateChange={onTimeEntryDateChange}
-            onTimeEntryHoursChange={onTimeEntryHoursChange}
-            onTimeEntryDescriptionChange={onTimeEntryDescriptionChange}
-            onLogTime={onLogTime}
-            ganttTasks={ganttTasks}
-            ganttMilestones={ganttMilestones}
-            ganttError={ganttError}
-          />
-
-          <TeamPanel members={members} membersError={membersError} projectName={projectMeta?.projectName ?? null} />
-          <ReportsPanel metrics={reportMetrics} metricsError={reportMetricsError} metricsLoading={reportMetricsLoading} />
+          {getMainContent()}
         </main>
+      </div>
+    </div>
+  );
+};
+const TemplatesPanel = () => {
+  const templates = [
+    {
+      id: "temp-pmo",
+      name: "Projeto PMO",
+      type: "PMO / Governança",
+      phases: 5,
+      tasks: 42,
+      tags: ["PMO", "Governança", "Compliance"],
+      updatedAt: "2025-02-10",
+      columns: ["Backlog", "Planejamento", "Execução", "Aprovação", "Concluído"]
+    },
+    {
+      id: "temp-ti",
+      name: "Implantação de TI",
+      type: "Tecnologia",
+      phases: 4,
+      tasks: 30,
+      tags: ["Infra", "Segurança", "Deploy"],
+      updatedAt: "2025-02-08",
+      columns: ["Backlog", "Planejamento", "Em andamento", "QA", "Done"]
+    },
+    {
+      id: "temp-mkt",
+      name: "Campanha de Marketing",
+      type: "Marketing",
+      phases: 3,
+      tasks: 24,
+      tags: ["Growth", "Social", "Paid Media"],
+      updatedAt: "2025-02-05",
+      columns: ["Ideias", "Criação", "Produção", "Publicação", "Mensuração"]
+    }
+  ];
+
+  return (
+    <div className="templates-panel">
+      <div className="templates-actions">
+        <button type="button" className="primary-button">
+          + Criar template
+        </button>
+        <button type="button" className="secondary-button">
+          Importar modelo
+        </button>
+      </div>
+      <div className="templates-grid">
+        {templates.map((template) => (
+          <article key={template.id} className="template-card">
+            <header>
+              <div>
+                <p className="eyebrow">{template.type}</p>
+                <h4>{template.name}</h4>
+              </div>
+              <span className="pill pill-neutral">{template.phases} fases</span>
+            </header>
+            <p className="muted">
+              {template.tasks} tarefas · Atualizado em {new Date(template.updatedAt).toLocaleDateString("pt-BR")}
+            </p>
+            <div className="template-tags">
+              {template.tags.map((tag) => (
+                <span key={`${template.id}-${tag}`}>{tag}</span>
+              ))}
+            </div>
+            <div className="template-columns">
+              {template.columns.map((column) => (
+                <small key={`${template.id}-${column}`}>{column}</small>
+              ))}
+            </div>
+            <div className="template-actions">
+              <button type="button" className="secondary-button">
+                Editar
+              </button>
+              <button type="button" className="ghost-button">
+                Duplicar
+              </button>
+              <button type="button" className="ghost-button">
+                Excluir
+              </button>
+            </div>
+          </article>
+        ))}
       </div>
     </div>
   );
