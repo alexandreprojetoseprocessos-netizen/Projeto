@@ -144,6 +144,7 @@ model WbsNode {
   projectId                 String
   parentId                  String?
   level                     Int             @default(0)
+  wbsCode                   String?
   type                      WbsNodeType     @default(TASK)
   order                     Int             @default(0)
   title                     String

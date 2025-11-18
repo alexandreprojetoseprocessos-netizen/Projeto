@@ -1,6 +1,15 @@
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, BarChart, Bar } from "recharts";
-import { Fragment, useEffect, useMemo, useState, useCallback, type FormEvent, type MouseEvent } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  type FormEvent,
+  type MouseEvent,
+  type CSSProperties
+} from "react";
 import { ProjectPortfolio, type PortfolioProject } from "./ProjectPortfolio";
 import { NotFoundPage } from "./NotFoundPage";
 
@@ -324,7 +333,7 @@ const statusDictionary: Record<string, { label: string; tone: StatusTone }> = {
 
 const WbsTreeView = ({
   nodes,
-  onMove: _onMove,
+  onMove,
   selectedNodeId,
   onSelect
 }: {
@@ -335,7 +344,6 @@ const WbsTreeView = ({
 }) => {
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  void _onMove;
 
   type Row = {
     node: any;
@@ -402,6 +410,36 @@ const WbsTreeView = ({
     });
   }, [allRows, rowMap, expandedNodes]);
 
+  const handleLevelAdjust = (event: MouseEvent<HTMLButtonElement>, nodeId: string, direction: "up" | "down") => {
+    event.stopPropagation();
+    const currentRow = rowMap.get(nodeId);
+    if (!currentRow) return;
+
+    if (direction === "up") {
+      if (!currentRow.parentId) return;
+      const parentRow = rowMap.get(currentRow.parentId);
+      if (!parentRow) return;
+
+      const newParentId = parentRow.parentId ?? null;
+      const newParentRow = newParentId ? rowMap.get(newParentId) : null;
+      const siblings = newParentRow ? newParentRow.node.children ?? [] : nodes;
+      const parentIndex = siblings.findIndex((child: any) => child.id === parentRow.node.id);
+      const position = parentIndex >= 0 ? parentIndex + 1 : siblings.length;
+      onMove(nodeId, newParentId, position);
+      return;
+    }
+
+    const parentRow = currentRow.parentId ? rowMap.get(currentRow.parentId) : null;
+    const siblings = parentRow ? parentRow.node.children ?? [] : nodes;
+    const currentIndex = siblings.findIndex((child: any) => child.id === nodeId);
+    if (currentIndex <= 0) return;
+    const newParentNode = siblings[currentIndex - 1];
+    if (!newParentNode) return;
+    const childCount = Array.isArray(newParentNode.children) ? newParentNode.children.length : 0;
+    onMove(nodeId, newParentNode.id, childCount);
+    setExpandedNodes((prev) => ({ ...prev, [newParentNode.id]: true }));
+  };
+
   const resolveStatus = (status?: string | null) => {
     if (!status) return { label: "Não iniciado", tone: "neutral" as StatusTone };
     const normalized = status.toUpperCase();
@@ -455,7 +493,7 @@ const WbsTreeView = ({
   const handleDependencyClick = (event: MouseEvent<HTMLButtonElement>, dependencyId: string) => {
     event.stopPropagation();
     ensureAncestorsExpanded(dependencyId);
-    onSelect(dependencyId);
+    handleRowSelect(dependencyId);
     setOpenMenuId(null);
   };
 
@@ -507,9 +545,11 @@ const WbsTreeView = ({
           </thead>
           <tbody>
             {visibleRows.map((row) => {
+              const displayId = row.node.wbsCode ?? row.displayId;
+              const visualLevel = typeof row.node.level === "number" ? row.node.level : row.level;
               const progress = progressMap.get(row.node.id) ?? 0;
               const status = resolveStatus(row.node.status);
-              const isExpanded = row.hasChildren ? expandedNodes[row.node.id] ?? row.level < 1 : false;
+              const isExpanded = row.hasChildren ? expandedNodes[row.node.id] ?? visualLevel < 1 : false;
               const isActive = selectedNodeId === row.node.id;
               const ownerName = row.node.owner?.name ?? null;
               const ownerEmail = row.node.owner?.email ?? null;
@@ -522,21 +562,69 @@ const WbsTreeView = ({
                     .toUpperCase()
                 : null;
               const dependencyBadges = Array.isArray(row.node.dependencies) ? row.node.dependencies : [];
+              const parentRow = row.parentId ? rowMap.get(row.parentId) : null;
+              const siblingsAtLevel = parentRow ? parentRow.node.children ?? [] : nodes;
+              const currentLevelIndex = siblingsAtLevel.findIndex((child: any) => child.id === row.node.id);
+              const canLevelUp = Boolean(parentRow);
+              const canLevelDown = currentLevelIndex > 0;
+              const baseArrowStyle = (enabled: boolean): CSSProperties => ({
+                border: "1px solid rgba(0,0,0,0.1)",
+                borderRadius: "4px",
+                padding: "0 0.35rem",
+                background: enabled ? "transparent" : "rgba(0,0,0,0.04)",
+                cursor: enabled ? "pointer" : "not-allowed",
+                color: enabled ? "var(--text-muted, #5a5a5a)" : "rgba(0,0,0,0.35)",
+                fontSize: "0.9rem",
+                lineHeight: 1.2,
+                transition: "background 0.2s ease"
+              });
 
               return (
                 <Fragment key={row.node.id}>
                   <tr className={`wbs-row ${isActive ? "is-active" : ""}`}>
-                    <td>{row.displayId}</td>
+                    <td>{displayId}</td>
                     <td>
-                      <span className="wbs-level-tag">Nível {row.level}</span>
+                      <div
+                        className="wbs-level-control"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "0.35rem"
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className="level-arrow"
+                          aria-label="Subir nível"
+                          onClick={(event) => handleLevelAdjust(event, row.node.id, "up")}
+                          disabled={!canLevelUp}
+                          style={baseArrowStyle(canLevelUp)}
+                        >
+                          &lt;
+                        </button>
+                        <span className="wbs-level-value" style={{ fontWeight: 600 }}>
+                          {visualLevel}
+                        </span>
+                        <button
+                          type="button"
+                          className="level-arrow"
+                          aria-label="Descer nível"
+                          onClick={(event) => handleLevelAdjust(event, row.node.id, "down")}
+                          disabled={!canLevelDown}
+                          style={baseArrowStyle(canLevelDown)}
+                        >
+                          &gt;
+                        </button>
+                      </div>
                     </td>
                     <td>
-                      <div className={`wbs-task-name ${row.level <= 1 ? "is-phase" : ""}`} style={{ paddingLeft: `${row.level * 18}px` }}>
+                      <div className={`wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""}`} style={{ paddingLeft: `${visualLevel * 18}px` }}>
                         {row.hasChildren ? (
                           <button
                             type="button"
                             className="wbs-toggle"
-                            onClick={(event) => handleToggle(event, row.node.id, row.level)}
+                            onClick={(event) => handleToggle(event, row.node.id, visualLevel)}
                             aria-label={isExpanded ? "Recolher subtarefas" : "Expandir subtarefas"}
                           >
                             {isExpanded ? "▾" : "▸"}
@@ -612,7 +700,7 @@ const WbsTreeView = ({
                                 title={`Depende de ${dependencyRow.node.title}`}
                                 onClick={(event) => handleDependencyClick(event, dependencyId)}
                               >
-                                {dependencyRow.displayId}
+                                {dependencyRow.node.wbsCode ?? dependencyRow.displayId}
                               </button>
                             );
                           })}
@@ -665,7 +753,7 @@ const WbsTreeView = ({
                         <div className="wbs-detail-card">
                           <header className="wbs-detail-card__header">
                             <div>
-                              <span className="wbs-level-tag">{selectedRow?.displayId}</span>
+                              <span className="wbs-level-tag">{selectedNode.wbsCode ?? selectedRow?.displayId}</span>
                               <h4>{selectedNode.title}</h4>
                               <span className={`wbs-status wbs-status--${selectedStatus.tone}`}>{selectedStatus.label}</span>
                             </div>
@@ -3318,3 +3406,10 @@ export const TemplatesPanel = ({
     </div>
   );
 };
+
+
+
+
+
+
+

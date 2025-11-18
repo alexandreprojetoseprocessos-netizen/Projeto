@@ -6,10 +6,12 @@ import { organizationMiddleware } from "../middleware/organization";
 import { ensureProjectMembership } from "../services/rbac";
 import { logger } from "../config/logger";
 import { uploadAttachment, getPublicUrl } from "../services/storage";
+import { recomputeProjectWbsCodes } from "../services/wbsCode";
 
 type FlatWbsNode = {
   id: string;
   parentId: string | null;
+  wbsCode?: string | null;
   title: string;
   type: string;
   status: string;
@@ -50,6 +52,12 @@ const buildWbsTree = (nodes: FlatWbsNode[]): WbsTreeNode[] => {
     }
   });
 
+  const sortChildren = (items: WbsTreeNode[]) => {
+    items.sort((a, b) => a.order - b.order);
+    items.forEach((child) => sortChildren(child.children));
+  };
+
+  sortChildren(roots);
   return roots;
 };
 
@@ -674,30 +682,38 @@ projectsRouter.get("/:projectId/wbs", async (req, res) => {
   const membership = await ensureProjectMembership(req, res, projectId);
   if (!membership) return;
 
-  const nodes = await prisma.wbsNode.findMany({
-    where: { projectId },
-    include: {
-      taskDetail: true,
-      owner: {
-        select: {
-          id: true,
-          fullName: true,
-          email: true
+  const fetchNodes = () =>
+    prisma.wbsNode.findMany({
+      where: { projectId },
+      include: {
+        taskDetail: true,
+        owner: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true
+          }
+        },
+        timeEntries: {
+          select: { hours: true }
+        },
+        attachments: {
+          select: { id: true }
         }
       },
-      timeEntries: {
-        select: { hours: true }
-      },
-      attachments: {
-        select: { id: true }
-      }
-    },
-    orderBy: [{ level: "asc" }, { order: "asc" }, { createdAt: "asc" }]
-  });
+      orderBy: [{ level: "asc" }, { order: "asc" }, { createdAt: "asc" }]
+    });
+
+  let nodes = await fetchNodes();
+  if (nodes.some((node) => !node.wbsCode)) {
+    await recomputeProjectWbsCodes(projectId);
+    nodes = await fetchNodes();
+  }
 
   const formattedNodes: FlatWbsNode[] = nodes.map((node) => ({
     id: node.id,
     parentId: node.parentId,
+    wbsCode: node.wbsCode ?? undefined,
     title: node.title,
     type: node.type,
     status: node.status,
@@ -781,7 +797,60 @@ projectsRouter.post("/:projectId/wbs", async (req, res) => {
       }
     });
 
-    return res.status(201).json({ node });
+    await recomputeProjectWbsCodes(projectId);
+    const refreshed = await prisma.wbsNode.findUnique({
+      where: { id: node.id },
+      include: {
+        taskDetail: true,
+        owner: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true
+          }
+        },
+        timeEntries: {
+          select: { hours: true }
+        },
+        attachments: {
+          select: { id: true }
+        }
+      }
+    });
+
+    if (!refreshed) {
+      throw new Error("Failed to load created WBS node");
+    }
+
+    const formattedNode: FlatWbsNode = {
+      id: refreshed.id,
+      parentId: refreshed.parentId,
+      wbsCode: refreshed.wbsCode ?? undefined,
+      title: refreshed.title,
+      type: refreshed.type,
+      status: refreshed.status,
+      order: refreshed.order,
+      level: refreshed.level,
+      startDate: refreshed.startDate,
+      endDate: refreshed.endDate,
+      ownerId: refreshed.ownerId,
+      owner: refreshed.owner
+        ? {
+            id: refreshed.owner.id,
+            name: refreshed.owner.fullName ?? refreshed.owner.email ?? "",
+            email: refreshed.owner.email
+          }
+        : null,
+      boardColumnId: refreshed.boardColumnId,
+      estimateHours: refreshed.estimateHours?.toString() ?? null,
+      progress: refreshed.progress ?? null,
+      taskType: refreshed.taskDetail?.taskType ?? null,
+      storyPoints: refreshed.taskDetail?.storyPoints ?? null,
+      actualHours: refreshed.timeEntries.reduce((acc, entry) => acc + Number(entry.hours), 0),
+      documents: refreshed.attachments.length
+    };
+
+    return res.status(201).json({ node: formattedNode });
   } catch (error) {
     logger.error({ err: error }, "Failed to create WBS node");
     return res.status(500).json({ message: "Failed to create WBS node" });

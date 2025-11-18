@@ -5,6 +5,7 @@ import { authMiddleware } from "../middleware/auth";
 import { organizationMiddleware } from "../middleware/organization";
 import type { RequestWithUser } from "../types/http";
 import { sendSlackMessage } from "../services/integrations";
+import { recomputeProjectWbsCodes } from "../services/wbsCode";
 
 export const wbsRouter = Router();
 
@@ -170,7 +171,10 @@ wbsRouter.patch("/:nodeId", async (req, res) => {
     data
   });
 
-  return res.json({ node });
+  await recomputeProjectWbsCodes(access.node.projectId);
+  const refreshed = await prisma.wbsNode.findUnique({ where: { id: nodeId } });
+
+  return res.json({ node: refreshed ?? node });
 });
 
 wbsRouter.post("/:nodeId/time-entries", async (req: RequestWithUser, res) => {

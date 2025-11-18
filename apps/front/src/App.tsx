@@ -18,6 +18,7 @@ type WbsNode = {
   parentId: string | null;
   children: WbsNode[];
   level?: number;
+  wbsCode?: string | null;
   startDate?: string | null;
   endDate?: string | null;
   owner?: { id: string; name: string; email?: string | null } | null;
