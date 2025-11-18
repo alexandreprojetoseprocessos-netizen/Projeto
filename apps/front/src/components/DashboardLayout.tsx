@@ -558,25 +558,6 @@ const WbsTreeView = ({
     gap: "0.25rem",
     zIndex: 20
   };
-  const dateInputStyle: CSSProperties = {
-    border: "1px solid rgba(15, 23, 42, 0.15)",
-    borderRadius: "0.5rem",
-    padding: "0.25rem 0.5rem",
-    fontSize: "0.85rem",
-    color: "var(--text-primary, #0f172a)",
-    background: "#fff",
-    minWidth: "8rem"
-  };
-  const durationInputStyle: CSSProperties = {
-    border: "1px solid rgba(15, 23, 42, 0.15)",
-    borderRadius: "999px",
-    padding: "0.2rem 0.6rem",
-    fontWeight: 600,
-    fontSize: "0.85rem",
-    width: "4.5rem",
-    textAlign: "center"
-  };
-
   const progressMap = useMemo(() => {
     const cache = new Map<string, number>();
     const compute = (node: any): number => {
@@ -821,6 +802,8 @@ const WbsTreeView = ({
               const isActive = selectedNodeId === row.node.id;
               const ownerName = row.node.owner?.name ?? null;
               const ownerEmail = row.node.owner?.email ?? null;
+              const ownerTooltip =
+                ownerName && ownerEmail ? `${ownerName} (${ownerEmail})` : ownerName ?? "Sem responsável definido";
               const initials = ownerName
                 ? ownerName
                     .split(" ")
@@ -858,25 +841,19 @@ const WbsTreeView = ({
               const isEditingTitle = editingNodeId === row.node.id;
               const normalizedStatus = (row.node.status ?? "").toUpperCase();
               const isStatusPickerOpen = statusPickerId === row.node.id;
-              const baseArrowStyle = (enabled: boolean): CSSProperties => ({
-                background: enabled ? "rgba(15, 23, 42, 0.05)" : "rgba(15, 23, 42, 0.03)",
-                color: enabled ? "var(--text-muted, #5a5a5a)" : "rgba(0,0,0,0.35)"
-              });
-
               return (
                 <Fragment key={row.node.id}>
                   <tr className={`wbs-row level-${limitedLevel} ${isActive ? "is-active" : ""}`}>
                     <td className="wbs-id">{displayId}</td>
                     <td className="wbs-level-cell">
                       <span className="wbs-level-pill">N{visualLevel}</span>
-                      <div className="wbs-level-actions">
+                      <div className="wbs-level-actions" role="group" aria-label="Ajustar nível">
                         <button
                           type="button"
                           className="level-arrow"
                           aria-label="Subir nível"
                           onClick={(event) => handleLevelAdjust(event, row.node.id, "up")}
                           disabled={!canLevelUp}
-                          style={baseArrowStyle(canLevelUp)}
                         >
                           {"<"}
                         </button>
@@ -886,17 +863,13 @@ const WbsTreeView = ({
                           aria-label="Descer nível"
                           onClick={(event) => handleLevelAdjust(event, row.node.id, "down")}
                           disabled={!canLevelDown}
-                          style={baseArrowStyle(canLevelDown)}
                         >
                           {">"}
                         </button>
                       </div>
                     </td>
                     <td className="wbs-name-cell">
-                      <div
-                        className={`wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""} ${levelClass}`}
-                        style={{ paddingLeft: `${limitedLevel * 20}px` }}
-                      >
+                      <div className={`wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""} ${levelClass}`}>
                         {row.hasChildren ? (
                           <button
                             type="button"
@@ -985,42 +958,33 @@ const WbsTreeView = ({
                         value={getDurationInputValue(row.node)}
                         placeholder="—"
                         onChange={(event) => handleDurationInputChange(row.node.id, event.target.value)}
-                        style={durationInputStyle}
                       />
                     </td>
                     <td>
-                      <div
-                        className="wbs-date-input-wrapper"
-                        style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}
-                      >
+                      <div className="wbs-date-input-wrapper">
                         <CalendarIcon />
                         <input
                           type="date"
                           aria-label="Data de início"
                           value={formatDateInputValue(row.node.startDate)}
                           onChange={(event) => handleDateFieldChange(row.node.id, "startDate", event.target.value)}
-                          style={dateInputStyle}
                         />
                       </div>
                     </td>
                     <td>
-                      <div
-                        className="wbs-date-input-wrapper"
-                        style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}
-                      >
+                      <div className="wbs-date-input-wrapper">
                         <CalendarIcon />
                         <input
                           type="date"
                           aria-label="Data de término"
                           value={formatDateInputValue(row.node.endDate)}
                           onChange={(event) => handleDateFieldChange(row.node.id, "endDate", event.target.value)}
-                          style={dateInputStyle}
                         />
                       </div>
                     </td>
                     <td>
                       {ownerName ? (
-                        <div className="wbs-owner" title={ownerEmail ?? ownerName}>
+                        <div className="wbs-owner" title={ownerTooltip}>
                           <span className="wbs-owner__avatar">{initials}</span>
                           <strong>{ownerName}</strong>
                         </div>
