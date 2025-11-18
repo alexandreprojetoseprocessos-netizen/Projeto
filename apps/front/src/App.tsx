@@ -27,6 +27,9 @@ type WbsNode = {
   description?: string | null;
   progress?: number | null;
   dependencies?: string[] | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  estimateHours?: string | null;
 };
 type BoardResponse = { columns: BoardColumn[] };
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
@@ -715,10 +718,41 @@ export const App = () => {
     }
   };
 
-  const handleWbsUpdate = async (nodeId: string, changes: { title?: string; status?: string }) => {
+  const handleWbsUpdate = async (
+    nodeId: string,
+    changes: {
+      title?: string;
+      status?: string;
+      startDate?: string | null;
+      endDate?: string | null;
+      estimateHours?: number | null;
+      dependencies?: string[];
+    }
+  ) => {
     if (!token || !selectedOrganizationId) return;
-    if (!changes.title && !changes.status) return;
-    setWbsNodes((prev) => patchWbsNode(prev, nodeId, changes));
+    if (
+      changes.title === undefined &&
+      changes.status === undefined &&
+      changes.startDate === undefined &&
+      changes.endDate === undefined &&
+      changes.estimateHours === undefined &&
+      changes.dependencies === undefined
+    ) {
+      return;
+    }
+
+    const payload: Record<string, any> = { ...changes };
+    if ("estimateHours" in payload && payload.estimateHours !== undefined) {
+      payload.estimateHours =
+        payload.estimateHours === null
+          ? null
+          : payload.estimateHours.toString();
+    }
+    if ("dependencies" in payload) {
+      payload.dependencies = Array.isArray(payload.dependencies) ? payload.dependencies : [];
+    }
+
+    setWbsNodes((prev) => patchWbsNode(prev, nodeId, payload));
 
     try {
       await fetchJson(
@@ -726,7 +760,7 @@ export const App = () => {
         token,
         {
           method: "PATCH",
-          body: JSON.stringify(changes)
+          body: JSON.stringify(payload)
         },
         selectedOrganizationId
       );
@@ -935,7 +969,18 @@ function updateNodeParent(nodes: WbsNode[], nodeId: string, parentId: string | n
   return insertIntoTree(withoutItem);
 }
 
-function patchWbsNode(nodes: WbsNode[], nodeId: string, changes: { title?: string; status?: string }): WbsNode[] {
+function patchWbsNode(
+  nodes: WbsNode[],
+  nodeId: string,
+  changes: {
+    title?: string;
+    status?: string;
+    startDate?: string | null;
+    endDate?: string | null;
+    estimateHours?: string | null;
+    dependencies?: string[];
+  }
+): WbsNode[] {
   return nodes.map((node) => {
     if (node.id === nodeId) {
       return { ...node, ...changes };

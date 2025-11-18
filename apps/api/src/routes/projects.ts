@@ -32,6 +32,7 @@ type FlatWbsNode = {
   storyPoints?: number | null;
   actualHours?: number;
   documents?: number;
+  dependencies: string[];
 };
 
 type WbsTreeNode = FlatWbsNode & { children: WbsTreeNode[] };
@@ -682,27 +683,30 @@ projectsRouter.get("/:projectId/wbs", async (req, res) => {
   const membership = await ensureProjectMembership(req, res, projectId);
   if (!membership) return;
 
-  const fetchNodes = () =>
-    prisma.wbsNode.findMany({
-      where: { projectId },
-      include: {
-        taskDetail: true,
-        owner: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true
+    const fetchNodes = () =>
+      prisma.wbsNode.findMany({
+        where: { projectId },
+        include: {
+          taskDetail: true,
+          owner: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true
+            }
+          },
+          timeEntries: {
+            select: { hours: true }
+          },
+          attachments: {
+            select: { id: true }
+          },
+          dependenciesAsSuccessor: {
+            select: { predecessorId: true }
           }
         },
-        timeEntries: {
-          select: { hours: true }
-        },
-        attachments: {
-          select: { id: true }
-        }
-      },
-      orderBy: [{ level: "asc" }, { order: "asc" }, { createdAt: "asc" }]
-    });
+        orderBy: [{ level: "asc" }, { order: "asc" }, { createdAt: "asc" }]
+      });
 
   let nodes = await fetchNodes();
   if (nodes.some((node) => !node.wbsCode)) {
@@ -735,7 +739,8 @@ projectsRouter.get("/:projectId/wbs", async (req, res) => {
     taskType: node.taskDetail?.taskType ?? null,
     storyPoints: node.taskDetail?.storyPoints ?? null,
     actualHours: node.timeEntries.reduce((acc, entry) => acc + Number(entry.hours), 0),
-    documents: node.attachments.length
+    documents: node.attachments.length,
+    dependencies: node.dependenciesAsSuccessor.map((dependency) => dependency.predecessorId)
   }));
 
   return res.json({
@@ -814,6 +819,9 @@ projectsRouter.post("/:projectId/wbs", async (req, res) => {
         },
         attachments: {
           select: { id: true }
+        },
+        dependenciesAsSuccessor: {
+          select: { predecessorId: true }
         }
       }
     });
@@ -847,7 +855,8 @@ projectsRouter.post("/:projectId/wbs", async (req, res) => {
       taskType: refreshed.taskDetail?.taskType ?? null,
       storyPoints: refreshed.taskDetail?.storyPoints ?? null,
       actualHours: refreshed.timeEntries.reduce((acc, entry) => acc + Number(entry.hours), 0),
-      documents: refreshed.attachments.length
+      documents: refreshed.attachments.length,
+      dependencies: refreshed.dependenciesAsSuccessor.map((dependency) => dependency.predecessorId)
     };
 
     return res.status(201).json({ node: formattedNode });

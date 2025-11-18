@@ -145,7 +145,17 @@ type DashboardLayoutProps = {
   wbsNodes: any[];
   wbsError: string | null;
   onMoveNode: (id: string, parentId: string | null, position: number) => void;
-  onUpdateWbsNode: (nodeId: string, changes: { title?: string; status?: string }) => void;
+  onUpdateWbsNode: (
+    nodeId: string,
+    changes: {
+      title?: string;
+      status?: string;
+      startDate?: string | null;
+      endDate?: string | null;
+      estimateHours?: number | null;
+      dependencies?: string[];
+    }
+  ) => void;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
   comments: any[];
@@ -334,6 +344,45 @@ const statusDictionary: Record<string, { label: string; tone: StatusTone }> = {
 };
 
 const editableStatusValues = ["BACKLOG", "IN_PROGRESS", "DONE", "LATE", "AT_RISK"];
+const WORKDAY_HOURS = 8;
+const MS_IN_DAY = 1000 * 60 * 60 * 24;
+
+const formatDateInputValue = (value?: string | null) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 10);
+};
+
+const isoFromDateInput = (value: string) => {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+};
+
+const computeDurationDays = (start?: string | null, end?: string | null): number | null => {
+  if (!start || !end) return null;
+  const startTime = new Date(start).getTime();
+  const endTime = new Date(end).getTime();
+  if (Number.isNaN(startTime) || Number.isNaN(endTime)) return null;
+  return Math.max(1, Math.round((endTime - startTime) / MS_IN_DAY));
+};
+
+const getDurationInputValue = (node: any): string => {
+  const diff = computeDurationDays(node.startDate, node.endDate);
+  if (diff !== null) return String(diff);
+  const rawHours =
+    typeof node.estimateHours === "number"
+      ? node.estimateHours
+      : Number(node.estimateHours ?? 0);
+  if (Number.isFinite(rawHours) && rawHours > 0) {
+    return String(Math.max(1, Math.round(rawHours / WORKDAY_HOURS)));
+  }
+  return "";
+};
 
 const WbsTreeView = ({
   nodes,
@@ -344,7 +393,17 @@ const WbsTreeView = ({
 }: {
   nodes: any[];
   onMove: (id: string, parentId: string | null, position: number) => void;
-  onUpdate: (nodeId: string, changes: { title?: string; status?: string }) => void;
+  onUpdate: (
+    nodeId: string,
+    changes: {
+      title?: string;
+      status?: string;
+      startDate?: string | null;
+      endDate?: string | null;
+      estimateHours?: number | null;
+      dependencies?: string[];
+    }
+  ) => void;
   selectedNodeId: string | null;
   onSelect: (nodeId: string | null) => void;
 }) => {
@@ -353,6 +412,8 @@ const WbsTreeView = ({
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [statusPickerId, setStatusPickerId] = useState<string | null>(null);
+  const [editingDependenciesId, setEditingDependenciesId] = useState<string | null>(null);
+  const [pendingDependencies, setPendingDependencies] = useState<string[]>([]);
 
   type Row = {
     node: any;
@@ -389,6 +450,10 @@ const WbsTreeView = ({
   const cancelTitleEdit = () => {
     setEditingNodeId(null);
     setEditingTitle("");
+  };
+  const closeDependencyEditor = () => {
+    setEditingDependenciesId(null);
+    setPendingDependencies([]);
   };
 
   const handleBeginTitleEdit = (event: MouseEvent<HTMLDivElement>, node: any) => {
@@ -434,6 +499,47 @@ const WbsTreeView = ({
     onUpdate(nodeId, { status: normalized });
   };
 
+  const handleDateFieldChange = (nodeId: string, field: "startDate" | "endDate", inputValue: string) => {
+    cancelTitleEdit();
+    setStatusPickerId(null);
+    const row = rowMap.get(nodeId);
+    if (!row) return;
+    const isoValue = isoFromDateInput(inputValue);
+    const nextStart = field === "startDate" ? isoValue : row.node.startDate ?? null;
+    const nextEnd = field === "endDate" ? isoValue : row.node.endDate ?? null;
+    const updates: Record<string, string | number | null> = {};
+    if (field === "startDate") updates.startDate = isoValue;
+    if (field === "endDate") updates.endDate = isoValue;
+    const durationDays = computeDurationDays(nextStart, nextEnd);
+    if (durationDays !== null) {
+      updates.estimateHours = durationDays * WORKDAY_HOURS;
+    }
+    onUpdate(nodeId, updates);
+  };
+
+  const handleDurationInputChange = (nodeId: string, value: string) => {
+    cancelTitleEdit();
+    setStatusPickerId(null);
+    if (!value) return;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return;
+    const durationDays = Math.max(1, Math.round(parsed));
+    const row = rowMap.get(nodeId);
+    if (!row) return;
+    const updates: Record<string, string | number> = {
+      estimateHours: durationDays * WORKDAY_HOURS
+    };
+    if (row.node.startDate) {
+      const startDate = new Date(row.node.startDate);
+      if (!Number.isNaN(startDate.getTime())) {
+        const newEnd = new Date(startDate.getTime());
+        newEnd.setDate(startDate.getDate() + (durationDays - 1));
+        updates.endDate = newEnd.toISOString();
+      }
+    }
+    onUpdate(nodeId, updates);
+  };
+
   const statusPopoverStyle: CSSProperties = {
     position: "absolute",
     top: "calc(100% + 4px)",
@@ -448,6 +554,24 @@ const WbsTreeView = ({
     minWidth: "180px",
     gap: "0.25rem",
     zIndex: 20
+  };
+  const dateInputStyle: CSSProperties = {
+    border: "1px solid rgba(15, 23, 42, 0.15)",
+    borderRadius: "0.5rem",
+    padding: "0.25rem 0.5rem",
+    fontSize: "0.85rem",
+    color: "var(--text-primary, #0f172a)",
+    background: "#fff",
+    minWidth: "8rem"
+  };
+  const durationInputStyle: CSSProperties = {
+    border: "1px solid rgba(15, 23, 42, 0.15)",
+    borderRadius: "999px",
+    padding: "0.2rem 0.6rem",
+    fontWeight: 600,
+    fontSize: "0.85rem",
+    width: "4.5rem",
+    textAlign: "center"
   };
 
   const progressMap = useMemo(() => {
@@ -565,6 +689,7 @@ const WbsTreeView = ({
     setOpenMenuId(null);
     setStatusPickerId(null);
     cancelTitleEdit();
+    closeDependencyEditor();
   };
 
   const handleDependencyClick = (event: MouseEvent<HTMLButtonElement>, dependencyId: string) => {
@@ -572,12 +697,14 @@ const WbsTreeView = ({
     ensureAncestorsExpanded(dependencyId);
     handleRowSelect(dependencyId);
     setOpenMenuId(null);
+    closeDependencyEditor();
   };
 
   const handleMenuToggle = (event: MouseEvent<HTMLButtonElement>, nodeId: string) => {
     event.stopPropagation();
     cancelTitleEdit();
     setStatusPickerId(null);
+    closeDependencyEditor();
     setOpenMenuId((current) => (current === nodeId ? null : nodeId));
   };
 
@@ -608,9 +735,9 @@ const WbsTreeView = ({
         <table className="wbs-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Nível</th>
-              <th>Nome da tarefa</th>
+              <th className="col-id">ID</th>
+              <th className="col-level">Nível</th>
+              <th className="col-name">Nome da tarefa</th>
               <th>Status</th>
               <th>Duração</th>
               <th>Início</th>
@@ -646,35 +773,22 @@ const WbsTreeView = ({
               const currentLevelIndex = siblingsAtLevel.findIndex((child: any) => child.id === row.node.id);
               const canLevelUp = Boolean(parentRow);
               const canLevelDown = currentLevelIndex > 0;
+              const levelClass = `level-${Math.min(visualLevel, 4)}`;
               const isEditingTitle = editingNodeId === row.node.id;
               const normalizedStatus = (row.node.status ?? "").toUpperCase();
               const isStatusPickerOpen = statusPickerId === row.node.id;
               const baseArrowStyle = (enabled: boolean): CSSProperties => ({
-                border: "1px solid rgba(0,0,0,0.1)",
-                borderRadius: "4px",
-                padding: "0 0.35rem",
-                background: enabled ? "transparent" : "rgba(0,0,0,0.04)",
-                cursor: enabled ? "pointer" : "not-allowed",
-                color: enabled ? "var(--text-muted, #5a5a5a)" : "rgba(0,0,0,0.35)",
-                fontSize: "0.9rem",
-                lineHeight: 1.2,
-                transition: "background 0.2s ease"
+                background: enabled ? "rgba(15, 23, 42, 0.05)" : "rgba(15, 23, 42, 0.03)",
+                color: enabled ? "var(--text-muted, #5a5a5a)" : "rgba(0,0,0,0.35)"
               });
 
               return (
                 <Fragment key={row.node.id}>
                   <tr className={`wbs-row ${isActive ? "is-active" : ""}`}>
-                    <td>{displayId}</td>
-                    <td>
-                      <div
-                        className="wbs-level-control"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: "0.35rem"
-                        }}
-                      >
+                    <td className="wbs-id">{displayId}</td>
+                    <td className="wbs-level-cell">
+                      <span className="wbs-level-pill">N{visualLevel}</span>
+                      <div className="wbs-level-actions">
                         <button
                           type="button"
                           className="level-arrow"
@@ -683,11 +797,8 @@ const WbsTreeView = ({
                           disabled={!canLevelUp}
                           style={baseArrowStyle(canLevelUp)}
                         >
-                          &lt;
+                          {"<"}
                         </button>
-                        <span className="wbs-level-value" style={{ fontWeight: 600 }}>
-                          {visualLevel}
-                        </span>
                         <button
                           type="button"
                           className="level-arrow"
@@ -696,20 +807,24 @@ const WbsTreeView = ({
                           disabled={!canLevelDown}
                           style={baseArrowStyle(canLevelDown)}
                         >
-                          &gt;
+                          {">"}
                         </button>
                       </div>
                     </td>
-                    <td>
-                      <div className={`wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""}`} style={{ paddingLeft: `${visualLevel * 18}px` }}>
+                    <td className="wbs-name-cell">
+                      <div
+                        className={`wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""} ${levelClass}`}
+                        style={{ paddingLeft: `${visualLevel * 14}px` }}
+                      >
                         {row.hasChildren ? (
                           <button
                             type="button"
-                            className="wbs-toggle"
+                            className={`wbs-toggle ${isExpanded ? "is-open" : ""}`}
                             onClick={(event) => handleToggle(event, row.node.id, visualLevel)}
                             aria-label={isExpanded ? "Recolher subtarefas" : "Expandir subtarefas"}
+                            aria-expanded={isExpanded}
                           >
-                            {isExpanded ? "▾" : "▸"}
+                            {isExpanded ? "v" : ">"}
                           </button>
                         ) : (
                           <span className="wbs-toggle placeholder" />
@@ -719,6 +834,7 @@ const WbsTreeView = ({
                         </span>
                         <div
                           className="wbs-task-text"
+                          title={row.node.title ?? "Tarefa sem nome"}
                           onDoubleClick={(event) => handleBeginTitleEdit(event, row.node)}
                         >
                           {isEditingTitle ? (
@@ -731,19 +847,11 @@ const WbsTreeView = ({
                               onClick={(event) => event.stopPropagation()}
                               autoFocus
                               placeholder="Nome da tarefa"
-                              style={{
-                                width: "100%",
-                                border: "1px solid rgba(99, 102, 241, 0.45)",
-                                borderRadius: "6px",
-                                padding: "0.2rem 0.4rem",
-                                fontSize: "0.95rem",
-                                background: "#fff"
-                              }}
                             />
                           ) : (
                             <>
                               <strong>{row.node.title ?? "Tarefa sem nome"}</strong>
-                              {row.node.description && <small>{row.node.description}</small>}
+                              {row.node.description && <small title={row.node.description}>{row.node.description}</small>}
                             </>
                           )}
                         </div>
@@ -788,28 +896,52 @@ const WbsTreeView = ({
                       </div>
                     </td>
                     <td>
-                      <span className="wbs-chip">{formatDuration(row.node.startDate, row.node.endDate)}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        className="wbs-duration-input"
+                        aria-label="Duração em dias"
+                        value={getDurationInputValue(row.node)}
+                        placeholder="—"
+                        onChange={(event) => handleDurationInputChange(row.node.id, event.target.value)}
+                        style={durationInputStyle}
+                      />
                     </td>
                     <td>
-                      <span className="wbs-date-chip" title={row.node.startDate ?? "Sem data definida"}>
+                      <div
+                        className="wbs-date-input-wrapper"
+                        style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}
+                      >
                         <CalendarIcon />
-                        {formatDate(row.node.startDate)}
-                      </span>
+                        <input
+                          type="date"
+                          aria-label="Data de início"
+                          value={formatDateInputValue(row.node.startDate)}
+                          onChange={(event) => handleDateFieldChange(row.node.id, "startDate", event.target.value)}
+                          style={dateInputStyle}
+                        />
+                      </div>
                     </td>
                     <td>
-                      <span className="wbs-date-chip" title={row.node.endDate ?? "Sem data definida"}>
+                      <div
+                        className="wbs-date-input-wrapper"
+                        style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}
+                      >
                         <CalendarIcon />
-                        {formatDate(row.node.endDate)}
-                      </span>
+                        <input
+                          type="date"
+                          aria-label="Data de término"
+                          value={formatDateInputValue(row.node.endDate)}
+                          onChange={(event) => handleDateFieldChange(row.node.id, "endDate", event.target.value)}
+                          style={dateInputStyle}
+                        />
+                      </div>
                     </td>
                     <td>
                       {ownerName ? (
-                        <div className="wbs-owner">
+                        <div className="wbs-owner" title={ownerEmail ?? ownerName}>
                           <span className="wbs-owner__avatar">{initials}</span>
-                          <div>
-                            <strong>{ownerName}</strong>
-                            {ownerEmail && <small>{ownerEmail}</small>}
-                          </div>
+                          <strong>{ownerName}</strong>
                         </div>
                       ) : (
                         <span className="muted">Sem responsável</span>
@@ -823,33 +955,102 @@ const WbsTreeView = ({
                         <strong>{progress}%</strong>
                       </div>
                     </td>
-                    <td>
+                    <td className="wbs-dependencies-cell">
                       {dependencyBadges.length ? (
                         <div className="wbs-dependencies">
-                          {dependencyBadges.map((dependencyId: string) => {
-                            const dependencyRow = rowMap.get(dependencyId);
-                            if (!dependencyRow) {
+                          <span className="wbs-dependencies__label">Depende de</span>
+                          <div className="wbs-dependencies__items">
+                            {dependencyBadges.map((dependencyId: string) => {
+                              const dependencyRow = rowMap.get(dependencyId);
+                              if (!dependencyRow) {
+                                return (
+                                  <span key={`${row.node.id}-${dependencyId}`} className="wbs-dependency-pill muted">
+                                    —
+                                  </span>
+                                );
+                              }
                               return (
-                                <span key={`${row.node.id}-${dependencyId}`} className="wbs-chip muted">
-                                  —
-                                </span>
+                                <button
+                                  key={`${row.node.id}-${dependencyId}`}
+                                  type="button"
+                                  className="wbs-dependency-pill"
+                                  title={`Depende de ${dependencyRow.node.title}`}
+                                  onClick={(event) => handleDependencyClick(event, dependencyId)}
+                                >
+                                  {dependencyRow.node.wbsCode ?? dependencyRow.displayId}
+                                </button>
                               );
-                            }
-                            return (
-                              <button
-                                key={`${row.node.id}-${dependencyId}`}
-                                type="button"
-                                className="wbs-chip is-link"
-                                title={`Depende de ${dependencyRow.node.title}`}
-                                onClick={(event) => handleDependencyClick(event, dependencyId)}
-                              >
-                                {dependencyRow.node.wbsCode ?? dependencyRow.displayId}
-                              </button>
-                            );
-                          })}
+                            })}
+                          </div>
                         </div>
                       ) : (
                         <span className="muted">Sem dependências</span>
+                      )}
+                      <div className="wbs-dependencies__actions">
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            cancelTitleEdit();
+                            setStatusPickerId(null);
+                            setOpenMenuId(null);
+                            if (editingDependenciesId === row.node.id) {
+                              closeDependencyEditor();
+                            } else {
+                              setEditingDependenciesId(row.node.id);
+                              setPendingDependencies(dependencyBadges);
+                            }
+                          }}
+                        >
+                          {editingDependenciesId === row.node.id ? "Cancelar" : "Editar"}
+                        </button>
+                      </div>
+                      {editingDependenciesId === row.node.id && (
+                        <div className="wbs-dependencies-editor" onClick={(event) => event.stopPropagation()}>
+                          <label>
+                            Selecione predecessoras
+                            <select
+                              multiple
+                              value={pendingDependencies}
+                              onChange={(event) => {
+                                const selected = Array.from(event.currentTarget.selectedOptions).map((option) => option.value);
+                                setPendingDependencies(selected);
+                              }}
+                            >
+                              {allRows
+                                .filter((optionRow) => optionRow.node.id !== row.node.id)
+                                .map((optionRow) => (
+                                  <option key={optionRow.node.id} value={optionRow.node.id}>
+                                    {(optionRow.node.wbsCode ?? optionRow.displayId) ?? optionRow.node.id} · {optionRow.node.title}
+                                  </option>
+                                ))}
+                            </select>
+                          </label>
+                          <div className="wbs-dependencies-editor__actions">
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                closeDependencyEditor();
+                              }}
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              className="primary-button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onUpdate(row.node.id, { dependencies: pendingDependencies });
+                                closeDependencyEditor();
+                              }}
+                            >
+                              Salvar
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </td>
                     <td className="wbs-details-cell">
@@ -857,9 +1058,10 @@ const WbsTreeView = ({
                         type="button"
                         className={`wbs-details-button ${isActive ? "is-active" : ""}`}
                         onClick={(event) => handleDetailsButton(event, row.node.id)}
+                        aria-label="Ver detalhes da tarefa"
                       >
                         <DetailsIcon />
-                        Ver detalhes
+                        <span className="details-label">Detalhes</span>
                       </button>
                     </td>
                     <td>
@@ -892,7 +1094,7 @@ const WbsTreeView = ({
                   </tr>
                   {isActive && selectedNode && (
                     <tr className="wbs-detail-row">
-                      <td colSpan={11}>
+                      <td colSpan={12}>
                         <div className="wbs-detail-card">
                           <header className="wbs-detail-card__header">
                             <div>
@@ -1086,7 +1288,16 @@ type ProjectDetailsTabsProps = {
   wbsNodes: any[];
   wbsError: string | null;
   onMoveNode: (nodeId: string, parentId: string | null, position: number) => void;
-  onUpdateNode: (nodeId: string, changes: { title?: string; status?: string }) => void;
+  onUpdateNode: (
+    nodeId: string,
+    changes: {
+      title?: string;
+      status?: string;
+      startDate?: string | null;
+      endDate?: string | null;
+      estimateHours?: number | null;
+    }
+  ) => void;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
   comments: any[];

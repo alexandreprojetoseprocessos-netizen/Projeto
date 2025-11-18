@@ -6,6 +6,7 @@ import { organizationMiddleware } from "../middleware/organization";
 import type { RequestWithUser } from "../types/http";
 import { sendSlackMessage } from "../services/integrations";
 import { recomputeProjectWbsCodes } from "../services/wbsCode";
+import { DependencyValidationError, enforceDependencyDates, setNodeDependencies } from "../services/wbsDependencies";
 
 export const wbsRouter = Router();
 
@@ -133,11 +134,16 @@ wbsRouter.patch("/:nodeId", async (req, res) => {
     order,
     progress,
     estimateHours,
-    boardColumnId
+    boardColumnId,
+    dependencies
   } = req.body as Record<string, any>;
 
   const access = await assertNodeAccess(req, res, nodeId, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
   if (!access) return;
+
+  if (dependencies !== undefined && !Array.isArray(dependencies)) {
+    return res.status(400).json({ message: "dependencies must be an array" });
+  }
 
   const data: Prisma.WbsNodeUncheckedUpdateInput = {};
   if (title !== undefined) data.title = title;
@@ -171,7 +177,23 @@ wbsRouter.patch("/:nodeId", async (req, res) => {
     data
   });
 
+  let dependenciesChanged = false;
+  if (dependencies !== undefined) {
+    const dependencyIds = dependencies.map((value: string) => String(value));
+    try {
+      dependenciesChanged = await setNodeDependencies(access.node.projectId, nodeId, dependencyIds);
+    } catch (error) {
+      if (error instanceof DependencyValidationError) {
+        return res.status(400).json({ message: error.message });
+      }
+      throw error;
+    }
+  }
+
   await recomputeProjectWbsCodes(access.node.projectId);
+  if (dependenciesChanged || startDate !== undefined || endDate !== undefined) {
+    await enforceDependencyDates(access.node.projectId, [nodeId]);
+  }
   const refreshed = await prisma.wbsNode.findUnique({ where: { id: nodeId } });
 
   return res.json({ node: refreshed ?? node });
