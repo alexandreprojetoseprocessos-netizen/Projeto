@@ -6,10 +6,11 @@ import {
   useMemo,
   useState,
   useCallback,
+  useRef,
   type FormEvent,
   type MouseEvent,
   type CSSProperties,
-  type KeyboardEvent
+  type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { ProjectPortfolio, type PortfolioProject } from "./ProjectPortfolio";
 import { NotFoundPage } from "./NotFoundPage";
@@ -414,6 +415,7 @@ const WbsTreeView = ({
   const [statusPickerId, setStatusPickerId] = useState<string | null>(null);
   const [editingDependenciesId, setEditingDependenciesId] = useState<string | null>(null);
   const [pendingDependencies, setPendingDependencies] = useState<string[]>([]);
+  const dependencyEditorRef = useRef<HTMLDivElement | null>(null);
 
   type Row = {
     node: any;
@@ -452,6 +454,7 @@ const WbsTreeView = ({
     setEditingTitle("");
   };
   const closeDependencyEditor = () => {
+    dependencyEditorRef.current = null;
     setEditingDependenciesId(null);
     setPendingDependencies([]);
   };
@@ -592,6 +595,31 @@ const WbsTreeView = ({
     return cache;
   }, [nodes]);
 
+  useEffect(() => {
+    if (!editingDependenciesId) return;
+
+    const handleDocumentMouseDown = (event: MouseEvent) => {
+      if (!dependencyEditorRef.current) return;
+      if (!dependencyEditorRef.current.contains(event.target as Node)) {
+        closeDependencyEditor();
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeDependencyEditor();
+      }
+    };
+
+    document.addEventListener("mousedown", handleDocumentMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleDocumentMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [editingDependenciesId]);
+
   const visibleRows = useMemo(() => {
     return allRows.filter((row) => {
       if (row.level === 0) return true;
@@ -692,12 +720,46 @@ const WbsTreeView = ({
     closeDependencyEditor();
   };
 
-  const handleDependencyClick = (event: MouseEvent<HTMLButtonElement>, dependencyId: string) => {
-    event.stopPropagation();
-    ensureAncestorsExpanded(dependencyId);
-    handleRowSelect(dependencyId);
+  const openDependencyEditorForNode = (nodeId: string, dependencies: string[]) => {
+    cancelTitleEdit();
+    setStatusPickerId(null);
     setOpenMenuId(null);
-    closeDependencyEditor();
+    if (editingDependenciesId === nodeId) {
+      closeDependencyEditor();
+    } else {
+      setEditingDependenciesId(nodeId);
+      setPendingDependencies(dependencies);
+    }
+  };
+
+  const handleDependencyAreaKeyDown = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+    nodeId: string,
+    dependencies: string[]
+  ) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openDependencyEditorForNode(nodeId, dependencies);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeDependencyEditor();
+    }
+  };
+
+  const handleDependencyToggle = (nodeId: string, dependencyId: string, checked: boolean) => {
+    if (editingDependenciesId !== nodeId) return;
+    setPendingDependencies((current) => {
+      let next = current;
+      if (checked && !current.includes(dependencyId)) {
+        next = [...current, dependencyId];
+      } else if (!checked && current.includes(dependencyId)) {
+        next = current.filter((value) => value !== dependencyId);
+      }
+      if (next !== current) {
+        onUpdate(nodeId, { dependencies: next });
+      }
+      return next;
+    });
   };
 
   const handleMenuToggle = (event: MouseEvent<HTMLButtonElement>, nodeId: string) => {
@@ -768,12 +830,31 @@ const WbsTreeView = ({
                     .toUpperCase()
                 : null;
               const dependencyBadges = Array.isArray(row.node.dependencies) ? row.node.dependencies : [];
+              const dependencyInfos = dependencyBadges.map((dependencyId: string) => {
+                const dependencyRow = rowMap.get(dependencyId);
+                if (!dependencyRow) {
+                  return {
+                    id: dependencyId,
+                    label: dependencyId,
+                    tooltip: "Tarefa não encontrada",
+                    row: null
+                  };
+                }
+                const label = dependencyRow.node.wbsCode ?? dependencyRow.displayId;
+                return {
+                  id: dependencyId,
+                  label,
+                  tooltip: `${label} - ${dependencyRow.node.title}`,
+                  row: dependencyRow
+                };
+              });
               const parentRow = row.parentId ? rowMap.get(row.parentId) : null;
               const siblingsAtLevel = parentRow ? parentRow.node.children ?? [] : nodes;
               const currentLevelIndex = siblingsAtLevel.findIndex((child: any) => child.id === row.node.id);
               const canLevelUp = Boolean(parentRow);
               const canLevelDown = currentLevelIndex > 0;
-              const levelClass = `level-${Math.min(visualLevel, 4)}`;
+              const limitedLevel = Math.max(0, Math.min(visualLevel, 4));
+              const levelClass = `level-${limitedLevel}`;
               const isEditingTitle = editingNodeId === row.node.id;
               const normalizedStatus = (row.node.status ?? "").toUpperCase();
               const isStatusPickerOpen = statusPickerId === row.node.id;
@@ -784,7 +865,7 @@ const WbsTreeView = ({
 
               return (
                 <Fragment key={row.node.id}>
-                  <tr className={`wbs-row ${isActive ? "is-active" : ""}`}>
+                  <tr className={`wbs-row level-${limitedLevel} ${isActive ? "is-active" : ""}`}>
                     <td className="wbs-id">{displayId}</td>
                     <td className="wbs-level-cell">
                       <span className="wbs-level-pill">N{visualLevel}</span>
@@ -814,7 +895,7 @@ const WbsTreeView = ({
                     <td className="wbs-name-cell">
                       <div
                         className={`wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""} ${levelClass}`}
-                        style={{ paddingLeft: `${visualLevel * 14}px` }}
+                        style={{ paddingLeft: `${limitedLevel * 20}px` }}
                       >
                         {row.hasChildren ? (
                           <button
@@ -956,99 +1037,80 @@ const WbsTreeView = ({
                       </div>
                     </td>
                     <td className="wbs-dependencies-cell">
-                      {dependencyBadges.length ? (
-                        <div className="wbs-dependencies">
-                          <span className="wbs-dependencies__label">Depende de</span>
-                          <div className="wbs-dependencies__items">
-                            {dependencyBadges.map((dependencyId: string) => {
-                              const dependencyRow = rowMap.get(dependencyId);
-                              if (!dependencyRow) {
-                                return (
-                                  <span key={`${row.node.id}-${dependencyId}`} className="wbs-dependency-pill muted">
-                                    —
-                                  </span>
-                                );
-                              }
-                              return (
-                                <button
-                                  key={`${row.node.id}-${dependencyId}`}
-                                  type="button"
-                                  className="wbs-dependency-pill"
-                                  title={`Depende de ${dependencyRow.node.title}`}
-                                  onClick={(event) => handleDependencyClick(event, dependencyId)}
+                      <div
+                        className={`wbs-dependencies-display ${editingDependenciesId === row.node.id ? "is-open" : ""}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openDependencyEditorForNode(row.node.id, dependencyBadges);
+                        }}
+                        onKeyDown={(event) => handleDependencyAreaKeyDown(event, row.node.id, dependencyBadges)}
+                      >
+                        {dependencyInfos.length ? (
+                          <div className="wbs-dependencies">
+                            <span className="wbs-dependencies__label">Depende de</span>
+                            <div className="wbs-dependencies__items">
+                              {dependencyInfos.slice(0, 3).map((info) => (
+                                <span key={`${row.node.id}-${info.id}`} className="wbs-dependency-pill" title={info.tooltip}>
+                                  {info.label}
+                                </span>
+                              ))}
+                              {dependencyInfos.length > 3 && (
+                                <span
+                                  className="wbs-dependency-pill extra"
+                                  title={dependencyInfos
+                                    .slice(3)
+                                    .map((info) => info.tooltip)
+                                    .join("\n")}
                                 >
-                                  {dependencyRow.node.wbsCode ?? dependencyRow.displayId}
-                                </button>
-                              );
-                            })}
+                                  +{dependencyInfos.length - 3}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <span className="muted">Sem dependências</span>
-                      )}
-                      <div className="wbs-dependencies__actions">
-                        <button
-                          type="button"
-                          className="link-button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            cancelTitleEdit();
-                            setStatusPickerId(null);
-                            setOpenMenuId(null);
-                            if (editingDependenciesId === row.node.id) {
-                              closeDependencyEditor();
-                            } else {
-                              setEditingDependenciesId(row.node.id);
-                              setPendingDependencies(dependencyBadges);
-                            }
-                          }}
-                        >
-                          {editingDependenciesId === row.node.id ? "Cancelar" : "Editar"}
-                        </button>
+                        ) : (
+                          <span className="wbs-dependency-pill muted">Sem dependências</span>
+                        )}
                       </div>
                       {editingDependenciesId === row.node.id && (
-                        <div className="wbs-dependencies-editor" onClick={(event) => event.stopPropagation()}>
-                          <label>
-                            Selecione predecessoras
-                            <select
-                              multiple
-                              value={pendingDependencies}
-                              onChange={(event) => {
-                                const selected = Array.from(event.currentTarget.selectedOptions).map((option) => option.value);
-                                setPendingDependencies(selected);
-                              }}
-                            >
-                              {allRows
-                                .filter((optionRow) => optionRow.node.id !== row.node.id)
-                                .map((optionRow) => (
-                                  <option key={optionRow.node.id} value={optionRow.node.id}>
-                                    {(optionRow.node.wbsCode ?? optionRow.displayId) ?? optionRow.node.id} · {optionRow.node.title}
-                                  </option>
-                                ))}
-                            </select>
-                          </label>
-                          <div className="wbs-dependencies-editor__actions">
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                closeDependencyEditor();
-                              }}
-                            >
-                              Cancelar
-                            </button>
-                            <button
-                              type="button"
-                              className="primary-button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onUpdate(row.node.id, { dependencies: pendingDependencies });
-                                closeDependencyEditor();
-                              }}
-                            >
-                              Salvar
-                            </button>
+                        <div
+                          className="wbs-dependencies-editor"
+                          ref={(element) => {
+                            if (editingDependenciesId === row.node.id) {
+                              dependencyEditorRef.current = element;
+                            }
+                          }}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <div className="wbs-dependencies-editor__header">
+                            <strong>Selecione predecessoras</strong>
+                            <p className="subtext">Marque as tarefas das quais esta atividade depende.</p>
+                          </div>
+                          <div className="wbs-dependencies-editor__list">
+                            {allRows
+                              .filter((optionRow) => optionRow.node.id !== row.node.id)
+                              .map((optionRow) => {
+                                const optionId = optionRow.node.id;
+                                const label = optionRow.node.wbsCode ?? optionRow.displayId;
+                                const title = optionRow.node.title ?? "Tarefa sem nome";
+                                const checked = pendingDependencies.includes(optionId);
+                                return (
+                                  <label key={optionId} className="dependency-option" title={`${label} - ${title}`}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={(event) => {
+                                        event.stopPropagation();
+                                        handleDependencyToggle(row.node.id, optionId, event.currentTarget.checked);
+                                      }}
+                                    />
+                                    <span className="dependency-option__title">
+                                      {label} - {title}
+                                    </span>
+                                  </label>
+                                );
+                              })}
                           </div>
                         </div>
                       )}
@@ -2786,12 +2848,7 @@ export const DashboardLayout = ({
     </>
   );
 
-  const renderProjectsContent = () => (
-    <>
-      {renderProjectsList()}
-      {renderProjectDetails()}
-    </>
-  );
+  const renderProjectsContent = () => renderProjectDetails();
 
   const renderTeamContent = () => (
     <TeamPanel members={members} membersError={membersError} projectName={projectMeta?.projectName ?? null} />
