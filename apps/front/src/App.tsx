@@ -278,9 +278,10 @@ export const App = () => {
         const data = await fetchJson(`/projects/${selectedProjectId}/wbs`, token, undefined, selectedOrganizationId);
         const nodes = data.nodes ?? [];
         setWbsNodes(nodes);
-        if (nodes.length) {
-          setSelectedNodeId((current) => current ?? nodes[0].id);
-        }
+        setSelectedNodeId((current) => {
+          if (!current) return null;
+          return treeContainsNode(nodes, current) ? current : null;
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro ao carregar WBS";
         setWbsError(message);
@@ -714,6 +715,29 @@ export const App = () => {
     }
   };
 
+  const handleWbsUpdate = async (nodeId: string, changes: { title?: string; status?: string }) => {
+    if (!token || !selectedOrganizationId) return;
+    if (!changes.title && !changes.status) return;
+    setWbsNodes((prev) => patchWbsNode(prev, nodeId, changes));
+
+    try {
+      await fetchJson(
+        `/wbs/${nodeId}`,
+        token,
+        {
+          method: "PATCH",
+          body: JSON.stringify(changes)
+        },
+        selectedOrganizationId
+      );
+      setWbsRefresh((value) => value + 1);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao atualizar tarefa";
+      setWbsError(message);
+      setWbsRefresh((value) => value + 1);
+    }
+  };
+
   const handleDownloadPortfolio = async () => {
     if (!token || !selectedOrganizationId) return;
 
@@ -814,6 +838,7 @@ export const App = () => {
       wbsNodes={wbsNodes}
       wbsError={wbsError}
       onMoveNode={handleWbsMove}
+      onUpdateWbsNode={handleWbsUpdate}
       selectedNodeId={selectedNodeId}
       onSelectNode={setSelectedNodeId}
       comments={comments}
@@ -908,4 +933,26 @@ function updateNodeParent(nodes: WbsNode[], nodeId: string, parentId: string | n
   }
 
   return insertIntoTree(withoutItem);
+}
+
+function patchWbsNode(nodes: WbsNode[], nodeId: string, changes: { title?: string; status?: string }): WbsNode[] {
+  return nodes.map((node) => {
+    if (node.id === nodeId) {
+      return { ...node, ...changes };
+    }
+    if (node.children?.length) {
+      return { ...node, children: patchWbsNode(node.children, nodeId, changes) };
+    }
+    return node;
+  });
+}
+
+function treeContainsNode(nodes: WbsNode[], nodeId: string): boolean {
+  for (const node of nodes) {
+    if (node.id === nodeId) return true;
+    if (node.children?.length && treeContainsNode(node.children, nodeId)) {
+      return true;
+    }
+  }
+  return false;
 }

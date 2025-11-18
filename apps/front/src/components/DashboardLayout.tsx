@@ -8,7 +8,8 @@ import {
   useCallback,
   type FormEvent,
   type MouseEvent,
-  type CSSProperties
+  type CSSProperties,
+  type KeyboardEvent
 } from "react";
 import { ProjectPortfolio, type PortfolioProject } from "./ProjectPortfolio";
 import { NotFoundPage } from "./NotFoundPage";
@@ -144,6 +145,7 @@ type DashboardLayoutProps = {
   wbsNodes: any[];
   wbsError: string | null;
   onMoveNode: (id: string, parentId: string | null, position: number) => void;
+  onUpdateWbsNode: (nodeId: string, changes: { title?: string; status?: string }) => void;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
   comments: any[];
@@ -331,19 +333,26 @@ const statusDictionary: Record<string, { label: string; tone: StatusTone }> = {
   BLOCKED: { label: "Em risco", tone: "warning" }
 };
 
+const editableStatusValues = ["BACKLOG", "IN_PROGRESS", "DONE", "LATE", "AT_RISK"];
+
 const WbsTreeView = ({
   nodes,
   onMove,
+  onUpdate,
   selectedNodeId,
   onSelect
 }: {
   nodes: any[];
   onMove: (id: string, parentId: string | null, position: number) => void;
+  onUpdate: (nodeId: string, changes: { title?: string; status?: string }) => void;
   selectedNodeId: string | null;
   onSelect: (nodeId: string | null) => void;
 }) => {
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [statusPickerId, setStatusPickerId] = useState<string | null>(null);
 
   type Row = {
     node: any;
@@ -376,6 +385,70 @@ const WbsTreeView = ({
     allRows.forEach((row) => map.set(row.node.id, row));
     return map;
   }, [allRows]);
+
+  const cancelTitleEdit = () => {
+    setEditingNodeId(null);
+    setEditingTitle("");
+  };
+
+  const handleBeginTitleEdit = (event: MouseEvent<HTMLDivElement>, node: any) => {
+    event.stopPropagation();
+    setStatusPickerId(null);
+    setEditingNodeId(node.id);
+    setEditingTitle(node.title ?? "");
+  };
+
+  const commitTitleEdit = () => {
+    if (!editingNodeId) return;
+    const trimmed = editingTitle.trim();
+    const previous = rowMap.get(editingNodeId)?.node.title ?? "";
+    cancelTitleEdit();
+    if (!trimmed || trimmed === previous) {
+      return;
+    }
+    onUpdate(editingNodeId, { title: trimmed });
+  };
+
+  const handleTitleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitTitleEdit();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      cancelTitleEdit();
+    }
+  };
+
+  const handleStatusToggle = (event: MouseEvent<HTMLButtonElement>, nodeId: string) => {
+    event.stopPropagation();
+    cancelTitleEdit();
+    setStatusPickerId((current) => (current === nodeId ? null : nodeId));
+  };
+
+  const handleStatusChange = (event: MouseEvent<HTMLButtonElement>, nodeId: string, statusValue: string) => {
+    event.stopPropagation();
+    setStatusPickerId(null);
+    const normalized = statusValue.toUpperCase();
+    const current = (rowMap.get(nodeId)?.node.status ?? "").toUpperCase();
+    if (current === normalized) return;
+    onUpdate(nodeId, { status: normalized });
+  };
+
+  const statusPopoverStyle: CSSProperties = {
+    position: "absolute",
+    top: "calc(100% + 4px)",
+    left: 0,
+    background: "#fff",
+    borderRadius: "0.65rem",
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.15)",
+    padding: "0.35rem",
+    display: "flex",
+    flexDirection: "column",
+    minWidth: "180px",
+    gap: "0.25rem",
+    zIndex: 20
+  };
 
   const progressMap = useMemo(() => {
     const cache = new Map<string, number>();
@@ -412,6 +485,8 @@ const WbsTreeView = ({
 
   const handleLevelAdjust = (event: MouseEvent<HTMLButtonElement>, nodeId: string, direction: "up" | "down") => {
     event.stopPropagation();
+    cancelTitleEdit();
+    setStatusPickerId(null);
     const currentRow = rowMap.get(nodeId);
     if (!currentRow) return;
 
@@ -488,6 +563,8 @@ const WbsTreeView = ({
     const isSame = selectedNodeId === nodeId;
     onSelect(isSame ? null : nodeId);
     setOpenMenuId(null);
+    setStatusPickerId(null);
+    cancelTitleEdit();
   };
 
   const handleDependencyClick = (event: MouseEvent<HTMLButtonElement>, dependencyId: string) => {
@@ -499,6 +576,8 @@ const WbsTreeView = ({
 
   const handleMenuToggle = (event: MouseEvent<HTMLButtonElement>, nodeId: string) => {
     event.stopPropagation();
+    cancelTitleEdit();
+    setStatusPickerId(null);
     setOpenMenuId((current) => (current === nodeId ? null : nodeId));
   };
 
@@ -567,6 +646,9 @@ const WbsTreeView = ({
               const currentLevelIndex = siblingsAtLevel.findIndex((child: any) => child.id === row.node.id);
               const canLevelUp = Boolean(parentRow);
               const canLevelDown = currentLevelIndex > 0;
+              const isEditingTitle = editingNodeId === row.node.id;
+              const normalizedStatus = (row.node.status ?? "").toUpperCase();
+              const isStatusPickerOpen = statusPickerId === row.node.id;
               const baseArrowStyle = (enabled: boolean): CSSProperties => ({
                 border: "1px solid rgba(0,0,0,0.1)",
                 borderRadius: "4px",
@@ -635,14 +717,75 @@ const WbsTreeView = ({
                         <span className={`wbs-node-icon ${row.hasChildren ? "is-folder" : "is-task"}`}>
                           {row.hasChildren ? <FolderIcon /> : <TaskIcon />}
                         </span>
-                        <div>
-                          <strong>{row.node.title}</strong>
-                          {row.node.description && <small>{row.node.description}</small>}
+                        <div
+                          className="wbs-task-text"
+                          onDoubleClick={(event) => handleBeginTitleEdit(event, row.node)}
+                        >
+                          {isEditingTitle ? (
+                            <input
+                              className="wbs-title-input"
+                              value={editingTitle}
+                              onChange={(event) => setEditingTitle(event.target.value)}
+                              onBlur={commitTitleEdit}
+                              onKeyDown={handleTitleKeyDown}
+                              onClick={(event) => event.stopPropagation()}
+                              autoFocus
+                              placeholder="Nome da tarefa"
+                              style={{
+                                width: "100%",
+                                border: "1px solid rgba(99, 102, 241, 0.45)",
+                                borderRadius: "6px",
+                                padding: "0.2rem 0.4rem",
+                                fontSize: "0.95rem",
+                                background: "#fff"
+                              }}
+                            />
+                          ) : (
+                            <>
+                              <strong>{row.node.title ?? "Tarefa sem nome"}</strong>
+                              {row.node.description && <small>{row.node.description}</small>}
+                            </>
+                          )}
                         </div>
                       </div>
                     </td>
                     <td>
-                      <span className={`wbs-status wbs-status--${status.tone}`}>{status.label}</span>
+                      <div style={{ position: "relative", display: "inline-flex" }}>
+                        <button
+                          type="button"
+                          className={`wbs-status wbs-status--${status.tone}`}
+                          onClick={(event) => handleStatusToggle(event, row.node.id)}
+                        >
+                          {status.label}
+                        </button>
+                        {isStatusPickerOpen && (
+                          <div className="wbs-status-picker" style={statusPopoverStyle}>
+                            {editableStatusValues.map((value) => {
+                              const option = statusDictionary[value] ?? {
+                                label: value,
+                                tone: "neutral" as StatusTone
+                              };
+                              const isActiveOption = normalizedStatus === value;
+                              return (
+                                <button
+                                  type="button"
+                                  key={value}
+                                  onClick={(event) => handleStatusChange(event, row.node.id, value)}
+                                  style={{
+                                    border: "none",
+                                    background: isActiveOption ? "rgba(99, 102, 241, 0.08)" : "transparent",
+                                    padding: 0,
+                                    textAlign: "left",
+                                    cursor: "pointer"
+                                  }}
+                                >
+                                  <span className={`wbs-status wbs-status--${option.tone}`}>{option.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <span className="wbs-chip">{formatDuration(row.node.startDate, row.node.endDate)}</span>
@@ -943,6 +1086,7 @@ type ProjectDetailsTabsProps = {
   wbsNodes: any[];
   wbsError: string | null;
   onMoveNode: (nodeId: string, parentId: string | null, position: number) => void;
+  onUpdateNode: (nodeId: string, changes: { title?: string; status?: string }) => void;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
   comments: any[];
@@ -1001,6 +1145,7 @@ const ProjectDetailsTabs = ({
   wbsNodes,
   wbsError,
   onMoveNode,
+  onUpdateNode,
   selectedNodeId,
   onSelectNode,
   comments,
@@ -1378,7 +1523,13 @@ const ProjectDetailsTabs = ({
   const edtContent = (
     <div className="tab-panel">
       {wbsError && <p className="error-text">{wbsError}</p>}
-      <WbsTreeView nodes={wbsNodes} onMove={onMoveNode} selectedNodeId={selectedNodeId} onSelect={onSelectNode} />
+      <WbsTreeView
+        nodes={wbsNodes}
+        onMove={onMoveNode}
+        onUpdate={onUpdateNode}
+        selectedNodeId={selectedNodeId}
+        onSelect={onSelectNode}
+      />
       <p className="muted">
         Selecione uma tarefa para visualizar detalhes, adicionar comentários, anexar arquivos ou registrar horas.
       </p>
@@ -2088,6 +2239,7 @@ export const DashboardLayout = ({
   wbsNodes,
   wbsError,
   onMoveNode,
+  onUpdateWbsNode,
   selectedNodeId,
   onSelectNode,
   comments,
@@ -2361,6 +2513,7 @@ export const DashboardLayout = ({
       wbsNodes={wbsNodes}
       wbsError={wbsError}
       onMoveNode={onMoveNode}
+      onUpdateNode={onUpdateWbsNode}
       selectedNodeId={selectedNodeId}
       onSelectNode={onSelectNode}
       comments={comments}
