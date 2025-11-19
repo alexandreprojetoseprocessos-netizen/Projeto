@@ -10,6 +10,7 @@ import {
   type FormEvent,
   type MouseEvent,
   type CSSProperties,
+  type SVGProps,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { ProjectPortfolio, type PortfolioProject } from "./ProjectPortfolio";
@@ -19,6 +20,52 @@ const formatDate = (value?: string | null) => {
   if (!value) return "N/A";
   return new Date(value).toLocaleDateString("pt-BR");
 };
+
+type IconProps = SVGProps<SVGSVGElement>;
+type KPIIcon = (props: IconProps) => JSX.Element;
+
+const svgStrokeProps = {
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round",
+  strokeLinejoin: "round"
+} as const;
+
+const BriefcaseIcon: KPIIcon = (props) => (
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+    <path d="M6 7V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+    <rect x="3" y="7" width="18" height="13" rx="2" />
+    <path d="M16 7H8" />
+    <path d="M12 12v3" />
+  </svg>
+);
+
+const ListChecksIcon: KPIIcon = (props) => (
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+    <rect x="3" y="4" width="10" height="16" rx="2" />
+    <path d="M8 8h3" />
+    <path d="M8 12h3" />
+    <path d="M8 16h3" />
+    <path d="M17 8l2 2 3-3" />
+    <path d="M17 14l2 2 3-3" />
+  </svg>
+);
+
+const AlertTriangleIcon: KPIIcon = (props) => (
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </svg>
+);
+
+const ClockIcon: KPIIcon = (props) => (
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+    <circle cx="12" cy="12" r="8" />
+    <path d="M12 8v5l3 2" />
+  </svg>
+);
 
 const sidebarNavigation = [
   { id: "dashboard", label: "Dashboard" },
@@ -774,7 +821,7 @@ const WbsTreeView = ({
 
   return (
     <div className="wbs-table-card">
-      <div className="wbs-table-scroll">
+      <div className="edt-horizontal-scroll">
         <table className="wbs-table">
           <thead>
             <tr>
@@ -786,7 +833,6 @@ const WbsTreeView = ({
               <th>Início</th>
               <th>Término</th>
               <th>Responsável</th>
-              <th>Progresso</th>
               <th>Dependências</th>
               <th>Detalhes</th>
               <th />
@@ -796,7 +842,6 @@ const WbsTreeView = ({
             {visibleRows.map((row) => {
               const displayId = row.node.wbsCode ?? row.displayId;
               const visualLevel = typeof row.node.level === "number" ? row.node.level : row.level;
-              const progress = progressMap.get(row.node.id) ?? 0;
               const status = resolveStatus(row.node.status);
               const isExpanded = row.hasChildren ? expandedNodes[row.node.id] ?? visualLevel < 1 : false;
               const isActive = selectedNodeId === row.node.id;
@@ -992,14 +1037,6 @@ const WbsTreeView = ({
                         <span className="muted">Sem responsável</span>
                       )}
                     </td>
-                    <td>
-                      <div className="wbs-progress">
-                        <div className="wbs-progress__track">
-                          <span className="wbs-progress__bar" style={{ width: `${progress}%` }} />
-                        </div>
-                        <strong>{progress}%</strong>
-                      </div>
-                    </td>
                     <td className="wbs-dependencies-cell">
                       <div
                         className={`wbs-dependencies-display ${editingDependenciesId === row.node.id ? "is-open" : ""}`}
@@ -1120,7 +1157,7 @@ const WbsTreeView = ({
                   </tr>
                   {isActive && selectedNode && (
                     <tr className="wbs-detail-row">
-                      <td colSpan={12}>
+                      <td colSpan={11}>
                         <div className="wbs-detail-card">
                           <header className="wbs-detail-card__header">
                             <div>
@@ -1610,24 +1647,34 @@ const ProjectDetailsTabs = ({
           {summaryError && <p className="error-text">{summaryError}</p>}
           {summary ? (
             <div className="chart-grid">
-              <ResponsiveContainer width="100%" height={160}>
-                <LineChart data={summary.burnDown}>
-                  <XAxis dataKey="date" tickFormatter={formatDate} />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="done" stroke="#22c55e" />
-                  <Line type="monotone" dataKey="remaining" stroke="#ef4444" />
-                </LineChart>
-              </ResponsiveContainer>
-              <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={summary.timeEntries}>
-                  <XAxis dataKey="date" tickFormatter={formatDate} />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="hours" fill="#5b3fff" />
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="chart-card">
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={summary.burnDown}>
+                    <XAxis dataKey="date" tickFormatter={formatDate} stroke="#94a3b8" />
+                    <YAxis stroke="#94a3b8" />
+                    <Tooltip
+                      contentStyle={{ borderRadius: 12, borderColor: "rgba(12,23,42,0.1)" }}
+                      labelStyle={{ fontWeight: 600, color: "#0c2748" }}
+                    />
+                    <Legend />
+                    <Line type="monotone" dataKey="done" stroke="#34d399" strokeWidth={3} dot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="remaining" stroke="#f87171" strokeWidth={3} dot={{ r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="chart-card">
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={summary.timeEntries}>
+                    <XAxis dataKey="date" tickFormatter={formatDate} stroke="#94a3b8" />
+                    <YAxis stroke="#94a3b8" />
+                    <Tooltip
+                      contentStyle={{ borderRadius: 12, borderColor: "rgba(12,23,42,0.1)" }}
+                      labelStyle={{ fontWeight: 600, color: "#0c2748" }}
+                    />
+                    <Bar dataKey="hours" fill="#6b4eff" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           ) : (
             <p className="muted">Selecione um projeto para ver o resumo.</p>
@@ -1758,7 +1805,7 @@ const ProjectDetailsTabs = ({
   );
 
   const edtContent = (
-    <div className="tab-panel">
+    <section className="edt-section">
       {wbsError && <p className="error-text">{wbsError}</p>}
       <WbsTreeView
         nodes={wbsNodes}
@@ -1770,7 +1817,7 @@ const ProjectDetailsTabs = ({
       <p className="muted">
         Selecione uma tarefa para visualizar detalhes, adicionar comentários, anexar arquivos ou registrar horas.
       </p>
-    </div>
+    </section>
   );
 
   const boardContent = (
@@ -2538,26 +2585,30 @@ export const DashboardLayout = ({
     return () => clearTimeout(timeout);
   }, [projectToast]);
 
-  const kpis = [
+  const kpis: Array<{ label: string; value: string | number; sub: string; Icon: KPIIcon }> = [
     {
       label: "Projetos ativos",
       value: projects.length,
-      sub: `${organizations.length} organizações`
+      sub: `${organizations.length} organizações`,
+      Icon: BriefcaseIcon
     },
     {
       label: "Tarefas em andamento",
       value: flattenedTasks.filter((task) => task.status === "IN_PROGRESS").length,
-      sub: "Hoje"
+      sub: "Hoje",
+      Icon: ListChecksIcon
     },
     {
       label: "Tarefas atrasadas",
       value: summary?.overdueTasks ?? 0,
-      sub: "Priorizar"
+      sub: "Priorizar",
+      Icon: AlertTriangleIcon
     },
     {
       label: "Horas registradas (14d)",
       value: summary?.hoursTracked?.toFixed ? summary.hoursTracked.toFixed(1) : "0.0",
-      sub: "Últimos 14 dias"
+      sub: "Últimos 14 dias",
+      Icon: ClockIcon
     }
   ];
 
@@ -2799,13 +2850,22 @@ export const DashboardLayout = ({
   const renderDashboardContent = () => (
     <>
       <section className="summary-grid">
-        {kpis.map((kpi) => (
-          <article key={kpi.label} className="summary-card">
-            <span>{kpi.label}</span>
-            <strong>{kpi.value}</strong>
-            <small>{kpi.sub}</small>
-          </article>
-        ))}
+        {kpis.map((kpi) => {
+          const Icon = kpi.Icon;
+          return (
+            <article key={kpi.label} className="summary-card">
+              <div className="summary-card__header">
+                <div className="summary-card__icon" aria-hidden="true">
+                  <Icon width={18} height={18} />
+                </div>
+                <span>{kpi.label}</span>
+              </div>
+              <span className="summary-card__divider" />
+              <strong>{kpi.value}</strong>
+              <small>{kpi.sub}</small>
+            </article>
+          );
+        })}
       </section>
 
       {renderProjectsList()}
@@ -2890,18 +2950,20 @@ export const DashboardLayout = ({
         </header>
 
         <main>
-          {heroSection}
+          <div className="page-content">
+            {heroSection}
 
-          {projectToast && <p className="success-text">{projectToast}</p>}
+            {projectToast && <p className="success-text">{projectToast}</p>}
 
-          {orgError && <p className="error-text">{orgError}</p>}
-          {projectsError && <p className="error-text">{projectsError}</p>}
+            {orgError && <p className="error-text">{orgError}</p>}
+            {projectsError && <p className="error-text">{projectsError}</p>}
 
-          {showNotFound ? (
-            <NotFoundPage onBackToDashboard={handleBackToDashboard} onViewProjects={handleGoToProjects} />
-          ) : (
-            getMainContent()
-          )}
+            {showNotFound ? (
+              <NotFoundPage onBackToDashboard={handleBackToDashboard} onViewProjects={handleGoToProjects} />
+            ) : (
+              getMainContent()
+            )}
+          </div>
         </main>
 
         {isProjectModalOpen && (
