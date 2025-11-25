@@ -1,4 +1,5 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 type AuthPageProps = {
   onSubmit: (payload: { email: string; password: string }) => Promise<void> | void;
@@ -7,6 +8,9 @@ type AuthPageProps = {
 };
 
 export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
+  const location = useLocation();
+  const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const selectedPlan = params.get("plan");
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -15,6 +19,18 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
   const [orgMode, setOrgMode] = useState<"new" | "invite">("new");
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const planNameMap: Record<string, string> = {
+    START: "Start",
+    BUSINESS: "Business",
+    ENTERPRISE: "Enterprise"
+  };
+  const selectedPlanName = selectedPlan ? planNameMap[selectedPlan] ?? selectedPlan : null;
+
+  useEffect(() => {
+    if (selectedPlan) {
+      window.localStorage.setItem("gp:selectedPlan", selectedPlan);
+    }
+  }, [selectedPlan]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -72,6 +88,19 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
             <p>{mode === "login" ? "Bem-vindo de volta" : "Comece em minutos"}</p>
             <h2>{mode === "login" ? "Entrar no G&P" : "Crie sua conta"}</h2>
           </header>
+
+          {mode === "register" && selectedPlanName && (
+            <p className="auth-selected-plan">
+              Você está criando sua conta no plano <strong>{selectedPlanName}</strong>. Depois do cadastro vamos
+              configurar o pagamento e a sua primeira organização.
+            </p>
+          )}
+
+          {mode === "login" && selectedPlanName && (
+            <p className="auth-selected-plan">
+              Você escolheu o plano <strong>{selectedPlanName}</strong> na página inicial. Faça login para continuar.
+            </p>
+          )}
 
           <form className="auth-form" onSubmit={handleSubmit}>
             {mode === "register" && (

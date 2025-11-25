@@ -24,7 +24,13 @@ const envSchema = z.object({
   GITHUB_CLIENT_ID: z.string().optional(),
   GITHUB_CLIENT_SECRET: z.string().optional(),
   GITHUB_WEBHOOK_SECRET: z.string().optional(),
-  SLACK_WEBHOOK_URL: z.string().optional()
+  SLACK_WEBHOOK_URL: z.string().optional(),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_PRICE_START: z.string().optional(),
+  STRIPE_PRICE_PRO: z.string().optional(),
+  STRIPE_PRICE_BUSINESS: z.string().optional(),
+  STRIPE_PRICE_ENTERPRISE: z.string().optional()
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -60,5 +66,13 @@ export const config = {
   },
   integrations: {
     slackWebhookUrl: parsed.data.SLACK_WEBHOOK_URL
+  },
+  stripe: {
+    secretKey: parsed.data.STRIPE_SECRET_KEY,
+    webhookSecret: parsed.data.STRIPE_WEBHOOK_SECRET,
+    priceStart: parsed.data.STRIPE_PRICE_START,
+    pricePro: parsed.data.STRIPE_PRICE_PRO,
+    priceBusiness: parsed.data.STRIPE_PRICE_BUSINESS,
+    priceEnterprise: parsed.data.STRIPE_PRICE_ENTERPRISE
   }
 };

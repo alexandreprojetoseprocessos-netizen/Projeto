@@ -1,10 +1,10 @@
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { DropResult } from "@hello-pangea/dnd";
 import { DashboardLayout, type CreateProjectPayload } from "./components/DashboardLayout";
 import { AuthPage } from "./components/AuthPage";
-import { OrganizationSelector } from "./components/OrganizationSelector";
+import { OrganizationSelector } from "./components/OrganizationOnboarding";
 import type { PortfolioProject } from "./components/ProjectPortfolio";
 import { useAuth } from "./contexts/AuthContext";
 import {
@@ -28,9 +28,12 @@ import TimelinePage from "./pages/TimelinePage";
 import ReportsPage from "./pages/ReportsPage";
 import DocumentsPage from "./pages/DocumentsPage";
 import ActivitiesPage from "./pages/ActivitiesPage";
+import { TeamPage } from "./pages/TeamPage";
 import NotFoundPage from "./pages/NotFoundPage";
+import LandingPage from "./pages/LandingPage";
+import { CheckoutPage } from "./pages/CheckoutPage";
 
-type Organization = { id: string; name: string; role: string; activeProjects?: number };
+type Organization = { id: string; name: string; role: string; plan?: string | null; activeProjects?: number };
 type Project = { id: string; name: string };
 type BoardColumn = { id: string; label: string; tasks: any[]; wipLimit?: number };
 type WbsNode = {
@@ -87,7 +90,13 @@ async function fetchJson<TResponse = any>(
 export const App = () => {
   const { status, user, token, signIn, signUp, signOut, error: authError } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
+  const [subscriptionStatus, setSubscriptionStatus] = useState<"idle" | "loading" | "active" | "none" | "error">(
+    status === "authenticated" ? "loading" : "idle"
+  );
+  const [subscription, setSubscription] = useState<any | null>(null);
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
@@ -132,6 +141,36 @@ export const App = () => {
   const [reportMetrics, setReportMetrics] = useState<any | null>(null);
   const [reportMetricsError, setReportMetricsError] = useState<string | null>(null);
   const [reportMetricsLoading, setReportMetricsLoading] = useState(false);
+
+  const fetchSubscription = useCallback(async () => {
+    if (status !== "authenticated" || !token) {
+      setSubscription(null);
+      setSubscriptionStatus("idle");
+      setSubscriptionError(null);
+      return null;
+    }
+
+    setSubscriptionStatus("loading");
+    setSubscriptionError(null);
+
+    try {
+      const data = await fetchJson<{ subscription: any }>("/me/subscription", token);
+      const currentSubscription = data.subscription ?? null;
+      setSubscription(currentSubscription);
+      setSubscriptionStatus(currentSubscription ? "active" : "none");
+      return currentSubscription;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao carregar assinatura";
+      setSubscriptionStatus("error");
+      setSubscriptionError(message);
+      setSubscription(null);
+      return null;
+    }
+  }, [status, token]);
+
+  useEffect(() => {
+    fetchSubscription();
+  }, [fetchSubscription]);
 
   const [filters, setFilters] = useState({ rangeDays: 7 });
   const [boardRefresh, setBoardRefresh] = useState(0);
@@ -232,6 +271,16 @@ export const App = () => {
     loadOrganizations();
   }, [status, token, organizationsRefresh]);
 
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    if (subscriptionStatus !== "active") return;
+    if (organizations.length === 0 && location.pathname !== "/organizacao") {
+      navigate("/organizacao", { replace: true });
+    }
+  }, [status, subscriptionStatus, organizations.length, location.pathname, navigate]);
+
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
+
   const previousOrganizationId = useRef<string | null>(null);
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -290,6 +339,7 @@ export const App = () => {
     if (status !== "authenticated" || !token || !selectedOrganizationId) {
       setProjects([]);
       setSelectedProjectId(null);
+      setProjectsLoaded(false);
       return;
     }
 
@@ -299,6 +349,7 @@ export const App = () => {
         const data = await fetchJson<{ projects: Project[] }>("/projects", token, undefined, selectedOrganizationId);
         const list = data.projects ?? [];
         setProjects(list);
+        setProjectsLoaded(true);
         setSelectedProjectId((current) => {
           if (list.length === 0) return null;
           const stored = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_PROJECT_KEY) : null;
@@ -309,6 +360,7 @@ export const App = () => {
       } catch (error) {
         const message = error instanceof Error ? error.message : "Falha ao carregar projetos";
         setProjectsError(message);
+        setProjectsLoaded(true);
       }
     };
 
@@ -716,11 +768,9 @@ export const App = () => {
     );
   };
 
-  const handleCreateOrganization = async () => {
+  const handleCreateOrganization = async (name: string, domain?: string) => {
     if (!token) return;
-    const name = window.prompt("Nome da nova organização?");
     if (!name || !name.trim()) return;
-    const domain = window.prompt("Domínio (opcional)") ?? "";
 
     try {
       const response = await fetchJson<{ organization: { id: string; name: string } }>(
@@ -728,7 +778,7 @@ export const App = () => {
         token,
         {
           method: "POST",
-          body: JSON.stringify({ name: name.trim(), domain: domain.trim() || undefined })
+          body: JSON.stringify({ name: name.trim(), domain: domain?.trim() || undefined })
         }
       );
       const newOrg = response.organization;
@@ -748,6 +798,7 @@ export const App = () => {
       });
       setOrganizationsRefresh((value) => value + 1);
       setSelectedOrganizationId(newOrg.id);
+      navigate("/projects", { replace: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro ao criar organização";
       setOrgError(message);
@@ -915,6 +966,7 @@ export const App = () => {
     id: organization.id,
     name: organization.name,
     role: organization.role,
+    plan: organization.plan ?? null,
     activeProjects: organization.activeProjects ?? 0
   }));
 
@@ -972,15 +1024,31 @@ export const App = () => {
     }
   }, [projects, selectedProjectId]);
 
+  useEffect(() => {
+    if (status === "authenticated" && location.pathname === "/") {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [location.pathname, navigate, status]);
+
   if (status === "loading") {
     return <p style={{ padding: "2rem" }}>Carregando autenticação...</p>;
   }
 
   if (status === "unauthenticated" || !token) {
+    if (location.pathname === "/") {
+      return <LandingPage />;
+    }
     return (
       <AuthPage
-        onSubmit={({ email, password }: { email: string; password: string }) => signIn(email, password)}
-        onSignUp={({ email, password }: { email: string; password: string }) => signUp({ email, password })}
+        onSubmit={async ({ email, password }: { email: string; password: string }) => {
+          await signIn(email, password);
+          navigate("/dashboard", { replace: true });
+        }}
+        onSignUp={async ({ email, password }: { email: string; password: string }) => {
+          await signUp({ email, password });
+          // Novo usu��rio deve concluir o checkout antes de criar organiza��ao
+          navigate("/checkout", { replace: true });
+        }}
         error={authError}
       />
     );
@@ -988,6 +1056,30 @@ export const App = () => {
 
   const storedOrganizationId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
   const hasStoredOrganization = Boolean(selectedOrganizationId || storedOrganizationId);
+  const isOnCheckoutRoute = location.pathname === "/checkout";
+
+  if (subscriptionStatus === "loading" || subscriptionStatus === "idle") {
+    if (isOnCheckoutRoute) {
+      // Permite abrir o checkout enquanto o status � carregado
+    } else {
+      return <p style={{ padding: "2rem" }}>Carregando assinatura...</p>;
+    }
+  }
+
+  if (subscriptionStatus !== "active" && !isOnCheckoutRoute) {
+    return <Navigate to="/checkout" replace />;
+  }
+
+  if (
+    status === "authenticated" &&
+    subscriptionStatus === "active" &&
+    selectedOrganizationId &&
+    projectsLoaded &&
+    projects.length === 0 &&
+    location.pathname === "/dashboard"
+  ) {
+    return <Navigate to="/projects" replace />;
+  }
 
   if (organizationCards.length > 1 && !hasStoredOrganization) {
     return (
@@ -1010,14 +1102,15 @@ export const App = () => {
 
   return (
     <Routes>
+      <Route path="/" element={<LandingPage />} />
       <Route
-        path="/"
+        path="/*"
         element={
           <DashboardLayout
             userEmail={user?.email ?? null}
             organizations={organizations}
             selectedOrganizationId={selectedOrganizationId}
-          onOrganizationChange={setSelectedOrganizationId}
+            onOrganizationChange={setSelectedOrganizationId}
             orgError={orgError}
             onSignOut={signOut}
             projects={projects}
@@ -1086,6 +1179,35 @@ export const App = () => {
         }
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route
+          path="checkout"
+          element={
+            <CheckoutPage
+              subscription={subscription}
+              subscriptionError={subscriptionError}
+              onSubscriptionActivated={fetchSubscription}
+            />
+          }
+        />
+        <Route
+          path="organizacao"
+          element={
+            <OrganizationSelector
+              organizations={organizationCards}
+              onSelect={(organizationId: string) => {
+                setSelectedOrganizationId(organizationId);
+                setSelectedProjectId(null);
+                if (typeof window !== "undefined") {
+                  window.localStorage.setItem(SELECTED_ORG_KEY, organizationId);
+                  window.localStorage.removeItem(SELECTED_PROJECT_KEY);
+                }
+                navigate("/projects", { replace: true });
+              }}
+              onCreateOrganization={handleCreateOrganization}
+              userEmail={user?.email ?? null}
+            />
+          }
+        />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="projects/:id" element={<ProjectDetailsPage />} />
@@ -1100,6 +1222,7 @@ export const App = () => {
         <Route path="relatorios" element={<ReportsPage />} />
         <Route path="documentos" element={<DocumentsPage />} />
         <Route path="atividades" element={<ActivitiesPage />} />
+        <Route path="equipe" element={<TeamPage />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

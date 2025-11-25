@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 model Organization {
@@ -47,6 +48,7 @@ model User {
   approvedTimeEntries TimeEntry[]              @relation("TimeEntryApprover")
   timeEntries         TimeEntry[]
   ownedNodes          WbsNode[]                @relation("NodeOwner")
+  subscriptions       Subscription[]
 }
 
 model OrganizationMembership {
@@ -144,7 +146,6 @@ model WbsNode {
   projectId                 String
   parentId                  String?
   level                     Int             @default(0)
-  wbsCode                   String?
   type                      WbsNodeType     @default(TASK)
   order                     Int             @default(0)
   title                     String
@@ -161,6 +162,7 @@ model WbsNode {
   boardColumnId             String?
   createdAt                 DateTime        @default(now())
   updatedAt                 DateTime        @updatedAt
+  wbsCode                   String?
   attachments               Attachment[]
   comments                  Comment[]
   dependenciesAsPredecessor Dependency[]    @relation("Predecessor")
@@ -360,6 +362,33 @@ model Notification {
   user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model Product {
+  id            String         @id @default(cuid())
+  code          String         @unique
+  name          String
+  description   String?
+  priceCents    Int
+  billingPeriod String
+  active        Boolean        @default(true)
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id              String              @id @default(cuid())
+  userId          String
+  productId       String
+  status          SubscriptionStatus  @default(ACTIVE)
+  startedAt       DateTime            @default(now())
+  expiresAt       DateTime?
+  paymentMethod   String?
+  paymentProvider String?
+  providerRef     String?
+
+  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+}
+
 enum OrganizationPlan {
   FREE
   TEAM
@@ -441,6 +470,12 @@ enum NotificationChannel {
   EMAIL
   PUSH
   SLACK
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
 }
 
 enum RiskStatus {

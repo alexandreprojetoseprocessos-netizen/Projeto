@@ -13,7 +13,8 @@ import {
   DependencyType,
   RiskSeverity,
   RiskProbability,
-  AttachmentTargetType
+  AttachmentTargetType,
+  SubscriptionStatus
 } from "@prisma/client";
 import { prisma } from "./index";
 
@@ -52,6 +53,60 @@ async function main() {
     }
   });
 
+  const startProduct = await prisma.product.upsert({
+    where: { code: "START" },
+    update: {
+      name: "Plano Start",
+      description: "Ideal para validar o fluxo de projetos",
+      priceCents: 4900,
+      billingPeriod: "monthly",
+      active: true
+    },
+    create: {
+      code: "START",
+      name: "Plano Start",
+      description: "Ideal para validar o fluxo de projetos",
+      priceCents: 4900,
+      billingPeriod: "monthly"
+    }
+  });
+
+  await prisma.product.upsert({
+    where: { code: "BUSINESS" },
+    update: {
+      name: "Plano Business",
+      description: "Para PMOs e squads colaborativos",
+      priceCents: 9700,
+      billingPeriod: "monthly",
+      active: true
+    },
+    create: {
+      code: "BUSINESS",
+      name: "Plano Business",
+      description: "Para PMOs e squads colaborativos",
+      priceCents: 9700,
+      billingPeriod: "monthly"
+    }
+  });
+
+  await prisma.product.upsert({
+    where: { code: "ENTERPRISE" },
+    update: {
+      name: "Plano Enterprise",
+      description: "Limites customizados e suporte dedicado",
+      priceCents: 19700,
+      billingPeriod: "monthly",
+      active: true
+    },
+    create: {
+      code: "ENTERPRISE",
+      name: "Plano Enterprise",
+      description: "Limites customizados e suporte dedicado",
+      priceCents: 19700,
+      billingPeriod: "monthly"
+    }
+  });
+
   const organization = await prisma.organization.upsert({
     where: { id: "demo-org" },
     update: {},
@@ -62,6 +117,23 @@ async function main() {
       domain: "demo.local",
       plan: OrganizationPlan.TEAM,
       timezone: "America/Sao_Paulo"
+    }
+  });
+
+  await prisma.subscription.upsert({
+    where: { id: "demo-subscription" },
+    update: {
+      userId: adminUser.id,
+      productId: startProduct.id,
+      status: SubscriptionStatus.ACTIVE,
+      paymentMethod: "seed"
+    },
+    create: {
+      id: "demo-subscription",
+      userId: adminUser.id,
+      productId: startProduct.id,
+      status: SubscriptionStatus.ACTIVE,
+      paymentMethod: "seed"
     }
   });
 

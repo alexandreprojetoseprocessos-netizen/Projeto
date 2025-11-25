@@ -1,14 +1,17 @@
+import { useState, type FormEvent } from "react";
+
 type OrganizationCard = {
   id: string;
   name: string;
   role: string;
+  plan?: string | null;
   activeProjects: number;
 };
 
 type OrganizationSelectorProps = {
   organizations: OrganizationCard[];
   onSelect: (orgId: string) => void;
-  onCreateOrganization?: () => void;
+  onCreateOrganization?: (name: string, domain?: string) => void;
   userEmail?: string | null;
 };
 
@@ -17,8 +20,23 @@ export const OrganizationSelector = ({
   onSelect,
   onCreateOrganization,
   userEmail
-}: OrganizationSelectorProps) => (
-  <div className="workspace-page">
+}: OrganizationSelectorProps) => {
+  const [newOrgName, setNewOrgName] = useState("");
+  const [newOrgDomain, setNewOrgDomain] = useState("");
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!onCreateOrganization) return;
+    const trimmedName = newOrgName.trim();
+    if (!trimmedName) return;
+    const trimmedDomain = newOrgDomain.trim();
+    onCreateOrganization(trimmedName, trimmedDomain ? trimmedDomain : undefined);
+  };
+
+  const hasOrganizations = organizations.length > 0;
+
+  return (
+    <div className="workspace-page">
     <header className="workspace-header">
       <div>
         <p className="eyebrow">Bem-vindo(a)</p>
@@ -46,6 +64,7 @@ export const OrganizationSelector = ({
             <p>
               {organization.activeProjects} projetos ativos · {organization.role}
             </p>
+            <p className="muted">Plano: {organization.plan ?? "Não informado"}</p>
           </div>
           <div className="workspace-card__actions">
             <button className="secondary-button" type="button" onClick={() => onSelect(organization.id)}>
@@ -64,5 +83,6 @@ export const OrganizationSelector = ({
         </div>
       )}
     </section>
-  </div>
-);
+    </div>
+  );
+};

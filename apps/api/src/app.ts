@@ -12,6 +12,8 @@ import { meRouter } from "./routes/me";
 import { templatesRouter } from "./routes/templates";
 import { organizationsRouter } from "./routes/organizations";
 import { logger } from "./config/logger";
+import { subscriptionsRouter } from "./routes/subscriptions";
+import teamRouter from "./routes/team";
 
 export const createApp = () => {
   const app = express();
@@ -36,6 +38,8 @@ export const createApp = () => {
   app.use("/templates", templatesRouter);
   app.use("/me", meRouter);
   app.use("/organizations", organizationsRouter);
+  app.use("/subscriptions", subscriptionsRouter);
+  app.use("/organizations", teamRouter);
 
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     logger.error(err, "Unhandled error");

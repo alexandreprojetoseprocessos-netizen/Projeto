@@ -193,6 +193,18 @@ const InsightIcon: KPIIcon = (props) => (
   </svg>
 );
 
+const BuildingIcon: KPIIcon = (props) => (
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M9 3v18" />
+    <path d="M15 3v18" />
+    <path d="M3 9h6" />
+    <path d="M3 15h6" />
+    <path d="M15 9h6" />
+    <path d="M15 15h6" />
+  </svg>
+);
+
 const UploadCloudIcon: KPIIcon = (props) => (
   <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
     <path d="M12 16V4" />
@@ -229,8 +241,10 @@ const MenuDotsIcon: KPIIcon = (props) => (
 );
 
 const sidebarNavigation = [
+  { id: "organizacao", label: "Organização", icon: BuildingIcon, path: "/organizacao" },
   { id: "dashboard", label: "Dashboard", icon: BriefcaseIcon, path: "/dashboard" },
   { id: "projects", label: "Projetos", icon: ListChecksIcon, path: "/projects" },
+  { id: "equipe", label: "Equipe", icon: UsersIcon, path: "/equipe" },
   { id: "edt", label: "EDT", icon: UsersIcon, path: "/edt" },
   { id: "board", label: "Board", icon: ListChecksIcon, path: "/board" },
   { id: "cronograma", label: "Cronograma", icon: ClockIcon, path: "/cronograma" },
@@ -390,7 +404,7 @@ type TemplateSummary = {
 
 
 
-type Organization = { id: string; name: string; role: string };
+type Organization = { id: string; name: string; role: string; plan?: string | null };
 
 type Project = { id: string; name: string };
 
@@ -601,6 +615,7 @@ export type DashboardOutletContext = {
   handleOpenProjectModal: () => void;
   handleOpenEditProjectModal: () => void;
   handleOpenTaskModal: () => void;
+  onCreateProject: (payload: CreateProjectPayload) => Promise<void>;
   onUpdateProject: (projectId: string, payload: CreateProjectPayload) => Promise<void>;
   portfolio: PortfolioProject[];
   portfolioError: string | null;
@@ -5415,6 +5430,7 @@ export const DashboardLayout = ({
   handleOpenProjectModal,
   handleOpenEditProjectModal,
   handleOpenTaskModal,
+  onCreateProject,
   onUpdateProject,
   portfolio,
   portfolioError,
