@@ -147,7 +147,13 @@ wbsRouter.patch("/:nodeId", async (req, res) => {
 
   const data: Prisma.WbsNodeUncheckedUpdateInput = {};
   if (title !== undefined) data.title = title;
-  if (status !== undefined) data.status = status;
+  if (status !== undefined) {
+    const allowedStatuses = Prisma?.TaskStatus ? Object.values(Prisma.TaskStatus) : [];
+    if (allowedStatuses.length > 0 && !allowedStatuses.includes(status)) {
+      return res.status(400).json({ message: `Invalid status value. Expected one of: ${allowedStatuses.join(", ")}` });
+    }
+    data.status = status as Prisma.TaskStatus;
+  }
   if (priority !== undefined) data.priority = priority;
   if (startDate !== undefined) data.startDate = startDate ? new Date(startDate) : null;
   if (endDate !== undefined) data.endDate = endDate ? new Date(endDate) : null;

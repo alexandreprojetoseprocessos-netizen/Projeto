@@ -1,11 +1,34 @@
 import type { FormEvent } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import type { DropResult } from "@hello-pangea/dnd";
 import { DashboardLayout, type CreateProjectPayload } from "./components/DashboardLayout";
 import { AuthPage } from "./components/AuthPage";
 import { OrganizationSelector } from "./components/OrganizationSelector";
 import type { PortfolioProject } from "./components/ProjectPortfolio";
 import { useAuth } from "./contexts/AuthContext";
+import {
+  STATUS_MAP,
+  KANBAN_STATUS_ORDER,
+  type TaskStatus,
+  type KanbanTask,
+  type KanbanColumn
+} from "./components/KanbanBoard";
+import { DashboardPage } from "./pages/DashboardPage";
+import { ProjectsPage } from "./pages/ProjectsPage";
+import { ProjectDetailsPage } from "./pages/ProjectDetailsPage";
+import { EDTPage } from "./pages/EDTPage";
+import { ProjectEDTPage } from "./pages/ProjectEDTPage";
+import { ProjectBoardPage } from "./pages/ProjectBoardPage";
+import { ProjectTimelinePage } from "./pages/ProjectTimelinePage";
+import { ProjectDocumentsPage } from "./pages/ProjectDocumentsPage";
+import { ProjectActivitiesPage } from "./pages/ProjectActivitiesPage";
+import BoardPage from "./pages/BoardPage";
+import TimelinePage from "./pages/TimelinePage";
+import ReportsPage from "./pages/ReportsPage";
+import DocumentsPage from "./pages/DocumentsPage";
+import ActivitiesPage from "./pages/ActivitiesPage";
+import NotFoundPage from "./pages/NotFoundPage";
 
 type Organization = { id: string; name: string; role: string; activeProjects?: number };
 type Project = { id: string; name: string };
@@ -33,6 +56,8 @@ type WbsNode = {
 };
 type BoardResponse = { columns: BoardColumn[] };
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+const SELECTED_ORG_KEY = "gp:selectedOrganizationId";
+const SELECTED_PROJECT_KEY = "gp:selectedProjectId";
 
 async function fetchJson<TResponse = any>(
   path: string,
@@ -61,13 +86,20 @@ async function fetchJson<TResponse = any>(
 
 export const App = () => {
   const { status, user, token, signIn, signUp, signOut, error: authError } = useAuth();
+  const navigate = useNavigate();
 
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem(SELECTED_ORG_KEY);
+  });
   const [orgError, setOrgError] = useState<string | null>(null);
 
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem(SELECTED_PROJECT_KEY);
+  });
   const [projectsError, setProjectsError] = useState<string | null>(null);
 
   const [members, setMembers] = useState<any[]>([]);
@@ -120,10 +152,55 @@ export const App = () => {
   const [timeEntryDescription, setTimeEntryDescription] = useState("");
   const [timeEntryError, setTimeEntryError] = useState<string | null>(null);
 
+  const kanbanColumns: KanbanColumn[] = useMemo(() => {
+    const statusOrder = KANBAN_STATUS_ORDER;
+    const grouped = statusOrder.reduce((acc, status) => {
+      acc[status] = [];
+      return acc;
+    }, {} as Record<TaskStatus, KanbanTask[]>);
+
+    const wipLimits: Partial<Record<TaskStatus, number>> = {};
+    const statusEntries = Object.entries(STATUS_MAP) as [TaskStatus, string][];
+
+    const resolveStatus = (value?: string | null): TaskStatus | undefined => {
+      if (!value) return undefined;
+      const trimmed = value.trim();
+      if (!trimmed) return undefined;
+      const upper = trimmed.toUpperCase();
+      if (statusOrder.includes(upper as TaskStatus)) {
+        return upper as TaskStatus;
+      }
+      const matched = statusEntries.find(([, label]) => label.toLowerCase() === trimmed.toLowerCase());
+      return matched ? matched[0] : undefined;
+    };
+
+    boardColumns.forEach((column) => {
+      const columnStatus = resolveStatus(column.id) ?? resolveStatus(column.label) ?? statusOrder[0];
+      if (columnStatus && typeof column.wipLimit === "number") {
+        wipLimits[columnStatus] = column.wipLimit;
+      }
+      (column.tasks ?? []).forEach((rawTask: any) => {
+        const matchedStatus = resolveStatus(rawTask.status) ?? columnStatus ?? statusOrder[0];
+        grouped[matchedStatus].push({
+          ...rawTask,
+          status: matchedStatus
+        });
+      });
+    });
+
+    return statusOrder.map((status) => ({
+      id: status,
+      title: STATUS_MAP[status],
+      tasks: grouped[status].sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0)),
+      wipLimit: wipLimits[status]
+    }));
+  }, [boardColumns]);
+
   useEffect(() => {
     if (status !== "authenticated" || !token) {
       setOrganizations([]);
-      setSelectedOrganizationId("");
+      setSelectedOrganizationId(null);
+      setSelectedProjectId(null);
       return;
     }
 
@@ -137,16 +214,18 @@ export const App = () => {
         }));
         setOrganizations(normalized);
         setSelectedOrganizationId((current) => {
-          if (normalized.length === 0) return "";
+          if (normalized.length === 0) return null;
           if (normalized.length === 1) return normalized[0].id;
-          const exists = normalized.some((org) => org.id === current);
-          return exists ? current : "";
+          const stored = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
+          const candidate = current || stored || null;
+          const exists = candidate && normalized.some((org) => org.id === candidate);
+          return exists ? candidate : null;
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Falha ao carregar organizações";
         setOrgError(message);
         setOrganizations([]);
-        setSelectedOrganizationId("");
+        setSelectedOrganizationId((current) => current ?? null);
       }
     };
 
@@ -155,11 +234,19 @@ export const App = () => {
 
   const previousOrganizationId = useRef<string | null>(null);
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (selectedOrganizationId) {
+        window.localStorage.setItem(SELECTED_ORG_KEY, selectedOrganizationId);
+      } else {
+        window.localStorage.removeItem(SELECTED_ORG_KEY);
+      }
+    }
+
     if (previousOrganizationId.current === selectedOrganizationId) {
       return;
     }
     previousOrganizationId.current = selectedOrganizationId;
-    setSelectedProjectId("");
+    setSelectedProjectId(null);
     setProjects([]);
     setProjectSummary(null);
     setSummaryError(null);
@@ -202,7 +289,7 @@ export const App = () => {
   useEffect(() => {
     if (status !== "authenticated" || !token || !selectedOrganizationId) {
       setProjects([]);
-      setSelectedProjectId("");
+      setSelectedProjectId(null);
       return;
     }
 
@@ -213,9 +300,11 @@ export const App = () => {
         const list = data.projects ?? [];
         setProjects(list);
         setSelectedProjectId((current) => {
-          if (list.length === 0) return "";
-          const exists = list.some((project) => project.id === current);
-          return exists ? current : list[0].id;
+          if (list.length === 0) return null;
+          const stored = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_PROJECT_KEY) : null;
+          const candidate = current || stored || null;
+          const exists = candidate && list.some((project) => project.id === candidate);
+          return exists ? candidate : list[0].id;
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Falha ao carregar projetos";
@@ -665,6 +754,15 @@ export const App = () => {
     }
   };
 
+  const resolveStatus = (value?: string | null): TaskStatus | undefined => {
+    if (!value) return undefined;
+    const upper = value.trim().toUpperCase();
+    if (!upper) return undefined;
+    if ((KANBAN_STATUS_ORDER as readonly string[]).includes(upper)) return upper as TaskStatus;
+    const matched = Object.entries(STATUS_MAP).find(([, label]) => label.toUpperCase() === upper);
+    return matched ? (matched[0] as TaskStatus) : undefined;
+  };
+
   const handleDragEnd = async (result: DropResult) => {
     const { destination, source, draggableId } = result;
     if (
@@ -677,21 +775,35 @@ export const App = () => {
       return;
     }
 
-    setBoardColumns((prev) => reorderBoard(prev, source, destination, draggableId));
+    // Normaliza o status alvo
+    const newStatus = resolveStatus(destination.droppableId) ?? "BACKLOG";
+
+    // Atualização otimista do estado local
+    setBoardColumns((prev) => reorderBoard(prev, source, destination, draggableId, newStatus));
+    
     try {
+      // Persiste no backend com o novo status
       await fetchJson(
         `/projects/${selectedProjectId}/board/tasks/${draggableId}`,
         token,
         {
           method: "PATCH",
-          body: JSON.stringify({ columnId: destination.droppableId, order: destination.index })
+          body: JSON.stringify({ 
+            columnId: destination.droppableId,
+            status: newStatus,
+            order: destination.index 
+          })
         },
         selectedOrganizationId
       );
+      
+      // Recarrega para garantir sincronização
       setBoardRefresh((value) => value + 1);
+      setWbsRefresh((value) => value + 1);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro ao mover tarefa";
       setBoardError(message);
+      // Em caso de erro, recarrega para reverter
       setBoardRefresh((value) => value + 1);
     }
   };
@@ -806,6 +918,60 @@ export const App = () => {
     activeProjects: organization.activeProjects ?? 0
   }));
 
+  useEffect(() => {
+    try {
+      const storedOrgId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
+      const storedProjId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_PROJECT_KEY) : null;
+      if (storedOrgId) setSelectedOrganizationId(storedOrgId);
+      if (storedProjId) setSelectedProjectId(storedProjId);
+    } catch (error) {
+      console.error("Falha ao ler organização/projeto salvos", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!organizations.length) return;
+    if (!selectedOrganizationId) {
+      const stored = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
+      if (stored && organizations.some((org) => org.id === stored)) {
+        setSelectedOrganizationId(stored);
+      }
+    } else {
+      const exists = organizations.some((org) => org.id === selectedOrganizationId);
+      if (!exists) {
+        setSelectedOrganizationId(null);
+        if (typeof window !== "undefined") window.localStorage.removeItem(SELECTED_ORG_KEY);
+      }
+    }
+  }, [organizations, selectedOrganizationId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (selectedProjectId) {
+      window.localStorage.setItem(SELECTED_PROJECT_KEY, selectedProjectId);
+    } else {
+      window.localStorage.removeItem(SELECTED_PROJECT_KEY);
+    }
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (!projects.length) return;
+    if (!selectedProjectId) {
+      const stored = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_PROJECT_KEY) : null;
+      if (stored && projects.some((project) => project.id === stored)) {
+        setSelectedProjectId(stored);
+      } else if (projects.length === 1) {
+        setSelectedProjectId(projects[0].id);
+      }
+      return;
+    }
+    const exists = projects.some((project) => project.id === selectedProjectId);
+    if (!exists) {
+      setSelectedProjectId(null);
+      if (typeof window !== "undefined") window.localStorage.removeItem(SELECTED_PROJECT_KEY);
+    }
+  }, [projects, selectedProjectId]);
+
   if (status === "loading") {
     return <p style={{ padding: "2rem" }}>Carregando autenticação...</p>;
   }
@@ -820,11 +986,22 @@ export const App = () => {
     );
   }
 
-  if (organizationCards.length > 1 && !selectedOrganizationId) {
+  const storedOrganizationId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
+  const hasStoredOrganization = Boolean(selectedOrganizationId || storedOrganizationId);
+
+  if (organizationCards.length > 1 && !hasStoredOrganization) {
     return (
       <OrganizationSelector
         organizations={organizationCards}
-        onSelect={(organizationId: string) => setSelectedOrganizationId(organizationId)}
+        onSelect={(organizationId: string) => {
+          setSelectedOrganizationId(organizationId);
+          setSelectedProjectId(null);
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(SELECTED_ORG_KEY, organizationId);
+            window.localStorage.removeItem(SELECTED_PROJECT_KEY);
+          }
+          navigate("/dashboard", { replace: true });
+        }}
         onCreateOrganization={handleCreateOrganization}
         userEmail={user?.email ?? null}
       />
@@ -832,79 +1009,110 @@ export const App = () => {
   }
 
   return (
-    <DashboardLayout
-      userEmail={user?.email ?? null}
-      organizations={organizations}
-      selectedOrganizationId={selectedOrganizationId}
-      onOrganizationChange={setSelectedOrganizationId}
-      orgError={orgError}
-      onSignOut={signOut}
-      projects={projects}
-      selectedProjectId={selectedProjectId}
-      onProjectChange={setSelectedProjectId}
-      projectsError={projectsError}
-      filters={filters}
-      onRangeChange={(rangeDays) => setFilters((prev) => ({ ...prev, rangeDays }))}
-      summary={projectSummary}
-      summaryError={summaryError}
-      members={members}
-      membersError={membersError}
-      attachments={attachments}
-      attachmentsError={attachmentsError}
-      attachmentsLoading={attachmentsLoading}
-      boardColumns={boardColumns}
-      boardError={boardError}
-      onCreateTask={handleCreateTask}
-      onReloadBoard={loadBoardColumns}
-      onDragTask={handleDragEnd}
-      newTaskTitle={newTaskTitle}
-      onTaskTitleChange={setNewTaskTitle}
-      newTaskColumn={newTaskColumn}
-      onTaskColumnChange={setNewTaskColumn}
-      newTaskStartDate={newTaskStartDate}
-      onTaskStartDateChange={setNewTaskStartDate}
-      newTaskEndDate={newTaskEndDate}
-      onTaskEndDateChange={setNewTaskEndDate}
-      newTaskAssignee={newTaskAssignee}
-      onTaskAssigneeChange={setNewTaskAssignee}
-      newTaskEstimateHours={newTaskEstimateHours}
-      onTaskEstimateHoursChange={setNewTaskEstimateHours}
-      wbsNodes={wbsNodes}
-      wbsError={wbsError}
-      onMoveNode={handleWbsMove}
-      onUpdateWbsNode={handleWbsUpdate}
-      selectedNodeId={selectedNodeId}
-      onSelectNode={setSelectedNodeId}
-      comments={comments}
-      commentsError={commentsError}
-      onSubmitComment={handleCreateComment}
-      commentBody={commentBody}
-      onCommentBodyChange={setCommentBody}
-      timeEntryDate={timeEntryDate}
-      timeEntryHours={timeEntryHours}
-      timeEntryDescription={timeEntryDescription}
-      onTimeEntryDateChange={setTimeEntryDate}
-      onTimeEntryHoursChange={setTimeEntryHours}
-      onTimeEntryDescriptionChange={setTimeEntryDescription}
-      onLogTime={handleCreateTimeEntry}
-      timeEntryError={timeEntryError}
-      ganttTasks={ganttTasks}
-      ganttMilestones={ganttMilestones}
-      ganttError={ganttError}
-      portfolio={portfolio}
-      portfolioError={portfolioError}
-      portfolioLoading={portfolioLoading}
-      reportMetrics={reportMetrics}
-      reportMetricsError={reportMetricsError}
-      reportMetricsLoading={reportMetricsLoading}
-      onExportPortfolio={handleDownloadPortfolio}
-      onCreateProject={handleCreateProject}
-      onUpdateProject={handleUpdateProject}
-    />
+    <Routes>
+      <Route
+        path="/"
+        element={
+          <DashboardLayout
+            userEmail={user?.email ?? null}
+            organizations={organizations}
+            selectedOrganizationId={selectedOrganizationId}
+          onOrganizationChange={setSelectedOrganizationId}
+            orgError={orgError}
+            onSignOut={signOut}
+            projects={projects}
+            selectedProjectId={selectedProjectId ?? ""}
+            onProjectChange={setSelectedProjectId}
+            projectsError={projectsError}
+            filters={filters}
+            onRangeChange={(rangeDays) => setFilters((prev) => ({ ...prev, rangeDays }))}
+            summary={projectSummary}
+            summaryError={summaryError}
+            members={members}
+            membersError={membersError}
+            attachments={attachments}
+            attachmentsError={attachmentsError}
+            attachmentsLoading={attachmentsLoading}
+            boardColumns={boardColumns}
+            boardError={boardError}
+            onCreateTask={handleCreateTask}
+            onReloadBoard={loadBoardColumns}
+            onDragTask={handleDragEnd}
+            newTaskTitle={newTaskTitle}
+            onTaskTitleChange={setNewTaskTitle}
+            newTaskColumn={newTaskColumn}
+            onTaskColumnChange={setNewTaskColumn}
+            newTaskStartDate={newTaskStartDate}
+            onTaskStartDateChange={setNewTaskStartDate}
+            newTaskEndDate={newTaskEndDate}
+            onTaskEndDateChange={setNewTaskEndDate}
+            newTaskAssignee={newTaskAssignee}
+            onTaskAssigneeChange={setNewTaskAssignee}
+            newTaskEstimateHours={newTaskEstimateHours}
+            onTaskEstimateHoursChange={setNewTaskEstimateHours}
+            wbsNodes={wbsNodes}
+            wbsError={wbsError}
+            onMoveNode={handleWbsMove}
+            onUpdateWbsNode={handleWbsUpdate}
+            selectedNodeId={selectedNodeId}
+            onSelectNode={setSelectedNodeId}
+            comments={comments}
+            commentsError={commentsError}
+            onSubmitComment={handleCreateComment}
+            commentBody={commentBody}
+            onCommentBodyChange={setCommentBody}
+            timeEntryDate={timeEntryDate}
+            timeEntryHours={timeEntryHours}
+            timeEntryDescription={timeEntryDescription}
+            onTimeEntryDateChange={setTimeEntryDate}
+            onTimeEntryHoursChange={setTimeEntryHours}
+            onTimeEntryDescriptionChange={setTimeEntryDescription}
+            onLogTime={handleCreateTimeEntry}
+            timeEntryError={timeEntryError}
+            ganttTasks={ganttTasks}
+            ganttMilestones={ganttMilestones}
+            ganttError={ganttError}
+            portfolio={portfolio}
+            portfolioError={portfolioError}
+            portfolioLoading={portfolioLoading}
+            reportMetrics={reportMetrics}
+            reportMetricsError={reportMetricsError}
+            reportMetricsLoading={reportMetricsLoading}
+            kanbanColumns={kanbanColumns}
+            onExportPortfolio={handleDownloadPortfolio}
+            onCreateProject={handleCreateProject}
+            onUpdateProject={handleUpdateProject}
+          />
+        }
+      >
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="projects" element={<ProjectsPage />} />
+        <Route path="projects/:id" element={<ProjectDetailsPage />} />
+        <Route path="projects/:id/edt" element={<ProjectEDTPage />} />
+        <Route path="projects/:id/board" element={<ProjectBoardPage />} />
+        <Route path="projects/:id/cronograma" element={<ProjectTimelinePage />} />
+        <Route path="projects/:id/documentos" element={<ProjectDocumentsPage />} />
+        <Route path="projects/:id/atividades" element={<ProjectActivitiesPage />} />
+        <Route path="edt" element={<EDTPage />} />
+        <Route path="board" element={<BoardPage />} />
+        <Route path="cronograma" element={<TimelinePage />} />
+        <Route path="relatorios" element={<ReportsPage />} />
+        <Route path="documentos" element={<DocumentsPage />} />
+        <Route path="atividades" element={<ActivitiesPage />} />
+      </Route>
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
   );
 };
 
-function reorderBoard(columns: BoardColumn[], source: any, destination: any, taskId: string) {
+function reorderBoard(
+  columns: BoardColumn[], 
+  source: any, 
+  destination: any, 
+  taskId: string,
+  newStatus?: string
+) {
   const nextColumns = columns.map((column) => ({
     ...column,
     tasks: [...column.tasks]
@@ -917,10 +1125,14 @@ function reorderBoard(columns: BoardColumn[], source: any, destination: any, tas
   const [movedTask] = sourceColumn.tasks.splice(source.index, 1);
   if (!movedTask) return columns;
 
-  destinationColumn.tasks.splice(destination.index, 0, {
+  // Atualiza a tarefa com o novo status e coluna
+  const updatedTask = {
     ...movedTask,
-    boardColumnId: destinationColumn.id
-  });
+    boardColumnId: destinationColumn.id,
+    status: newStatus || destinationColumn.id // Usa o ID da coluna como status
+  };
+
+  destinationColumn.tasks.splice(destination.index, 0, updatedTask);
 
   return nextColumns;
 }
