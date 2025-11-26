@@ -3,16 +3,16 @@ import { MembershipRole } from "@prisma/client";
 import { authMiddleware } from "../middleware/auth";
 import { addMemberToOrganization, listMembersForOrganization } from "../services/organizationMembers";
 import { prisma } from "@gestao/database";
+import { canManageTeam } from "../services/permissions";
 
 const router = Router();
 
 router.use(authMiddleware);
 
-const ensureUserInOrganization = async (organizationId: string, userId: string) => {
-  const membership = await prisma.organizationMembership.findFirst({
+const getMembership = async (organizationId: string, userId: string) => {
+  return prisma.organizationMembership.findFirst({
     where: { organizationId, userId }
   });
-  return Boolean(membership);
 };
 
 router.get("/:organizationId/members", async (req, res) => {
@@ -21,8 +21,8 @@ router.get("/:organizationId/members", async (req, res) => {
   const { organizationId } = req.params;
   if (!organizationId) return res.status(400).json({ message: "organizationId is required" });
 
-  const allowed = await ensureUserInOrganization(organizationId, req.user.id);
-  if (!allowed) return res.status(403).json({ message: "Access denied" });
+  const membership = await getMembership(organizationId, req.user.id);
+  if (!membership) return res.status(403).json({ message: "Access denied" });
 
   const members = await listMembersForOrganization(organizationId);
   return res.json({ members });
@@ -44,12 +44,15 @@ router.post("/:organizationId/members", async (req, res) => {
       ? (role as MembershipRole)
       : MembershipRole.MEMBER;
 
-  const allowed = await ensureUserInOrganization(organizationId, req.user.id);
-  if (!allowed) return res.status(403).json({ message: "Access denied" });
+  const membership = await getMembership(organizationId, req.user.id);
+  if (!membership) return res.status(403).json({ message: "Access denied" });
+  if (!canManageTeam(membership.role as any)) {
+    return res.status(403).json({ message: "Você não tem permissão para gerenciar a equipe." });
+  }
 
   try {
-    const membership = await addMemberToOrganization(organizationId, email, normalizedRole, req.user);
-    return res.status(201).json({ member: membership });
+    const created = await addMemberToOrganization(organizationId, email, normalizedRole, req.user);
+    return res.status(201).json({ member: created });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Não foi possível adicionar membro";
     return res.status(400).json({ message });

@@ -28,6 +28,7 @@ import TimelinePage from "./pages/TimelinePage";
 import ReportsPage from "./pages/ReportsPage";
 import DocumentsPage from "./pages/DocumentsPage";
 import ActivitiesPage from "./pages/ActivitiesPage";
+import PlanPage from "./pages/PlanPage";
 import { TeamPage } from "./pages/TeamPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import LandingPage from "./pages/LandingPage";
@@ -178,6 +179,12 @@ export const App = () => {
   const [commentsRefresh, setCommentsRefresh] = useState(0);
   const [summaryRefresh, setSummaryRefresh] = useState(0);
   const [organizationsRefresh, setOrganizationsRefresh] = useState(0);
+  const [organizationLimits, setOrganizationLimits] = useState<{
+    planCode: string | null;
+    max: number | null;
+    used: number;
+    remaining: number | null;
+  } | null>(null);
 
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskColumn, setNewTaskColumn] = useState("");
@@ -240,18 +247,20 @@ export const App = () => {
       setOrganizations([]);
       setSelectedOrganizationId(null);
       setSelectedProjectId(null);
+      setOrganizationLimits(null);
       return;
     }
 
     const loadOrganizations = async () => {
       try {
         setOrgError(null);
-        const data = await fetchJson<{ organizations: Organization[] }>("/me", token);
+        const data = await fetchJson<{ organizations: Organization[]; organizationLimits?: any }>("/me", token);
         const normalized = (data.organizations ?? []).map((org) => ({
           ...org,
           activeProjects: org.activeProjects ?? (org as any).projectCount ?? 0
         }));
         setOrganizations(normalized);
+        setOrganizationLimits(data.organizationLimits ?? null);
         setSelectedOrganizationId((current) => {
           if (normalized.length === 0) return null;
           if (normalized.length === 1) return normalized[0].id;
@@ -265,11 +274,20 @@ export const App = () => {
         setOrgError(message);
         setOrganizations([]);
         setSelectedOrganizationId((current) => current ?? null);
+        setOrganizationLimits(null);
       }
     };
 
     loadOrganizations();
   }, [status, token, organizationsRefresh]);
+
+  useEffect(() => {
+    setSelectedProjectId((current) => {
+      if (!projects.length) return null;
+      if (current && projects.some((project) => project.id === current)) return current;
+      return projects[0].id;
+    });
+  }, [projects]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -771,6 +789,14 @@ export const App = () => {
   const handleCreateOrganization = async (name: string, domain?: string) => {
     if (!token) return;
     if (!name || !name.trim()) return;
+    const canCreate =
+      organizationLimits?.max === null ||
+      organizationLimits?.remaining === null ||
+      (organizationLimits?.remaining ?? 0) > 0;
+    if (organizationLimits && !canCreate) {
+      setOrgError("Limite de organizacoes do plano atingido. Atualize o plano para criar mais.");
+      return;
+    }
 
     try {
       const response = await fetchJson<{ organization: { id: string; name: string } }>(
@@ -935,6 +961,40 @@ export const App = () => {
     }
   };
 
+  const handleCreateWbsItem = async (parentId: string | null) => {
+    if (!token || !selectedOrganizationId || !selectedProjectId) return;
+
+    const payload: Record<string, any> = {
+      title: "Nova tarefa",
+      type: "TASK",
+      parentId,
+      status: "BACKLOG",
+      priority: "MEDIUM"
+    };
+
+    try {
+      setWbsError(null);
+      const data = await fetchJson(
+        `/projects/${selectedProjectId}/wbs`,
+        token,
+        {
+          method: "POST",
+          body: JSON.stringify(payload)
+        },
+        selectedOrganizationId
+      );
+      const created = (data as any).node ?? null;
+      setWbsRefresh((value) => value + 1);
+      if (created?.id) {
+        setSelectedNodeId(created.id);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao criar tarefa";
+      setWbsError(message);
+      setWbsRefresh((value) => value + 1);
+    }
+  };
+
   const handleDownloadPortfolio = async () => {
     if (!token || !selectedOrganizationId) return;
 
@@ -969,6 +1029,7 @@ export const App = () => {
     plan: organization.plan ?? null,
     activeProjects: organization.activeProjects ?? 0
   }));
+  const currentOrgRole = organizationCards.find((org) => org.id === selectedOrganizationId)?.role ?? null;
 
   useEffect(() => {
     try {
@@ -1096,6 +1157,7 @@ export const App = () => {
         }}
         onCreateOrganization={handleCreateOrganization}
         userEmail={user?.email ?? null}
+        organizationLimits={organizationLimits}
       />
     );
   }
@@ -1111,11 +1173,13 @@ export const App = () => {
             organizations={organizations}
             selectedOrganizationId={selectedOrganizationId}
             onOrganizationChange={setSelectedOrganizationId}
+            currentOrgRole={currentOrgRole}
             orgError={orgError}
             onSignOut={signOut}
             projects={projects}
             selectedProjectId={selectedProjectId ?? ""}
             onProjectChange={setSelectedProjectId}
+            onSelectProject={setSelectedProjectId}
             projectsError={projectsError}
             filters={filters}
             onRangeChange={(rangeDays) => setFilters((prev) => ({ ...prev, rangeDays }))}
@@ -1147,6 +1211,7 @@ export const App = () => {
             wbsError={wbsError}
             onMoveNode={handleWbsMove}
             onUpdateWbsNode={handleWbsUpdate}
+            onCreateWbsItem={handleCreateWbsItem}
             selectedNodeId={selectedNodeId}
             onSelectNode={setSelectedNodeId}
             comments={comments}
@@ -1205,6 +1270,7 @@ export const App = () => {
               }}
               onCreateOrganization={handleCreateOrganization}
               userEmail={user?.email ?? null}
+              organizationLimits={organizationLimits}
             />
           }
         />
@@ -1222,6 +1288,7 @@ export const App = () => {
         <Route path="relatorios" element={<ReportsPage />} />
         <Route path="documentos" element={<DocumentsPage />} />
         <Route path="atividades" element={<ActivitiesPage />} />
+        <Route path="plano" element={<PlanPage />} />
         <Route path="equipe" element={<TeamPage />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />
@@ -1336,3 +1403,5 @@ function treeContainsNode(nodes: WbsNode[], nodeId: string): boolean {
   }
   return false;
 }
+
+

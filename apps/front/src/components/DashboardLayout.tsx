@@ -245,6 +245,7 @@ const sidebarNavigation = [
   { id: "dashboard", label: "Dashboard", icon: BriefcaseIcon, path: "/dashboard" },
   { id: "projects", label: "Projetos", icon: ListChecksIcon, path: "/projects" },
   { id: "equipe", label: "Equipe", icon: UsersIcon, path: "/equipe" },
+  { id: "plano", label: "Meu plano", icon: BriefcaseIcon, path: "/plano" },
   { id: "edt", label: "EDT", icon: UsersIcon, path: "/edt" },
   { id: "board", label: "Board", icon: ListChecksIcon, path: "/board" },
   { id: "cronograma", label: "Cronograma", icon: ClockIcon, path: "/cronograma" },
@@ -442,15 +443,19 @@ type DashboardLayoutProps = {
 
   onOrganizationChange: (organizationId: string) => void;
 
+  currentOrgRole?: string | null;
+
   orgError: string | null;
 
   onSignOut: () => void;
 
   projects: Project[];
 
-  selectedProjectId: string;
+  selectedProjectId: string | null;
 
   onProjectChange: (projectId: string) => void;
+
+  onSelectProject: (projectId: string) => void;
 
   projectsError: string | null;
 
@@ -538,6 +543,8 @@ type DashboardLayoutProps = {
 
   ) => void;
 
+  onCreateWbsItem?: (parentId: string | null) => void;
+
   selectedNodeId: string | null;
 
   onSelectNode: (nodeId: string | null) => void;
@@ -596,9 +603,11 @@ export type DashboardOutletContext = {
   organizations: Organization[];
   selectedOrganizationId: string;
   onOrganizationChange: (organizationId: string) => void;
+  currentOrgRole?: string | null;
   projects: Project[];
-  selectedProjectId: string;
+  selectedProjectId: string | null;
   onProjectChange: (projectId: string) => void;
+  onSelectProject: (projectId: string) => void;
   selectedProject: PortfolioProject | null;
   projectMeta: PortfolioProject | null;
   projectLoading: boolean;
@@ -680,7 +689,7 @@ export type DashboardOutletContext = {
     }
   ) => void;
   wbsLoading?: boolean;
-  onCreateWbsItem?: (payload: any) => void;
+  onCreateWbsItem?: (parentId: string | null) => void;
   onDeleteWbsItem?: (nodeId: string) => void;
   onRestoreWbsItem?: (nodeId: string) => void;
   onUpdateDependency?: (nodeId: string, dependencies: string[]) => void;
@@ -4978,6 +4987,8 @@ export const DashboardLayout = ({
 
   onOrganizationChange,
 
+  currentOrgRole,
+
   orgError,
 
   onSignOut,
@@ -4987,6 +4998,8 @@ export const DashboardLayout = ({
   selectedProjectId,
 
   onProjectChange,
+
+  onSelectProject,
 
   projectsError,
 
@@ -5051,6 +5064,8 @@ export const DashboardLayout = ({
   onMoveNode,
 
   onUpdateWbsNode,
+
+  onCreateWbsItem,
 
   selectedNodeId,
 
@@ -5421,9 +5436,11 @@ export const DashboardLayout = ({
     organizations,
     selectedOrganizationId,
   onOrganizationChange,
+  currentOrgRole,
   projects,
   selectedProjectId,
   onProjectChange,
+  onSelectProject,
   selectedProject: projectMeta,
   projectMeta,
   onSignOut,
@@ -5500,7 +5517,7 @@ export const DashboardLayout = ({
   wbsNodes,
   wbsError,
   wbsLoading: undefined,
-  onCreateWbsItem: undefined,
+  onCreateWbsItem,
   onDeleteWbsItem: undefined,
   onRestoreWbsItem: undefined,
   onUpdateDependency: undefined,
@@ -5620,6 +5637,28 @@ export const DashboardLayout = ({
             <input type="search" placeholder="Buscar projetos, tarefas, pessoas..." />
 
 
+
+            <div className="header-project-selector">
+              <span className="label">Projeto atual</span>
+              <select
+                value={selectedProjectId || ""}
+                onChange={(event) => {
+                  const newId = event.target.value;
+                  if (newId) {
+                    onSelectProject(newId);
+                  }
+                }}
+                disabled={!projects?.length}
+              >
+                {!selectedProjectId && <option value="">Selecione um projeto</option>}
+                {(projects || []).map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+              {!projects?.length && <small className="muted">Nenhum projeto cadastrado</small>}
+            </div>
 
             <div className="topbar-actions">
 

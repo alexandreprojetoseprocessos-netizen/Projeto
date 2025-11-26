@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useOutletContext } from "react-router-dom";
 import { ProjectPortfolio } from "../components/ProjectPortfolio";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
+import { canManageProjects, type OrgRole } from "../components/permissions";
 
 type FirstProjectPayload = {
   name: string;
@@ -103,8 +104,12 @@ export const ProjectsPage = () => {
     onExportPortfolio,
     selectedProjectId,
     onProjectChange,
-    onCreateProject
+    onCreateProject,
+    currentOrgRole
   } = useOutletContext<DashboardOutletContext>();
+
+  const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
+  const canCreateProjects = canManageProjects(orgRole);
 
   const handleCreateFirstProject = async (payload: FirstProjectPayload) => {
     await onCreateProject({
@@ -131,7 +136,11 @@ export const ProjectsPage = () => {
       {portfolioLoading ? (
         <p className="muted">Carregando projetos...</p>
       ) : !hasProjects ? (
-        <FirstProjectOnboarding onCreateProject={handleCreateFirstProject} />
+        canCreateProjects ? (
+          <FirstProjectOnboarding onCreateProject={handleCreateFirstProject} />
+        ) : (
+          <p className="muted">Você tem acesso apenas para visualizar projetos nesta organização.</p>
+        )
       ) : (
         <ProjectPortfolio
           projects={portfolio}

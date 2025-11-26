@@ -1,0 +1,258 @@
+import { useEffect, useMemo, useState } from "react";
+import { useOutletContext, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import type { DashboardOutletContext } from "../components/DashboardLayout";
+import { canManageBilling, type OrgRole } from "../components/permissions";
+
+type Subscription = {
+  id: string;
+  status: "ACTIVE" | "PAST_DUE" | "CANCELED";
+  paymentMethod?: string | null;
+  startedAt?: string | null;
+  expiresAt?: string | null;
+  product?: {
+    code: string;
+    name: string;
+    priceCents: number;
+    billingPeriod: string;
+  } | null;
+};
+
+const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+
+const formatPrice = (priceCents?: number | null, period?: string | null) => {
+  if (!priceCents && priceCents !== 0) return "-";
+  const formatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+  const base = formatter.format(priceCents / 100);
+  return period ? `${base}/${period === "monthly" ? "mês" : period}` : base;
+};
+
+const statusLabel: Record<string, string> = {
+  ACTIVE: "Ativa",
+  PAST_DUE: "Em atraso",
+  CANCELED: "Cancelada"
+};
+
+const PlanPage = () => {
+  const navigate = useNavigate();
+  const { token } = useAuth();
+  const { currentOrgRole } = useOutletContext<DashboardOutletContext>();
+  const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
+  const canEditBilling = canManageBilling(orgRole);
+
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [changingPlan, setChangingPlan] = useState(false);
+  const [canceling, setCanceling] = useState(false);
+
+  const loadSubscription = async () => {
+    if (!token) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${apiBaseUrl}/subscriptions/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.message ?? "Falha ao carregar assinatura");
+      }
+      setSubscription(body.subscription ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao carregar assinatura");
+      setSubscription(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSubscription();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  const handleChangePlan = async (planCode: string) => {
+    if (!token) return;
+    setActionError(null);
+    setChangingPlan(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/subscriptions/change-plan`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ planCode })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.message ?? "Não foi possível alterar o plano");
+      }
+      setSubscription(body.subscription ?? null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Não foi possível alterar o plano");
+    } finally {
+      setChangingPlan(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!token) return;
+    setActionError(null);
+    setCanceling(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/subscriptions/cancel`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.message ?? "Não foi possível cancelar a assinatura");
+      }
+      setSubscription(body.subscription ?? null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Não foi possível cancelar a assinatura");
+    } finally {
+      setCanceling(false);
+    }
+  };
+
+  const product = subscription?.product;
+  const price = useMemo(() => formatPrice(product?.priceCents, product?.billingPeriod), [product]);
+  const statusText = subscription?.status ? statusLabel[subscription.status] ?? subscription.status : "-";
+
+  const planCards = [
+    {
+      code: "START",
+      name: "Plano Start",
+      price: "R$ 49/mês",
+      summary: "Para começar"
+    },
+    {
+      code: "BUSINESS",
+      name: "Plano Business",
+      price: "R$ 97/mês",
+      summary: "Times em crescimento"
+    },
+    {
+      code: "ENTERPRISE",
+      name: "Plano Enterprise",
+      price: "R$ 197/mês",
+      summary: "Operações avançadas"
+    }
+  ];
+
+  return (
+    <div className="plan-page">
+      <section className="plan-card">
+        <p className="eyebrow">Minha assinatura</p>
+        <h2>Plano atual</h2>
+
+        {loading ? (
+          <p className="muted">Carregando...</p>
+        ) : error ? (
+          <p className="error-text">{error}</p>
+        ) : (
+          <>
+            <div className="plan-summary">
+              <div>
+                <p className="muted">Plano</p>
+                <h3>{product?.name ?? product?.code ?? "Nenhum plano ativo"}</h3>
+                <p className="muted">{product?.code ?? "-"}</p>
+              </div>
+              <div>
+                <p className="muted">Preço</p>
+                <strong>{price}</strong>
+              </div>
+              <div className="plan-status">
+                <span className={`status-chip status-${(subscription?.status ?? "none").toLowerCase()}`}>
+                  {statusText}
+                </span>
+              </div>
+            </div>
+
+            <div className="plan-details">
+              <p>Início: {subscription?.startedAt ? new Date(subscription.startedAt).toLocaleDateString("pt-BR") : "-"}</p>
+              <p>
+                Válida até: {subscription?.expiresAt ? new Date(subscription.expiresAt).toLocaleDateString("pt-BR") : "Sem término"}
+              </p>
+              <p>Pagamento: {subscription?.paymentMethod ?? "Não informado"}</p>
+            </div>
+
+            {subscription?.status === "CANCELED" && (
+              <div className="warning-box">
+                Sua assinatura está cancelada. Para voltar a usar o sistema, escolha um plano novamente.
+                <button className="secondary-button" type="button" onClick={() => navigate("/checkout")}>
+                  Reativar assinatura
+                </button>
+              </div>
+            )}
+
+            {actionError && <p className="error-text">{actionError}</p>}
+
+            {canEditBilling ? (
+              <div className="plan-actions">
+                <div className="plan-switcher">
+                  <p className="muted">Trocar plano</p>
+                  <div className="plan-options">
+                    {planCards.map((plan) => (
+                      <button
+                        key={plan.code}
+                        type="button"
+                        className={`secondary-button ${plan.code === product?.code ? "is-active" : ""}`}
+                        disabled={changingPlan || plan.code === product?.code}
+                        onClick={() => handleChangePlan(plan.code)}
+                      >
+                        <div>
+                          <strong>{plan.name}</strong>
+                          <p className="muted">{plan.summary}</p>
+                        </div>
+                        <span>{plan.price}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="plan-cancel">
+                  <p className="muted">Cancelar assinatura</p>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={handleCancel}
+                    disabled={canceling || subscription?.status === "CANCELED"}
+                  >
+                    {canceling ? "Cancelando..." : "Cancelar assinatura"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="muted">Você pode visualizar o plano, mas apenas o proprietário pode alterá-lo ou cancelar.</p>
+            )}
+          </>
+        )}
+      </section>
+
+      <aside className="plan-sidebar">
+        <h4>Resumo rápido</h4>
+        <ul>
+          <li>
+            <strong>Plano:</strong> {product?.name ?? product?.code ?? "-"}
+          </li>
+          <li>
+            <strong>Status:</strong> {statusText}
+          </li>
+          <li>
+            <strong>Pagamento:</strong> {subscription?.paymentMethod ?? "-"}
+          </li>
+          <li>
+            <strong>Próximo passo:</strong> Fale conosco para upgrades personalizados.
+          </li>
+        </ul>
+      </aside>
+    </div>
+  );
+};
+
+export default PlanPage;

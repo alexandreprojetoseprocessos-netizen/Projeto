@@ -7,6 +7,7 @@ import { ensureProjectMembership } from "../services/rbac";
 import { logger } from "../config/logger";
 import { uploadAttachment, getPublicUrl } from "../services/storage";
 import { recomputeProjectWbsCodes } from "../services/wbsCode";
+import { canManageProjects } from "../services/permissions";
 
 type FlatWbsNode = {
   id: string;
@@ -145,6 +146,11 @@ projectsRouter.get("/", async (req, res) => {
 projectsRouter.post("/", async (req, res) => {
   if (!req.organization || !req.user) {
     return res.status(401).json({ message: "Authentication required" });
+  }
+
+  const role = req.organizationMembership?.role as any;
+  if (!canManageProjects(role)) {
+    return res.status(403).json({ message: "Você não tem permissão para criar projetos nesta organização." });
   }
 
   const { name, clientName, budget, repositoryUrl, startDate, endDate, description, teamMembers } = req.body ?? {};

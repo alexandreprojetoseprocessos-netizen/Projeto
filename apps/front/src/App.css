@@ -3971,6 +3971,46 @@ body,
   flex-wrap: wrap;
 }
 
+.logout-button {
+  color: #1b2643;
+  border: 1px solid #d6d9e5;
+}
+
+.checkout-info-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.header-project-selector {
+  display: flex;
+  flex-direction: column;
+  margin-left: 1rem;
+  min-width: 220px;
+}
+
+.header-project-selector .label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  margin-bottom: 0.15rem;
+}
+
+.header-project-selector select {
+  border-radius: 0.5rem;
+  border: 1px solid #cbd5f5;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.edt-subtitle {
+  margin-top: 0.25rem;
+  color: #64748b;
+}
+
 .checkout-sidebar {
   background: #0f172a;
   color: #e2e8f0;
@@ -4001,6 +4041,12 @@ body,
 .checkout-sidebar strong {
   display: inline-block;
   margin-right: 0.3rem;
+}
+
+.checkout-page-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
 }
 
 .workspace-empty-card {
@@ -4094,6 +4140,127 @@ body,
   border-bottom: 1px solid #eef1f6;
 }
 
+.plan-page {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.2rem;
+  align-items: start;
+}
+
+.plan-card {
+  background: #fff;
+  border: 1px solid #eef1f6;
+  border-radius: 16px;
+  padding: 1.6rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+}
+
+.plan-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  align-items: center;
+  margin: 1rem 0;
+}
+
+.plan-status {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.status-chip {
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  background: #eef1f6;
+  color: #1b2643;
+}
+
+.status-active {
+  background: #e8f9f0;
+  color: #0f8a4d;
+}
+
+.status-canceled {
+  background: #ffe9e9;
+  color: #b3261e;
+}
+
+.status-past_due {
+  background: #fff4e5;
+  color: #c45b00;
+}
+
+.plan-details p {
+  margin: 0.2rem 0;
+  color: #4b5670;
+}
+
+.plan-actions {
+  margin-top: 1.2rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.plan-options {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.plan-options .secondary-button.is-active {
+  border: 2px solid #6d5dfc;
+  background: #f1efff;
+}
+
+.plan-cancel {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.plan-sidebar {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 16px;
+  padding: 1.4rem;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.14);
+}
+
+.plan-sidebar h4 {
+  margin: 0 0 0.75rem;
+}
+
+.plan-sidebar ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.plan-sidebar li strong {
+  margin-right: 0.35rem;
+}
+
+.warning-box {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 10px;
+  border: 1px solid #ffe0e0;
+  background: #fff5f5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+@media (max-width: 960px) {
+  .plan-page {
+    grid-template-columns: 1fr;
+  }
+}
+
 .team-list__header {
   display: flex;
   justify-content: space-between;
@@ -4133,3 +4300,87 @@ body,
 
 
 
+
+/* Organizacao - limites e plano */
+.org-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.org-header-left h1 {
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.org-user-email {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.org-header-right {
+  min-width: 260px;
+  max-width: 340px;
+  flex: 1;
+}
+
+.org-plan-card {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 0.9rem;
+  padding: 0.9rem 1.1rem;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.45);
+}
+
+.org-plan-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+}
+
+.org-plan-name {
+  display: block;
+  font-size: 1.1rem;
+  margin: 0.2rem 0 0.4rem;
+}
+
+.org-plan-meta,
+.org-plan-extra,
+.org-plan-warning {
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.org-plan-warning {
+  color: #fecaca;
+}
+
+.org-plan-card .primary-button {
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
+.link-button {
+  margin-top: 0.25rem;
+  background: transparent;
+  border: none;
+  color: #93c5fd;
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .org-header {
+    flex-direction: column;
+  }
+
+  .org-header-right {
+    width: 100%;
+    max-width: 100%;
+  }
+}

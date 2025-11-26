@@ -23,6 +23,27 @@ meRouter.get("/", async (req, res) => {
     }
   });
 
+  const subscription = await getActiveSubscriptionForUser(req.user.id);
+  const planCode = subscription?.product?.code ?? null;
+
+  const getOrgLimitForPlan = (code?: string | null): number | null => {
+    switch (code) {
+      case "START":
+        return 1;
+      case "BUSINESS":
+        return 3;
+      case "ENTERPRISE":
+        return null;
+      default:
+        return 1;
+    }
+  };
+
+  const maxOrganizations = getOrgLimitForPlan(planCode);
+  const usedOrganizations = memberships.length;
+  const remainingOrganizations =
+    maxOrganizations === null ? null : Math.max(maxOrganizations - usedOrganizations, 0);
+
   return res.json({
     user: req.user,
     organizations: memberships.map((membership) => ({
@@ -30,7 +51,13 @@ meRouter.get("/", async (req, res) => {
       name: membership.organization.name,
       role: membership.role,
       projectCount: membership.organization._count?.projects ?? 0
-    }))
+    })),
+    organizationLimits: {
+      planCode,
+      max: maxOrganizations,
+      used: usedOrganizations,
+      remaining: remainingOrganizations
+    }
   });
 });
 

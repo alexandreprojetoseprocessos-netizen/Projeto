@@ -27,7 +27,7 @@ const baseBenefits = [
 
 export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionActivated }: CheckoutPageProps) => {
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, signOut } = useAuth();
   const [error, setError] = useState<string | null>(subscriptionError ?? null);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPlanCode] = useState<string>(() => {
@@ -116,6 +116,11 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
 
   return (
     <div className="checkout-page">
+      <div className="checkout-page-header">
+        <button type="button" className="ghost-button" onClick={signOut}>
+          Sair
+        </button>
+      </div>
       <section className="checkout-card">
         <p className="eyebrow">Checkout seguro</p>
         <h2>Confirme o pagamento do seu plano</h2>
@@ -133,10 +138,15 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
           </div>
         </div>
 
-        <p className="subtext">
-          Você poderá pagar com cartão, Pix ou boleto. Nesta versão de teste, o pagamento será simulado e a assinatura
-          será ativada automaticamente.
-        </p>
+        <div className="checkout-info-row">
+          <p className="subtext">
+            Você poderá pagar com cartão, Pix ou boleto. Nesta versão de teste, o pagamento será simulado e a assinatura
+            será ativada automaticamente.
+          </p>
+          <button type="button" className="ghost-button logout-button" onClick={signOut}>
+            Sair
+          </button>
+        </div>
 
         {error && <p className="error-text">{error}</p>}
 
