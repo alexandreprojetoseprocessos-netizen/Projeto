@@ -4384,3 +4384,890 @@ body,
     max-width: 100%;
   }
 }
+
+/* ============================= */
+/* LAYOUT P�GINA ORGANIZA��ES    */
+/* ============================= */
+.main-content {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 1.5rem 1.2rem 2.2rem;
+}
+
+.org-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.org-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+}
+
+.org-kicker {
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  color: #64748B;
+  text-transform: uppercase;
+}
+
+.org-user-email {
+  font-size: 0.9rem;
+  color: #64748B;
+}
+
+/* CARD PLANO ATUAL � TEMA CLARO */
+.org-plan-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 1rem;
+  padding: 1.2rem 1.4rem;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.org-plan-pill {
+  background: #EEF2FF;
+  color: #4338CA;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+}
+
+.org-plan-name {
+  color: #1E293B;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.org-plan-label {
+  color: #475569;
+  font-size: 0.8rem;
+}
+
+.org-plan-value {
+  color: #1E293B;
+  font-weight: 600;
+}
+
+.org-plan-progress {
+  width: 100%;
+  height: 6px;
+  background: #E2E8F0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.org-plan-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366F1, #8B5CF6);
+}
+
+.org-plan-helper {
+  font-size: 0.8rem;
+  color: #64748B;
+}
+
+/* SE��ES / GRID / CARDS */
+.org-section {
+  display: flex;
+  flex-direction: column;
+  gap: .8rem;
+  margin-bottom: 1.8rem;
+}
+
+.org-create-section {
+  margin-top: 1.2rem;
+}
+
+.org-section-header h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #0F172A;
+}
+
+.org-section-header p {
+  font-size: 0.95rem;
+  max-width: 560px;
+  color: #64748B;
+}
+
+.org-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.org-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 1rem;
+  padding: 1.2rem 1.4rem;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  transition: 0.18s ease;
+}
+
+.org-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+}
+
+/* avatar */
+.org-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: 600;
+  color: #FFFFFF;
+}
+
+/* form criar organiza��o */
+.org-card-create {
+  border-style: dashed;
+  border-color: #C7D2FE;
+  background: #F3F4FF;
+}
+
+.org-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+}
+
+.org-form label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  gap: 0.3rem;
+  color: #4B5563;
+}
+
+.org-form input {
+  padding: 0.6rem .8rem;
+  border-radius: 0.75rem;
+  border: 1px solid #E2E8F0;
+  background: #F9FAFB;
+}
+
+/* responsivo */
+@media (max-width: 768px) {
+  .org-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .org-plan-card {
+    max-width: 100%;
+  }
+}
+
+/* ===== Ajustes finos de responsividade na p�gina de organiza��es ===== */
+
+/* Grid mais fluido */
+.org-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.8rem;
+  align-items: stretch;
+}
+
+/* Centraliza��o do card de plano em telas menores */
+@media (max-width: 1100px) {
+  .org-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* Menos espa�o vertical entre se��es */
+.org-section {
+  margin-bottom: 1.2rem;
+}
+
+.org-create-section {
+  margin-top: 0.8rem;
+}
+
+/* Card de plano com altura fixa */
+.org-plan-card {
+  min-height: 260px;
+}
+
+/* Bot�o mais vis�vel */
+.primary-button {
+  font-size: .9rem;
+  padding: 0.75rem 1rem;
+}
+
+/* Cards mais compactos */
+.org-card {
+  padding: 1rem 1.2rem;
+}
+
+/* ===== Menu de a��es moderno ===== */
+.org-menu-button {
+  background: transparent;
+  border: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: .2rem .4rem;
+  color: #475569;
+}
+
+.org-menu-container {
+  position: absolute;
+  top: 38px;
+  right: 10px;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: .6rem;
+  box-shadow: 0 12px 35px rgba(0,0,0,0.08);
+  padding: .4rem 0;
+  width: 180px;
+  z-index: 30;
+}
+
+.org-menu-item {
+  padding: .55rem 1rem;
+  font-size: .88rem;
+  cursor: pointer;
+  color: #334155;
+  transition: 0.15s;
+}
+
+.org-menu-item:hover {
+  background: #F1F5F9;
+}
+
+/* Avatar maior */
+.org-avatar {
+  width: 50px;
+  height: 50px;
+  font-size: 1.1rem;
+}
+.org-subtext {
+  font-size: 1rem;
+  color: #64748B;
+  margin-top: -0.4rem;
+  margin-bottom: 1.8rem;
+}
+/* Ajuste topo org page (BLOCO 3) */
+.org-header {
+  margin-top: 0.2rem;
+}
+
+.org-plan-card {
+  margin-top: 0.4rem;
+}
+@media (max-width: 600px) {
+  .org-card {
+    padding: 0.9rem 1rem;
+  }
+
+  .org-avatar {
+    width: 42px;
+    height: 42px;
+  }
+
+  .org-plan-card {
+    width: 100%;
+    min-height: 240px;
+  }
+
+  .org-header {
+    gap: 1rem;
+  }
+
+  .org-section-header h2 {
+    font-size: 1.15rem;
+  }
+}
+
+/* ===== Remover espa�o vazio e puxar bloco para cima ===== */
+
+.main-content {
+  padding-top: 0.5rem !important;
+}
+
+.org-section {
+  margin-top: 0rem !important;
+  margin-bottom: 1.2rem !important;
+}
+
+.org-create-section {
+  margin-top: 0.3rem !important;
+}
+
+/* Card de cria��o mais compacto */
+.org-card-create {
+  padding: 1.2rem 1.4rem;
+  border-width: 1px !important;
+  border-color: #d6d9f3 !important;
+  background: #f7f8ff;
+}
+
+.org-form {
+  margin-top: .4rem !important;
+}
+
+/* Inputs mais compactos */
+.org-form input {
+  padding: 0.55rem .75rem !important;
+}
+
+/* ===== Remover espa�o vazio e puxar bloco para cima ===== */
+
+.main-content {
+  padding-top: 0.5rem !important;
+}
+
+.org-section {
+  margin-top: 0rem !important;
+  margin-bottom: 1.2rem !important;
+}
+
+.org-create-section {
+  margin-top: 0.3rem !important;
+}
+
+/* Card de cria��o mais compacto */
+.org-card-create {
+  padding: 1.2rem 1.4rem;
+  border-width: 1px !important;
+  border-color: #d6d9f3 !important;
+  background: #f7f8ff;
+}
+
+.org-form {
+  margin-top: .4rem !important;
+}
+
+/* Inputs mais compactos */
+.org-form input {
+  padding: 0.55rem .75rem !important;
+}
+
+/* ===== Layout topo / criar nova organiza��o alinhado ao plano ===== */
+
+.org-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* T�tulo + subt�tulo + email */
+.org-subtext {
+  font-size: 0.98rem;
+  color: #64748B;
+  margin: 0.2rem 0 0.4rem;
+}
+
+.org-user-email {
+  margin: 0.1rem 0 0.4rem;
+  font-size: 0.9rem;
+  color: #94A3B8;
+}
+
+/* Se��o "Criar nova organiza��o" grudada no topo, antes da lista */
+.org-create-section {
+  margin-top: 0.5rem;
+  margin-bottom: 0.8rem;
+}
+
+.org-create-section .org-section-header h2 {
+  font-size: 1.05rem;
+}
+
+.org-create-section .org-section-header p {
+  font-size: 0.9rem;
+}
+
+/* Card de cria��o mais compacto, como no mock */
+.org-card-create {
+  padding: 1.1rem 1.3rem;
+  border-width: 1px;
+  border-style: dashed;
+  border-color: #C7D2FE;
+  background: #F5F5FF;
+  box-shadow: 0 18px 40px rgba(148, 163, 234, 0.28);
+}
+
+.org-create-button {
+  width: 100%;
+  margin-top: 0.7rem;
+}
+
+/* Se��o da lista de organiza��es um pouco mais abaixo */
+.org-list-section {
+  margin-top: 1.4rem;
+}
+
+/* Ajuste leve no grid para parecer com o mock (dois cards lado a lado) */
+.org-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.6rem;
+}
+
+/* Responsivo: em telas pequenas, card de plano vai para baixo e tudo vira uma coluna */
+@media (max-width: 900px) {
+  .org-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1.2rem;
+  }
+
+  .org-plan-card {
+    max-width: 100%;
+  }
+
+  .org-create-section {
+    margin-bottom: 1.2rem;
+  }
+}
+
+/* ===== Polimento hero topo / criar org + plano ===== */
+
+/* Deixar o bloco de cima com cara de "hero" */
+.org-header {
+  align-items: flex-start;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Coluna da esquerda com largura controlada */
+.org-header-left {
+  max-width: 640px;
+}
+
+/* Card de criar organiza��o mais estreito e elegante */
+.org-create-section {
+  margin-top: 0.8rem;
+}
+
+.org-card-create {
+  max-width: 540px;
+  padding: 1.1rem 1.4rem;
+  border-radius: 16px;
+  border-width: 1px;
+  border-style: dashed;
+  border-color: #D4D4F7;
+  background: radial-gradient(circle at top left, #F5F5FF 0, #F9FAFF 55%, #F9FAFF 100%);
+  box-shadow: 0 18px 36px rgba(148, 163, 234, 0.25);
+}
+
+/* Inputs um pouco mais compactos */
+.org-form input {
+  padding: 0.55rem 0.9rem;
+}
+
+/* Bot�o ocupando toda a largura, mas com altura confort�vel */
+.org-create-button {
+  margin-top: 0.8rem;
+  height: 44px;
+  font-size: 0.95rem;
+}
+
+/* Card de plano alinhado visualmente ao card de cria��o */
+.org-plan-card {
+  margin-top: 1.6rem;
+  border-radius: 18px;
+  box-shadow: 0 22px 45px rgba(15, 23, 42, 0.16);
+}
+
+/* Se��o da lista um pouco mais separada do topo */
+.org-list-section {
+  margin-top: 1.8rem;
+}
+
+/* ===== Ajustes de responsividade extras ===== */
+@media (max-width: 1100px) {
+  .org-header {
+    flex-direction: column;
+  }
+
+  .org-header-left {
+    max-width: 100%;
+  }
+
+  .org-card-create,
+  .org-plan-card {
+    max-width: 100%;
+  }
+
+  .org-plan-card {
+    margin-top: 0.5rem;
+  }
+}
+
+/* Card de organiza��o preparado para receber menu flutuante */
+.org-card {
+  position: relative;
+  min-height: 170px;
+}
+
+/* Bot�o "..." minimalista */
+.org-menu-button {
+  background: transparent;
+  border: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 0.15rem 0.4rem;
+  color: #475569;
+}
+
+/* Container do menu flutuante */
+.org-menu-container {
+  position: absolute;
+  top: 36px;
+  right: 16px;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 0.6rem;
+  box-shadow: 0 12px 35px rgba(15, 23, 42, 0.18);
+  padding: 0.35rem 0;
+  width: 180px;
+  z-index: 30;
+}
+
+/* Itens do menu */
+.org-menu-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 0.5rem 1rem;
+  font-size: 0.88rem;
+  color: #334155;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.org-menu-item:hover {
+  background: #F1F5F9;
+}
+
+/* Bot�o de cancelar um pouco mais suave */
+.org-menu-cancel {
+  color: #64748B;
+}
+
+/* ===== Layout geral da p�gina de organiza��es ===== */
+
+.org-page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+/* Topo com duas colunas: criar organiza��o + plano */
+
+.org-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2.5rem;
+  margin-bottom: 2rem;
+}
+
+.org-top-left {
+  flex: 1.2;
+}
+
+.org-top-right {
+  flex: 0.9;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+/* Label BEM-VINDO(A) */
+
+.org-kicker {
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #9ca3af;
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+/* Respons�vel pela conta */
+
+.org-responsible {
+  text-align: right;
+  font-size: 0.8rem;
+}
+
+.org-responsible-label {
+  display: block;
+  color: #9ca3af;
+}
+
+.org-responsible-email {
+  display: block;
+  color: #4b5563;
+}
+
+/* Se��es */
+
+.org-section {
+  margin-bottom: 1.5rem;
+}
+
+.org-section-title {
+  font-size: 1.05rem;
+  margin-bottom: 0.4rem;
+  color: #111827;
+}
+
+.org-section-text {
+  font-size: 0.9rem;
+  color: #6b7280;
+  max-width: 560px;
+}
+
+/* Card de criação de organização */
+
+.org-card-create {
+  margin-top: 0.9rem;
+  background: radial-gradient(circle at top left, #f4f4ff 0, #f9f9ff 55%, #ffffff 100%);
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  box-shadow: 0 22px 45px rgba(129, 140, 248, 0.25);
+  padding: 1.2rem 1.5rem 1.4rem;
+  max-width: 560px;
+}
+
+.org-form label {
+  display: block;
+  font-size: 0.82rem;
+  color: #6b7280;
+  margin-bottom: 0.5rem;
+}
+
+.org-form input {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.org-create-button {
+  width: 100%;
+  margin-top: 0.8rem;
+}
+
+/* Card de plano (ajuste leve para aproximar da imagem) */
+
+.org-plan-card {
+  background: #ffffff;
+  border-radius: 18px;
+  border: 1px solid #e5e7eb;
+  padding: 1.2rem 1.5rem 1.4rem;
+  box-shadow: 0 22px 45px rgba(15, 23, 42, 0.18);
+  max-width: 320px;
+}
+
+/* Faixa "Escolha onde voce quer trabalhar hoje" */
+
+.org-section-strip {
+  margin-top: 1.8rem;
+  margin-bottom: 1.4rem;
+  padding: 1rem 1.4rem;
+  border-radius: 1rem;
+  background: linear-gradient(90deg, #f9fafb, #eef2ff);
+}
+
+.org-section-strip h2 {
+  font-size: 1.2rem;
+  margin-bottom: 0.25rem;
+  color: #111827;
+}
+
+.org-section-strip p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
+/* Grid de organiza��es */
+
+.org-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.6rem;
+}
+
+/* Card de organiza��o */
+
+.org-card {
+  position: relative;
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 1.1rem 1.4rem 1.3rem;
+  box-shadow: 0 18px 40px rgba(148, 163, 184, 0.25);
+}
+
+.org-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+}
+
+.org-card-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: #8b5cf6;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.org-card-title-area {
+  flex: 1;
+}
+
+.org-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.org-card-title {
+  font-size: 1rem;
+  margin: 0;
+  color: #111827;
+}
+
+.org-card-meta {
+  font-size: 0.88rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+.org-card-plan {
+  font-size: 0.85rem;
+  color: #9ca3af;
+  margin-top: 0.1rem;
+}
+
+/* Rodap� do card */
+
+.org-card-footer {
+  margin-top: 0.9rem;
+}
+
+.org-card-footer .secondary-button {
+  padding-inline: 1.1rem;
+}
+
+/* Menu "..." e popover */
+
+.org-menu-button {
+  background: transparent;
+  border: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  color: #6b7280;
+}
+
+.org-menu-container {
+  position: absolute;
+  top: 44px;
+  right: 16px;
+  background: #ffffff;
+  border-radius: 0.6rem;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 16px 45px rgba(15, 23, 42, 0.25);
+  padding: 0.35rem 0;
+  width: 190px;
+  z-index: 40;
+}
+
+.org-menu-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 0.5rem 1rem;
+  font-size: 0.88rem;
+  color: #111827;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.org-menu-item:hover {
+  background: #f3f4f6;
+}
+
+.org-menu-cancel {
+  color: #6b7280;
+}
+
+/* Responsivo */
+
+@media (max-width: 960px) {
+  .org-top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .org-top-right {
+    align-items: flex-start;
+  }
+
+  .org-plan-card {
+    max-width: 100%;
+  }
+
+  .org-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.org-kicker {
+  font-size: 0.9rem !important;
+}
+
+/* Alinhar cards de criacao e plano no topo */
+.org-top-right {
+  padding-top: 2.4rem;
+}
+
+.org-plan-card {
+  margin-top: 0 !important;
+}
+/* Ajuste fino de alinhamento vertical dos cards topo */
+.org-top-right {
+  padding-top: 3rem;
+}
+
+.org-plan-card {
+  margin-top: 0 !important;
+}
+/* Ajuste alinhamento botoes criacao/plano */
+.org-top-right {
+  justify-content: flex-end;
+}

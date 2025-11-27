@@ -1,5 +1,6 @@
 ﻿import type { DropResult } from "@hello-pangea/dnd";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, BarChart, Bar } from "recharts";
 import {
   Fragment,
@@ -5119,6 +5120,7 @@ export const DashboardLayout = ({
   const projectMeta = (portfolio as PortfolioProject[]).find((project) => project.projectId === selectedProjectId) ?? null;
   const location = useLocation();
   const navigate = useNavigate();
+  const { signOut } = useAuth();
   const [isProjectModalOpen, setProjectModalOpen] = useState(false);
 
   const [projectForm, setProjectForm] = useState(createEmptyProjectForm());
@@ -5660,22 +5662,19 @@ export const DashboardLayout = ({
               {!projects?.length && <small className="muted">Nenhum projeto cadastrado</small>}
             </div>
 
-            <div className="topbar-actions">
-
-
-
+            <div className="topbar-actions app-header-actions">
               <button type="button">?</button>
-
-
-
-              <button type="button">??????????</button>
-
-
-
+              <button
+                type="button"
+                className="logout-button"
+                onClick={() => {
+                  signOut();
+                  navigate("/", { replace: true });
+                }}
+              >
+                Sair
+              </button>
               <div className="avatar">{userEmail?.slice(0, 2).toUpperCase()}</div>
-
-
-
             </div>
 
 

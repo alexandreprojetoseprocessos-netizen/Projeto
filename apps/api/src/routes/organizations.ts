@@ -2,6 +2,11 @@ import { Router } from "express";
 import { prisma } from "@gestao/database";
 import { MembershipRole } from "@prisma/client";
 import { authMiddleware } from "../middleware/auth";
+import {
+  attachOrgMembership,
+  requireCanDeleteOrganization,
+  requireCanManageOrgSettings
+} from "../middleware/organization";
 
 export const organizationsRouter = Router();
 
@@ -59,3 +64,60 @@ organizationsRouter.post("/", async (req, res) => {
 
   return res.status(201).json({ organization });
 });
+
+organizationsRouter.patch(
+  "/:organizationId",
+  attachOrgMembership,
+  requireCanManageOrgSettings,
+  async (req, res) => {
+    const { organizationId } = req.params;
+    const { name, domain, isActive } = req.body as {
+      name?: string;
+      domain?: string | null;
+      isActive?: boolean;
+    };
+
+    if (!name && typeof domain === "undefined" && typeof isActive === "undefined") {
+      return res.status(400).json({ message: "Nenhuma alteração informada." });
+    }
+
+    try {
+      const updated = await prisma.organization.update({
+        where: { id: organizationId },
+        data: {
+          ...(typeof name === "string" && name.trim().length > 0 ? { name: name.trim() } : {}),
+          ...(typeof domain !== "undefined" ? { domain: domain || null } : {}),
+          ...(typeof isActive === "boolean" ? { isActive } : {})
+        }
+      });
+
+      return res.json({ organization: updated });
+    } catch (error) {
+      console.error("Error updating organization", error);
+      return res.status(500).json({ message: "Erro ao atualizar organização." });
+    }
+  }
+);
+
+organizationsRouter.delete(
+  "/:organizationId",
+  attachOrgMembership,
+  requireCanDeleteOrganization,
+  async (req, res) => {
+    const { organizationId } = req.params;
+
+    try {
+      await prisma.organization.update({
+        where: { id: organizationId },
+        data: {
+          isActive: false
+        }
+      });
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting organization", error);
+      return res.status(500).json({ message: "Erro ao excluir organização." });
+    }
+  }
+);

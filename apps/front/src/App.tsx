@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { DropResult } from "@hello-pangea/dnd";
 import { DashboardLayout, type CreateProjectPayload } from "./components/DashboardLayout";
+import "./App.css";
 import { AuthPage } from "./components/AuthPage";
 import { OrganizationSelector } from "./components/OrganizationOnboarding";
 import type { PortfolioProject } from "./components/ProjectPortfolio";
@@ -34,7 +35,17 @@ import NotFoundPage from "./pages/NotFoundPage";
 import LandingPage from "./pages/LandingPage";
 import { CheckoutPage } from "./pages/CheckoutPage";
 
-type Organization = { id: string; name: string; role: string; plan?: string | null; activeProjects?: number };
+type Organization = {
+  id: string;
+  name: string;
+  role: string;
+  plan?: string | null;
+  activeProjects?: number;
+  projectsCount?: number;
+  domain?: string | null;
+  createdAt?: string;
+  isActive?: boolean;
+};
 type Project = { id: string; name: string };
 type BoardColumn = { id: string; label: string; tasks: any[]; wipLimit?: number };
 type WbsNode = {
@@ -257,7 +268,19 @@ export const App = () => {
         const data = await fetchJson<{ organizations: Organization[]; organizationLimits?: any }>("/me", token);
         const normalized = (data.organizations ?? []).map((org) => ({
           ...org,
-          activeProjects: org.activeProjects ?? (org as any).projectCount ?? 0
+          activeProjects:
+            org.activeProjects ??
+            (org as any).projectsCount ??
+            (org as any).projectCount ??
+            0,
+          projectsCount:
+            org.projectsCount ??
+            (org as any).projectCount ??
+            org.activeProjects ??
+            0,
+          domain: org.domain ?? (org as any).domain ?? null,
+          createdAt: org.createdAt ?? (org as any).createdAt,
+          isActive: typeof org.isActive === "boolean" ? org.isActive : true
         }));
         setOrganizations(normalized);
         setOrganizationLimits(data.organizationLimits ?? null);
@@ -1027,7 +1050,11 @@ export const App = () => {
     name: organization.name,
     role: organization.role,
     plan: organization.plan ?? null,
-    activeProjects: organization.activeProjects ?? 0
+    activeProjects: organization.activeProjects ?? 0,
+    projectsCount: organization.projectsCount ?? organization.activeProjects ?? 0,
+    domain: organization.domain ?? null,
+    createdAt: organization.createdAt,
+    isActive: typeof organization.isActive === "boolean" ? organization.isActive : true
   }));
   const currentOrgRole = organizationCards.find((org) => org.id === selectedOrganizationId)?.role ?? null;
 
@@ -1157,6 +1184,7 @@ export const App = () => {
         }}
         onCreateOrganization={handleCreateOrganization}
         userEmail={user?.email ?? null}
+        currentOrgRole={currentOrgRole}
         organizationLimits={organizationLimits}
       />
     );
@@ -1270,6 +1298,7 @@ export const App = () => {
               }}
               onCreateOrganization={handleCreateOrganization}
               userEmail={user?.email ?? null}
+              currentOrgRole={currentOrgRole}
               organizationLimits={organizationLimits}
             />
           }

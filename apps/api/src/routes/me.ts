@@ -39,19 +39,26 @@ meRouter.get("/", async (req, res) => {
     }
   };
 
+  const organizations = memberships
+    .map((membership) => ({
+      id: membership.organizationId,
+      name: membership.organization.name,
+      domain: membership.organization.domain,
+      createdAt: membership.organization.createdAt,
+      isActive: membership.organization.isActive,
+      role: membership.role,
+      projectsCount: membership.organization._count?.projects ?? 0
+    }))
+    .filter((org) => org.isActive);
+
   const maxOrganizations = getOrgLimitForPlan(planCode);
-  const usedOrganizations = memberships.length;
+  const usedOrganizations = organizations.length;
   const remainingOrganizations =
     maxOrganizations === null ? null : Math.max(maxOrganizations - usedOrganizations, 0);
 
   return res.json({
     user: req.user,
-    organizations: memberships.map((membership) => ({
-      id: membership.organizationId,
-      name: membership.organization.name,
-      role: membership.role,
-      projectCount: membership.organization._count?.projects ?? 0
-    })),
+    organizations,
     organizationLimits: {
       planCode,
       max: maxOrganizations,
