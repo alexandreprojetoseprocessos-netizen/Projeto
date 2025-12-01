@@ -45,6 +45,8 @@ type Organization = {
   domain?: string | null;
   createdAt?: string;
   isActive?: boolean;
+  status?: "ACTIVE" | "DEACTIVATED" | "SOFT_DELETED";
+  deletedAt?: string | null;
 };
 type Project = { id: string; name: string };
 type BoardColumn = { id: string; label: string; tasks: any[]; wipLimit?: number };
@@ -93,7 +95,10 @@ async function fetchJson<TResponse = any>(
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = (body as any).error ?? (body as any).message ?? `API respondeu com status ${response.status}`;
-    throw new Error(message);
+    const error = new Error(message) as Error & { status?: number; body?: any };
+    error.status = response.status;
+    error.body = body;
+    throw error;
   }
 
   return body as TResponse;
@@ -196,6 +201,12 @@ export const App = () => {
     used: number;
     remaining: number | null;
   } | null>(null);
+  const [projectLimits, setProjectLimits] = useState<{
+    planCode: string | null;
+    max: number | null;
+    used: number;
+    remaining: number | null;
+  } | null>(null);
 
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskColumn, setNewTaskColumn] = useState("");
@@ -259,6 +270,7 @@ export const App = () => {
       setSelectedOrganizationId(null);
       setSelectedProjectId(null);
       setOrganizationLimits(null);
+      setProjectLimits(null);
       return;
     }
 
@@ -268,6 +280,8 @@ export const App = () => {
         const data = await fetchJson<{ organizations: Organization[]; organizationLimits?: any }>("/me", token);
         const normalized = (data.organizations ?? []).map((org) => ({
           ...org,
+          status: (org as any).status ?? "ACTIVE",
+          deletedAt: (org as any).deletedAt ?? null,
           activeProjects:
             org.activeProjects ??
             (org as any).projectsCount ??
@@ -284,6 +298,7 @@ export const App = () => {
         }));
         setOrganizations(normalized);
         setOrganizationLimits(data.organizationLimits ?? null);
+        setProjectLimits(data.projectLimits ?? null);
         setSelectedOrganizationId((current) => {
           if (normalized.length === 0) return null;
           if (normalized.length === 1) return normalized[0].id;
@@ -737,41 +752,70 @@ export const App = () => {
       throw new Error("Selecione uma organização para criar projetos.");
     }
 
-    const response = await fetchJson<{ project: Project & { clientName?: string } }>(
-      "/projects",
-      token,
-      {
-        method: "POST",
-        body: JSON.stringify(payload)
-      },
-      selectedOrganizationId
-    );
-
-    const createdProject = (response as any).project ?? response;
-    if (!createdProject?.id) {
-      throw new Error("Projeto criado, mas resposta inesperada da API.");
-    }
-
-    setProjects((prev) => {
-      if (prev.some((project) => project.id === createdProject.id)) return prev;
-      return [...prev, { id: createdProject.id, name: createdProject.name }];
-    });
-    setPortfolio((prev) => {
-      if (!Array.isArray(prev)) return prev;
-      if (prev.some((project) => project.projectId === createdProject.id)) return prev;
-      return [
-        ...prev,
+    try {
+      const response = await fetchJson<{ project: Project & { clientName?: string } }>(
+        "/projects",
+        token,
         {
-          projectId: createdProject.id,
-          projectName: createdProject.name,
-          clientName: payload.clientName,
-          hoursTracked: 0,
-          tasksTotal: 0,
-          tags: []
-        }
-      ];
-    });
-    setSelectedProjectId(createdProject.id);
+          method: "POST",
+          body: JSON.stringify(payload)
+        },
+        selectedOrganizationId
+      );
+
+      const createdProject = (response as any).project ?? response;
+      if (!createdProject?.id) {
+        throw new Error("Projeto criado, mas resposta inesperada da API.");
+      }
+
+      setProjects((prev) => {
+        if (prev.some((project) => project.id === createdProject.id)) return prev;
+        return [...prev, { id: createdProject.id, name: createdProject.name }];
+      });
+      setPortfolio((prev) => {
+        if (!Array.isArray(prev)) return prev;
+        if (prev.some((project) => project.projectId === createdProject.id)) return prev;
+        return [
+          ...prev,
+          {
+            projectId: createdProject.id,
+            projectName: createdProject.name,
+            clientName: payload.clientName,
+            hoursTracked: 0,
+            tasksTotal: 0,
+            tags: []
+          }
+        ];
+      });
+      setProjectLimits((current) =>
+        current
+          ? {
+              ...current,
+              used: current.used + 1,
+              remaining: current.max === null ? null : Math.max(current.max - (current.used + 1), 0)
+            }
+          : current
+      );
+      setSelectedProjectId(createdProject.id);
+      setProjectsError(null);
+    } catch (error: any) {
+      const status = error?.status ?? error?.response?.status;
+      const code = error?.body?.code ?? error?.response?.data?.code;
+      const message =
+        error?.body?.message ??
+        error?.response?.data?.message ??
+        (error instanceof Error ? error.message : "Erro ao criar projeto");
+
+      if (status === 409 && code === "PROJECT_LIMIT_REACHED") {
+        setProjectsError(
+          "Você atingiu o limite de projetos do seu plano. Exclua/arquive um projeto ou faça upgrade para continuar."
+        );
+      } else {
+        setProjectsError(message);
+      }
+
+      throw error;
+    }
   };
 
   const handleUpdateProject = async (projectId: string, payload: CreateProjectPayload) => {
@@ -1054,7 +1098,9 @@ export const App = () => {
     projectsCount: organization.projectsCount ?? organization.activeProjects ?? 0,
     domain: organization.domain ?? null,
     createdAt: organization.createdAt,
-    isActive: typeof organization.isActive === "boolean" ? organization.isActive : true
+    isActive: typeof organization.isActive === "boolean" ? organization.isActive : true,
+    status: organization.status,
+    deletedAt: organization.deletedAt
   }));
   const currentOrgRole = organizationCards.find((org) => org.id === selectedOrganizationId)?.role ?? null;
 
@@ -1134,7 +1180,7 @@ export const App = () => {
         }}
         onSignUp={async ({ email, password }: { email: string; password: string }) => {
           await signUp({ email, password });
-          // Novo usu��rio deve concluir o checkout antes de criar organiza��ao
+          // Novo usuário deve concluir o checkout antes de criar organização
           navigate("/checkout", { replace: true });
         }}
         error={authError}
@@ -1148,7 +1194,7 @@ export const App = () => {
 
   if (subscriptionStatus === "loading" || subscriptionStatus === "idle") {
     if (isOnCheckoutRoute) {
-      // Permite abrir o checkout enquanto o status � carregado
+      // Permite abrir o checkout enquanto o status é carregado
     } else {
       return <p style={{ padding: "2rem" }}>Carregando assinatura...</p>;
     }
@@ -1167,27 +1213,6 @@ export const App = () => {
     location.pathname === "/dashboard"
   ) {
     return <Navigate to="/projects" replace />;
-  }
-
-  if (organizationCards.length > 1 && !hasStoredOrganization) {
-    return (
-      <OrganizationSelector
-        organizations={organizationCards}
-        onSelect={(organizationId: string) => {
-          setSelectedOrganizationId(organizationId);
-          setSelectedProjectId(null);
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem(SELECTED_ORG_KEY, organizationId);
-            window.localStorage.removeItem(SELECTED_PROJECT_KEY);
-          }
-          navigate("/dashboard", { replace: true });
-        }}
-        onCreateOrganization={handleCreateOrganization}
-        userEmail={user?.email ?? null}
-        currentOrgRole={currentOrgRole}
-        organizationLimits={organizationLimits}
-      />
-    );
   }
 
   return (
@@ -1268,6 +1293,7 @@ export const App = () => {
             onExportPortfolio={handleDownloadPortfolio}
             onCreateProject={handleCreateProject}
             onUpdateProject={handleUpdateProject}
+            projectLimits={projectLimits}
           />
         }
       >
@@ -1300,6 +1326,7 @@ export const App = () => {
               userEmail={user?.email ?? null}
               currentOrgRole={currentOrgRole}
               organizationLimits={organizationLimits}
+              onReloadOrganizations={() => setOrganizationsRefresh((value) => value + 1)}
             />
           }
         />

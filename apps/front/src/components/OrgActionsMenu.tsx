@@ -1,26 +1,34 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+
+const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 interface OrgActionsMenuProps {
   organization: {
     id: string;
     name: string;
     isActive?: boolean;
+    status?: "ACTIVE" | "DEACTIVATED" | "SOFT_DELETED";
   };
   onRenamed: (orgId: string, newName: string) => void;
   onToggledActive: (orgId: string, isActive: boolean) => void;
   onDeleted: (orgId: string) => void;
+  onStatusChange?: (orgId: string, status: "ACTIVE" | "DEACTIVATED" | "SOFT_DELETED") => void;
+  mode?: "menu" | "inline";
 }
 
 const OrgActionsMenu: React.FC<OrgActionsMenuProps> = ({
   organization,
   onRenamed,
   onToggledActive,
-  onDeleted
+  onDeleted,
+  onStatusChange,
+  mode = "menu"
 }) => {
   const { token } = useAuth();
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const isInline = mode === "inline";
 
   const toggleMenu = () => setOpen((v) => !v);
 
@@ -30,7 +38,7 @@ const OrgActionsMenu: React.FC<OrgActionsMenuProps> = ({
     if (!newName || !newName.trim()) return;
     const trimmed = newName.trim();
     try {
-      const response = await fetch(`/organizations/${organization.id}`, {
+      const response = await fetch(`${apiBaseUrl}/organizations/${organization.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -47,43 +55,44 @@ const OrgActionsMenu: React.FC<OrgActionsMenuProps> = ({
     }
   };
 
-  const handleToggleActive = async () => {
+  const handleDeactivate = async () => {
     if (!token) return;
-    const desired = !(organization.isActive ?? true);
     try {
-      const response = await fetch(`/organizations/${organization.id}`, {
+      const response = await fetch(`${apiBaseUrl}/organizations/${organization.id}/deactivate`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ isActive: desired })
+        }
       });
-      if (!response.ok) throw new Error("Falha ao atualizar organizacao");
+      if (!response.ok) throw new Error("Falha ao desativar organizacao");
       const data = await response.json();
-      const nextActive = data.organization?.isActive ?? desired;
-      onToggledActive(organization.id, nextActive);
+      onStatusChange?.(organization.id, data.organization?.status ?? "DEACTIVATED");
+      onToggledActive(organization.id, false);
+      onDeleted(organization.id);
       setOpen(false);
     } catch (error) {
-      console.error("Erro ao atualizar organizacao", error);
+      console.error("Erro ao desativar organizacao", error);
     }
   };
 
-  const handleDelete = async () => {
+  const handleTrash = async () => {
     if (!token) return;
-    if (!window.confirm("Tem certeza que deseja excluir esta organizacao?")) {
-      return;
-    }
+    if (!window.confirm("Tem certeza que deseja enviar esta organizacao para a lixeira?")) return;
     setDeleting(true);
     try {
-      const response = await fetch(`/organizations/${organization.id}`, {
-        method: "DELETE",
+      const response = await fetch(`${apiBaseUrl}/organizations/${organization.id}/trash`, {
+        method: "PATCH",
         headers: {
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         }
       });
       if (!response.ok) throw new Error("Falha ao excluir organizacao");
+      const data = await response.json();
+      onStatusChange?.(organization.id, data.organization?.status ?? "SOFT_DELETED");
       onDeleted(organization.id);
+      onToggledActive(organization.id, false);
       setOpen(false);
     } catch (error) {
       console.error("Erro ao excluir organizacao", error);
@@ -92,25 +101,38 @@ const OrgActionsMenu: React.FC<OrgActionsMenuProps> = ({
     }
   };
 
+  if (isInline) {
+    return (
+      <>
+        <button className="button-primary" type="button" onClick={handleRename}>
+          Renomear
+        </button>
+        <button className="button-primary" type="button" onClick={handleDeactivate}>
+          Desativar
+        </button>
+        <button className="button-primary" type="button" onClick={handleTrash} disabled={deleting}>
+          {deleting ? "Excluindo..." : "Excluir"}
+        </button>
+      </>
+    );
+  }
+
   return (
-    <div className="org-card-actions">
+    <div className={`org-card-actions ${isInline ? "org-card-actions--inline" : ""}`}>
       <button type="button" className="org-menu-button" onClick={toggleMenu}>
-        ⋯
+        ...
       </button>
 
       {open && (
         <div className="org-menu-container">
-          <button className="org-menu-item" type="button" onClick={handleRename}>
+          <button className="button-primary" type="button" onClick={handleRename}>
             Renomear
           </button>
-          <button className="org-menu-item" type="button" onClick={handleToggleActive}>
-            {organization.isActive ? "Desativar" : "Reativar"}
+          <button className="button-primary" type="button" onClick={handleDeactivate}>
+            Desativar
           </button>
-          <button className="org-menu-item" type="button" onClick={handleDelete} disabled={deleting}>
+          <button className="button-primary" type="button" onClick={handleTrash} disabled={deleting}>
             {deleting ? "Excluindo..." : "Excluir"}
-          </button>
-          <button className="org-menu-item org-menu-cancel" type="button" onClick={() => setOpen(false)}>
-            Cancelar
           </button>
         </div>
       )}
@@ -119,3 +141,4 @@ const OrgActionsMenu: React.FC<OrgActionsMenuProps> = ({
 };
 
 export default OrgActionsMenu;
+

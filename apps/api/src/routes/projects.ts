@@ -1,5 +1,5 @@
-import { Router } from "express";
-import { Prisma, ProjectRole, AttachmentTargetType, TaskStatus } from "@prisma/client";
+﻿import { Router } from "express";
+import { Prisma, ProjectRole, AttachmentTargetType, TaskStatus, ProjectStatus } from "@prisma/client";
 import { prisma } from "@gestao/database";
 import { authMiddleware } from "../middleware/auth";
 import { organizationMiddleware } from "../middleware/organization";
@@ -8,6 +8,8 @@ import { logger } from "../config/logger";
 import { uploadAttachment, getPublicUrl } from "../services/storage";
 import { recomputeProjectWbsCodes } from "../services/wbsCode";
 import { canManageProjects } from "../services/permissions";
+import { getActiveSubscriptionForUser } from "../services/subscriptions";
+import { getProjectLimitForPlan } from "../services/subscriptionLimits";
 
 type FlatWbsNode = {
   id: string;
@@ -75,8 +77,8 @@ const DEFAULT_BOARD_COLUMNS: Array<{ label: string; status: TaskStatus; wipLimit
   { label: "Backlog", status: TaskStatus.BACKLOG },
   { label: "Planejamento", status: TaskStatus.TODO },
   { label: "Em andamento", status: TaskStatus.IN_PROGRESS, wipLimit: 6 },
-  { label: "Revisão", status: TaskStatus.REVIEW, wipLimit: 4 },
-  { label: "Concluído", status: TaskStatus.DONE }
+  { label: "Revis├úo", status: TaskStatus.REVIEW, wipLimit: 4 },
+  { label: "Conclu├¡do", status: TaskStatus.DONE }
 ];
 
 const ensureBoardColumns = async (projectId: string) => {
@@ -150,22 +152,42 @@ projectsRouter.post("/", async (req, res) => {
 
   const role = req.organizationMembership?.role as any;
   if (!canManageProjects(role)) {
-    return res.status(403).json({ message: "Você não tem permissão para criar projetos nesta organização." });
+    return res.status(403).json({ message: "Voc├¬ n├úo tem permiss├úo para criar projetos nesta organiza├º├úo." });
   }
 
   const { name, clientName, budget, repositoryUrl, startDate, endDate, description, teamMembers } = req.body ?? {};
 
   if (!name || typeof name !== "string" || !name.trim()) {
-    return res.status(400).json({ message: "Nome do projeto é obrigatório." });
+    return res.status(400).json({ message: "Nome do projeto ├® obrigat├│rio." });
   }
 
   if (!clientName || typeof clientName !== "string" || !clientName.trim()) {
-    return res.status(400).json({ message: "Cliente responsável é obrigatório." });
+    return res.status(400).json({ message: "Cliente respons├ível ├® obrigat├│rio." });
   }
 
   const normalizedRepo = typeof repositoryUrl === "string" ? repositoryUrl.trim() : "";
 
   try {
+    const subscription = await getActiveSubscriptionForUser(req.user.id);
+    const maxProjects = getProjectLimitForPlan(subscription?.product?.code ?? null);
+    const currentProjectsCount = await prisma.project.count({
+      where: {
+        organizationId: req.organization.id,
+        archivedAt: null,
+        status: {
+          not: ProjectStatus.CANCELED
+        }
+      }
+    });
+
+    if (maxProjects !== null && currentProjectsCount >= maxProjects) {
+      return res.status(409).json({
+        code: "PROJECT_LIMIT_REACHED",
+        message:
+          "Você atingiu o limite de projetos do seu plano. Para criar novos projetos, arquive/exclua algum existente ou faça upgrade de plano."
+      });
+    }
+
     const project = await prisma.project.create({
       data: {
         organizationId: req.organization.id,
@@ -262,11 +284,11 @@ projectsRouter.put("/:projectId", async (req, res) => {
   const { name, clientName, budget, repositoryUrl, startDate, endDate, description } = req.body ?? {};
 
   if (!name || typeof name !== "string" || !name.trim()) {
-    return res.status(400).json({ message: "Nome do projeto é obrigatório." });
+    return res.status(400).json({ message: "Nome do projeto ├® obrigat├│rio." });
   }
 
   if (!clientName || typeof clientName !== "string" || !clientName.trim()) {
-    return res.status(400).json({ message: "Cliente responsável é obrigatório." });
+    return res.status(400).json({ message: "Cliente respons├ível ├® obrigat├│rio." });
   }
 
   const normalizedRepo = typeof repositoryUrl === "string" ? repositoryUrl.trim() : "";
@@ -560,7 +582,7 @@ projectsRouter.post("/:projectId/board/tasks", async (req, res) => {
       where: { projectId, userId: ownerId }
     });
     if (!member) {
-      return res.status(400).json({ message: "Responsável informado não pertence ao projeto" });
+      return res.status(400).json({ message: "Respons├ível informado n├úo pertence ao projeto" });
     }
   }
 
@@ -977,7 +999,7 @@ projectsRouter.post("/:projectId/attachments", async (req, res) => {
   const allowedTargetTypes = new Set(Object.values(AttachmentTargetType));
 
   if (!fileName || !contentType || !fileBase64) {
-    return res.status(400).json({ message: "fileName, contentType e fileBase64 são obrigatórios" });
+    return res.status(400).json({ message: "fileName, contentType e fileBase64 s├úo obrigat├│rios" });
   }
 
   const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
@@ -990,13 +1012,13 @@ projectsRouter.post("/:projectId/attachments", async (req, res) => {
     const base64Payload = fileBase64.replace(/^data:.*;base64,/, "");
     const buffer = Buffer.from(base64Payload, "base64");
     if (!buffer.length) {
-      return res.status(400).json({ message: "Arquivo inválido" });
+      return res.status(400).json({ message: "Arquivo inv├ílido" });
     }
 
     if (wbsNodeId) {
       const node = await prisma.wbsNode.findFirst({ where: { id: wbsNodeId, projectId } });
       if (!node) {
-        return res.status(400).json({ message: "O item de WBS informado não pertence ao projeto" });
+        return res.status(400).json({ message: "O item de WBS informado n├úo pertence ao projeto" });
       }
     }
 
@@ -1034,3 +1056,4 @@ projectsRouter.post("/:projectId/attachments", async (req, res) => {
     return res.status(500).json({ message: "Falha ao salvar anexo" });
   }
 });
+

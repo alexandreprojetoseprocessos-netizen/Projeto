@@ -8,6 +8,12 @@ datasource db {
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
+enum OrganizationStatus {
+  ACTIVE
+  DEACTIVATED
+  SOFT_DELETED
+}
+
 model Organization {
   id          String                   @id @default(uuid())
   name        String
@@ -18,6 +24,8 @@ model Organization {
   createdAt   DateTime                 @default(now())
   updatedAt   DateTime                 @updatedAt
   isActive    Boolean                  @default(true)
+  status      OrganizationStatus       @default(ACTIVE)
+  deletedAt   DateTime?
   auditLogs   AuditLog[]
   memberships OrganizationMembership[]
   projects    Project[]

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 
 export type PortfolioProject = {
   projectId: string;
@@ -16,6 +16,7 @@ export type PortfolioProject = {
   tasksInProgress?: number;
   risksOpen?: number;
   hoursTracked?: number;
+  membersCount?: number;
 };
 
 const statusMap: Record<string, { label: string; tone: "success" | "warning" | "danger" | "neutral" }> = {
@@ -39,11 +40,11 @@ const chipStatusOptions = [
 ];
 
 const formatDisplayDate = (value?: string | null) => {
-  if (!value) return "—";
+  if (!value) return "-";
   try {
     return new Date(value).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
   } catch {
-    return "—";
+    return "-";
   }
 };
 
@@ -51,6 +52,13 @@ const calcProgress = (done?: number, total?: number) => {
   if (!total || total === 0) return 0;
   if (!done) return 0;
   return Math.min(100, Math.round((done / total) * 100));
+};
+
+const renderStatusBadge = (status?: string | null) => {
+  if (!status) return <span className="project-status-badge project-status-neutral">Sem status</span>;
+  const normalized = status.toUpperCase();
+  const metadata = statusMap[normalized] ?? { label: normalized, tone: "neutral" };
+  return <span className={`project-status-badge project-status-${metadata.tone}`}>{metadata.label}</span>;
 };
 
 export type ProjectPortfolioProps = {
@@ -141,13 +149,6 @@ export const ProjectPortfolio = ({
     });
   };
 
-  const renderStatusPill = (status?: string | null) => {
-    if (!status) return <span className="pill pill-neutral">Sem status</span>;
-    const normalized = status.toUpperCase();
-    const metadata = statusMap[normalized] ?? { label: normalized, tone: "neutral" };
-    return <span className={`pill pill-${metadata.tone}`}>{metadata.label}</span>;
-  };
-
   const emptyState = showOnlyFavorites
     ? "Você ainda não favoritou nenhum projeto."
     : "Sem projetos para o filtro atual.";
@@ -174,14 +175,16 @@ export const ProjectPortfolio = ({
 
     if (viewMode === "cards") {
       return (
-        <div className="projects-grid">
+        <section className="projects-grid">
           {filteredProjects.map((project) => {
             const progress = calcProgress(project.tasksDone, project.tasksTotal);
             const isActive = selectedProjectId === project.projectId;
+            const tasksTotal = project.tasksTotal ?? 0;
+            const tasksDone = project.tasksDone ?? 0;
             return (
               <article
                 key={project.projectId}
-                className={`project-card ${isActive ? "is-active" : ""}`}
+                className={`project-card project-card--elevated ${isActive ? "is-active" : ""}`}
                 onClick={() => onSelectProject?.(project.projectId)}
                 role="button"
                 tabIndex={0}
@@ -192,54 +195,52 @@ export const ProjectPortfolio = ({
                   }
                 }}
               >
-                <div className="project-card__header">
-                  <div className="project-avatar">
-                    {(project.projectName ?? "?").slice(0, 2).toUpperCase()}
+                <header className="project-card-header">
+                  <div>
+                    <h3 className="project-card-title">{project.projectName}</h3>
+                    <p className="project-card-client">
+                      {project.clientName ? `Cliente: ${project.clientName}` : "Cliente não informado"}
+                    </p>
                   </div>
-                  {renderStatusPill(project.status)}
-                  <button
-                    type="button"
-                    className={`favorite-button ${favoriteIds.has(project.projectId) ? "is-active" : ""}`}
-                    onClick={() => toggleFavorite(project.projectId)}
-                    aria-label="Favoritar projeto"
-                  >
-                    ★
-                  </button>
-                </div>
-                <h3>{project.projectName}</h3>
-                <p className="subtext">{project.clientName ?? "Cliente não informado"}</p>
+                  <div className="project-card-actions">
+                    {renderStatusBadge(project.status)}
+                    <button
+                      type="button"
+                      className={`favorite-button ${favoriteIds.has(project.projectId) ? "is-active" : ""}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleFavorite(project.projectId);
+                      }}
+                      aria-label="Favoritar projeto"
+                    >
+                      ★
+                    </button>
+                  </div>
+                </header>
 
-                <div className="project-card__meta">
-                  <span>{project.responsibleName ?? "Responsável não definido"}</span>
-                  <span>
-                    {formatDisplayDate(project.startDate)} – {formatDisplayDate(project.endDate)}
+                <div className="project-card-progress">
+                  <div className="progress-bar">
+                    <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
+                  </div>
+                  <span className="progress-value">{progress}%</span>
+                </div>
+
+                <div className="project-card-stats">
+                  <span className="project-card-meta-label">
+                    Responsável: {project.responsibleName ?? "Não definido"}
+                  </span>
+                  <span className="project-card-meta-label">
+                    {tasksDone}/{tasksTotal} tarefas • {project.risksOpen ?? 0} riscos abertos
                   </span>
                 </div>
 
-                <div className="project-card__progress">
-                  <div>
-                    <small>Progresso</small>
-                    <strong>{progress}%</strong>
+                <footer className="project-card-footer">
+                  <div className="project-card-deadline">
+                    {formatDisplayDate(project.startDate)} — {formatDisplayDate(project.endDate)}
                   </div>
-                  <div className="progress-bar">
-                    <span style={{ width: `${progress}%` }} />
-                  </div>
-                  <small>
-                    {project.tasksDone ?? 0}/{project.tasksTotal ?? 0} tarefas · {project.risksOpen ?? 0} riscos abertos
-                  </small>
-                </div>
-
-                <div className="project-card__tags">
-                  {(project.tags ?? []).slice(0, 4).map((tag) => (
-                    <span key={`${project.projectId}-${tag}`}>{tag}</span>
-                  ))}
-                  {!project.tags?.length && <span className="pill pill-neutral">Sem tags</span>}
-                </div>
-
-                <div className="project-card__footer">
                   <button
                     type="button"
-                    className="secondary-button"
+                    className="link-button"
                     onClick={(event) => {
                       event.stopPropagation();
                       onSelectProject?.(project.projectId);
@@ -248,106 +249,81 @@ export const ProjectPortfolio = ({
                   >
                     Ver detalhes
                   </button>
-                  <button type="button" className="ghost-button">
-                    ···
-                  </button>
-                </div>
+                </footer>
               </article>
             );
           })}
-        </div>
+        </section>
       );
     }
 
     return (
-      <div className="project-table__wrapper">
-        <table className="project-table">
-          <thead>
-            <tr>
-              <th>Projeto</th>
-              <th>Status</th>
-              <th>Cliente</th>
-              <th>Responsável</th>
-              <th>Progresso</th>
-              <th>Riscos</th>
-              <th>Horas</th>
-              <th>Período</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredProjects.map((project) => {
-              const progress = calcProgress(project.tasksDone, project.tasksTotal);
-              const hoursValue =
-                typeof project.hoursTracked === "number" ? project.hoursTracked : Number(project.hoursTracked ?? 0);
-              return (
-                <tr
-                  key={project.projectId}
-                  className={selectedProjectId === project.projectId ? "is-active" : ""}
-                  onClick={() => onSelectProject?.(project.projectId)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onSelectProject?.(project.projectId);
-                    }
-                  }}
-                >
-                  <td>
-                    <strong>{project.projectName}</strong>
-                    <small>{project.tags?.slice(0, 2).join(" • ") || "Sem tags"}</small>
-                  </td>
-                  <td>{renderStatusPill(project.status)}</td>
-                  <td>{project.clientName ?? "—"}</td>
-                  <td>{project.responsibleName ?? "—"}</td>
-                  <td>
-                    <div className="table-progress">
-                      <span style={{ width: `${progress}%` }} />
-                    </div>
-                    <small>{progress}%</small>
-                  </td>
-                  <td>{project.risksOpen ?? 0}</td>
-                  <td>{hoursValue.toFixed(1)}h</td>
-                  <td>
-                    {formatDisplayDate(project.startDate)} – {formatDisplayDate(project.endDate)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <section className="projects-table-card">
+        <div className="project-table__wrapper">
+          <table className="project-table">
+            <thead>
+              <tr>
+                <th>Projeto</th>
+                <th>Status</th>
+                <th>Cliente</th>
+                <th>Responsável</th>
+                <th>Progresso</th>
+                <th>Riscos</th>
+                <th>Horas</th>
+                <th>Período</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredProjects.map((project) => {
+                const progress = calcProgress(project.tasksDone, project.tasksTotal);
+                const hoursValue =
+                  typeof project.hoursTracked === "number" ? project.hoursTracked : Number(project.hoursTracked ?? 0);
+                return (
+                  <tr
+                    key={project.projectId}
+                    className={selectedProjectId === project.projectId ? "is-active" : ""}
+                    onClick={() => onSelectProject?.(project.projectId)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onSelectProject?.(project.projectId);
+                      }
+                    }}
+                  >
+                    <td>
+                      <strong>{project.projectName}</strong>
+                      <small>{project.tags?.slice(0, 2).join(" • ") || "Sem tags"}</small>
+                    </td>
+                    <td>{renderStatusBadge(project.status)}</td>
+                    <td>{project.clientName ?? "-"}</td>
+                    <td>{project.responsibleName ?? "-"}</td>
+                    <td>
+                      <div className="table-progress">
+                        <span style={{ width: `${progress}%` }} />
+                      </div>
+                      <small>{progress}%</small>
+                    </td>
+                    <td>{project.risksOpen ?? 0}</td>
+                    <td>{hoursValue.toFixed(1)}h</td>
+                    <td>
+                      {formatDisplayDate(project.startDate)} - {formatDisplayDate(project.endDate)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
     );
   };
 
   return (
-    <section className="projects-section" aria-label="Listagem de projetos" aria-busy={isLoading}>
-      <header className="projects-header">
-        <div>
-          <p className="eyebrow">Portfólio</p>
-          <h2>Projetos</h2>
-          <p className="subtext">Filtros avançados e troca de visualização entre cards e tabela.</p>
-        </div>
-        <div className="projects-actions">
-          <button type="button" className="secondary-button" onClick={onCreateProject} disabled={!onCreateProject}>
-            + Novo Projeto
-          </button>
-          <button type="button" className="ghost-button" onClick={onExport} disabled={!onExport || !projects.length}>
-            Exportar portfólio
-          </button>
-          <div className="view-toggle" role="group" aria-label="Trocar visualização">
-            <button type="button" className={viewMode === "cards" ? "is-active" : ""} onClick={() => setViewMode("cards")}>
-              Cards
-            </button>
-            <button type="button" className={viewMode === "table" ? "is-active" : ""} onClick={() => setViewMode("table")}>
-              Tabela
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="project-toolbar">
-        <div className="chip-group">
+    <div className="projects-content" aria-label="Listagem de projetos" aria-busy={isLoading}>
+      <section className="projects-filters-card">
+        <div className="projects-filters-chips">
           {chipStatusOptions.map((option) => (
             <button
               type="button"
@@ -367,51 +343,80 @@ export const ProjectPortfolio = ({
           </button>
         </div>
 
-        <div className="project-toolbar__controls">
-          <label>
-            Cliente
-            <select value={clientFilter} onChange={(event) => setClientFilter(event.target.value)}>
-              <option value="all">Todos</option>
-              {clientOptions.map((client) => (
-                <option key={client} value={client}>
-                  {client}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Responsável
-            <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)}>
-              <option value="all">Todos</option>
-              {ownerOptions.map((owner) => (
-                <option key={owner} value={owner}>
-                  {owner}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Tags
-            <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
-              <option value="all">Todas</option>
-              {tagOptions.map((tag) => (
-                <option key={tag} value={tag}>
-                  {tag}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="search-field">
-            <span>Busca</span>
-            <input
-              type="search"
-              placeholder="Projeto, cliente ou tag..."
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-            />
-          </label>
+        <div className="projects-filters-row">
+          <div className="projects-filters-controls">
+            <label className="projects-filter-field">
+              <span>Cliente</span>
+              <select value={clientFilter} onChange={(event) => setClientFilter(event.target.value)}>
+                <option value="all">Todos</option>
+                {clientOptions.map((client) => (
+                  <option key={client} value={client}>
+                    {client}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="projects-filter-field">
+              <span>Responsável</span>
+              <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)}>
+                <option value="all">Todos</option>
+                {ownerOptions.map((owner) => (
+                  <option key={owner} value={owner}>
+                    {owner}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="projects-filter-field">
+              <span>Tags</span>
+              <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
+                <option value="all">Todas</option>
+                {tagOptions.map((tag) => (
+                  <option key={tag} value={tag}>
+                    {tag}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="projects-filter-field projects-filter-search">
+              <span>Busca</span>
+              <input
+                type="search"
+                placeholder="Projeto, cliente ou tag..."
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="projects-filters-actions">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={onExport}
+              disabled={!onExport || !projects.length}
+            >
+              Exportar portfólio
+            </button>
+            <div className="projects-view-toggle" role="group" aria-label="Trocar visualização">
+              <button
+                type="button"
+                className={`toggle-btn ${viewMode === "cards" ? "active" : ""}`}
+                onClick={() => setViewMode("cards")}
+              >
+                Cards
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn ${viewMode === "table" ? "active" : ""}`}
+                onClick={() => setViewMode("table")}
+              >
+                Tabela
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
 
       {error && (
         <p className="error-text" role="status" aria-live="assertive">
@@ -420,6 +425,6 @@ export const ProjectPortfolio = ({
       )}
 
       {renderList()}
-    </section>
+    </div>
   );
 };

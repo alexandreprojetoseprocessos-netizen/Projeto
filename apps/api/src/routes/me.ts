@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { prisma } from "@gestao/database";
+import { OrganizationStatus } from "@prisma/client";
 import { authMiddleware } from "../middleware/auth";
 import { getActiveSubscriptionForUser } from "../services/subscriptions";
+import { getOrgLimitForPlan, getProjectLimitForPlan } from "../services/subscriptionLimits";
 
 export const meRouter = Router();
 
@@ -26,19 +28,6 @@ meRouter.get("/", async (req, res) => {
   const subscription = await getActiveSubscriptionForUser(req.user.id);
   const planCode = subscription?.product?.code ?? null;
 
-  const getOrgLimitForPlan = (code?: string | null): number | null => {
-    switch (code) {
-      case "START":
-        return 1;
-      case "BUSINESS":
-        return 3;
-      case "ENTERPRISE":
-        return null;
-      default:
-        return 1;
-    }
-  };
-
   const organizations = memberships
     .map((membership) => ({
       id: membership.organizationId,
@@ -46,15 +35,20 @@ meRouter.get("/", async (req, res) => {
       domain: membership.organization.domain,
       createdAt: membership.organization.createdAt,
       isActive: membership.organization.isActive,
+      status: membership.organization.status,
       role: membership.role,
       projectsCount: membership.organization._count?.projects ?? 0
     }))
-    .filter((org) => org.isActive);
+    .filter((org) => org.status === OrganizationStatus.ACTIVE);
 
   const maxOrganizations = getOrgLimitForPlan(planCode);
   const usedOrganizations = organizations.length;
   const remainingOrganizations =
     maxOrganizations === null ? null : Math.max(maxOrganizations - usedOrganizations, 0);
+
+  const maxProjects = getProjectLimitForPlan(planCode);
+  const usedProjects = organizations.reduce((acc, org) => acc + (org.projectsCount ?? 0), 0);
+  const remainingProjects = maxProjects === null ? null : Math.max(maxProjects - usedProjects, 0);
 
   return res.json({
     user: req.user,
@@ -64,6 +58,12 @@ meRouter.get("/", async (req, res) => {
       max: maxOrganizations,
       used: usedOrganizations,
       remaining: remainingOrganizations
+    },
+    projectLimits: {
+      planCode,
+      max: maxProjects,
+      used: usedProjects,
+      remaining: remainingProjects
     }
   });
 });

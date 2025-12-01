@@ -14,6 +14,8 @@ export type OrganizationCard = {
   domain?: string | null;
   createdAt?: string;
   isActive?: boolean;
+  status?: "ACTIVE" | "DEACTIVATED" | "SOFT_DELETED";
+  deletedAt?: string | null;
 };
 
 type OrganizationSelectorProps = {
@@ -56,7 +58,7 @@ export const OrganizationSelector = ({
       ? "Business"
       : planCode === "ENTERPRISE"
       ? "Enterprise"
-      : "Não informado";
+      : "NÃ£o informado";
   const max = organizationLimits?.max ?? null;
   const remaining = organizationLimits?.remaining ?? null;
   const used = organizationLimits?.used ?? orgList.length;
@@ -98,15 +100,21 @@ export const OrganizationSelector = ({
     setOrgList((current) => current.filter((org) => org.id !== orgId));
   };
 
+  const handleOrgStatusChange = (orgId: string, status?: string) => {
+    if (status && status !== "ACTIVE") {
+      setOrgList((current) => current.filter((org) => org.id !== orgId));
+    }
+  };
+
   return (
     <div className="org-page">
       {showLimitBanner && (
         <div className="org-limit-banner">
           <div className="org-limit-stripe" />
           <div className="org-limit-content">
-            <strong>Você atingiu o limite de organizações do seu plano.</strong>
+            <strong>VocÃª atingiu o limite de organizaÃ§Ãµes do seu plano.</strong>
             <span>
-              Para criar novas organizações, atualize seu plano em {" "}
+              Para criar novas organizaÃ§Ãµes, atualize seu plano em {" "}
               <button type="button" className="link-button" onClick={() => navigate("/plano")}>
                 Meu plano
               </button>
@@ -119,7 +127,7 @@ export const OrganizationSelector = ({
       <div className="org-header">
         <div className="org-header-left">
           <span className="org-kicker">BEM-VINDO(A)</span>
-          <h1>Escolha onde você quer trabalhar hoje</h1>
+          <h1>Escolha onde vocÃª quer trabalhar hoje</h1>
           {userEmail && <p className="org-user-email">{userEmail}</p>}
         </div>
 
@@ -129,27 +137,27 @@ export const OrganizationSelector = ({
             <strong className="org-plan-name">{planName}</strong>
             {max === null ? (
               <p className="org-plan-meta">
-                Organizações: <strong>Ilimitadas</strong>
+                OrganizaÃ§Ãµes: <strong>Ilimitadas</strong>
               </p>
             ) : (
               <p className="org-plan-meta">
-                Organizações: <strong>{used} de {max}</strong> usadas
+                OrganizaÃ§Ãµes: <strong>{used} de {max}</strong> usadas
               </p>
             )}
             {max !== null && remaining !== null && remaining > 0 && (
               <p className="org-plan-extra">
-                Você ainda pode criar <strong>{remaining}</strong> organização{remaining > 1 ? "s" : ""}.
+                VocÃª ainda pode criar <strong>{remaining}</strong> organizaÃ§Ã£o{remaining > 1 ? "s" : ""}.
               </p>
             )}
             {max !== null && remaining === 0 && (
-              <p className="org-plan-warning">Você atingiu o limite de organizações do plano.</p>
+              <p className="org-plan-warning">VocÃª atingiu o limite de organizaÃ§Ãµes do plano.</p>
             )}
             <button type="button" className="primary-button" disabled={!canCreateMore} onClick={scrollToCreate}>
-              Criar nova organização
+              Criar nova organizaÃ§Ã£o
             </button>
             {!canCreateMore && (
               <button type="button" className="link-button" onClick={scrollToCreate}>
-                Ver opções em "Meu plano"
+                Ver opÃ§Ãµes em "Meu plano"
               </button>
             )}
           </div>
@@ -159,10 +167,10 @@ export const OrganizationSelector = ({
       <div className="org-content">
         {orgList.length === 0 && (
           <div className="org-empty">
-            <h2>Você ainda não tem nenhuma organização</h2>
-            <p>Crie sua primeira organização para começar a cadastrar projetos, equipe e documentos.</p>
+            <h2>VocÃª ainda nÃ£o tem nenhuma organizaÃ§Ã£o</h2>
+            <p>Crie sua primeira organizaÃ§Ã£o para comeÃ§ar a cadastrar projetos, equipe e documentos.</p>
             <button className="primary-button" type="button" onClick={scrollToCreate}>
-              Criar primeira organização
+              Criar primeira organizaÃ§Ã£o
             </button>
           </div>
         )}
@@ -174,6 +182,7 @@ export const OrganizationSelector = ({
             const createdAt = organization.createdAt ? new Date(organization.createdAt) : null;
             const createdLabel = createdAt ? createdAt.toLocaleDateString("pt-BR") : null;
             const isActive = organization.isActive ?? true;
+            const canManageThisOrg = canManageOrganizationSettings(currentOrgRole ?? organization.role ?? null);
             const projectsCount =
               organization.projectsCount ?? organization.activeProjects ?? organization.projectCount ?? 0;
 
@@ -190,27 +199,31 @@ export const OrganizationSelector = ({
                         className="org-meta-line"
                         title={createdLabel ? `Criada em ${createdLabel}` : undefined}
                       >
-                        {projectsCount} projeto(s) ativos • {organization.role}
+                        {projectsCount} projeto(s) ativos Â• {organization.role}
                       </p>
                       <p className="org-plan-line">
                         Plano: <span>{planName}</span>
                       </p>
                     </div>
                   </div>
-                  {canManageOrg && (
-                    <OrgActionsMenu
-                      organization={organization}
-                      onRenamed={handleOrgRenamed}
-                      onToggledActive={handleOrgToggledActive}
-                      onDeleted={handleOrgDeleted}
-                    />
+                  {canManageThisOrg && (
+                    <div className="org-actions-row">
+                      <OrgActionsMenu
+                        organization={organization}
+                        onRenamed={handleOrgRenamed}
+                        onToggledActive={handleOrgToggledActive}
+                        onDeleted={handleOrgDeleted}
+                        onStatusChange={handleOrgStatusChange}
+                        mode="inline"
+                      />
+                    </div>
                   )}
                 </div>
 
-                <div className="org-card-footer">
+                <div className="org-card-right">
                   <button
                     type="button"
-                    className="secondary-button"
+                    className="button-primary"
                     disabled={!isActive}
                     onClick={() => onSelect(organization.id)}
                   >
@@ -222,14 +235,14 @@ export const OrganizationSelector = ({
           })}
 
           <div className="org-card org-card-create" id="org-create-card">
-            <h2>Criar nova organização</h2>
+            <h2>Criar nova organizaÃ§Ã£o</h2>
             <p>
-              A organização representa sua empresa, clínica ou negócio. Ela concentra projetos, pessoas e arquivos.
+              A organizaÃ§Ã£o representa sua empresa, clÃ­nica ou negÃ³cio. Ela concentra projetos, pessoas e arquivos.
               Preencha os dados abaixo para continuar.
             </p>
             <form className="org-form" onSubmit={handleSubmit} ref={formRef}>
               <label>
-                Nome da organização
+                Nome da organizaÃ§Ã£o
                 <input
                   value={newOrgName}
                   onChange={(e) => setNewOrgName(e.target.value)}
@@ -238,7 +251,7 @@ export const OrganizationSelector = ({
                 />
               </label>
               <label>
-                Domínio (opcional)
+                DomÃ­nio (opcional)
                 <input
                   value={newOrgDomain}
                   onChange={(e) => setNewOrgDomain(e.target.value)}
@@ -246,11 +259,11 @@ export const OrganizationSelector = ({
                 />
               </label>
               <button className="primary-button" type="submit" disabled={!canCreateMore}>
-                Criar nova organização
+                Criar nova organizaÃ§Ã£o
               </button>
               {!canCreateMore && (
                 <p className="org-plan-warning">
-                  Você atingiu o limite de organizações do seu plano. Veja opções em "Meu plano".
+                  VocÃª atingiu o limite de organizaÃ§Ãµes do seu plano. Veja opÃ§Ãµes em "Meu plano".
                 </p>
               )}
             </form>
@@ -260,3 +273,4 @@ export const OrganizationSelector = ({
     </div>
   );
 };
+
