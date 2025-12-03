@@ -1992,6 +1992,8 @@ type WbsTreeViewProps = {
 
   onUpdateDependency?: (nodeId: string, dependencyId: string | null) => void;
 
+  onOpenDetails?: (node: any) => void;
+
 };
 
 
@@ -2020,7 +2022,9 @@ export const WbsTreeView = ({
 
   dependencyOptions,
 
-  onUpdateDependency
+  onUpdateDependency,
+
+  onOpenDetails
 
 }: WbsTreeViewProps) => {
 
@@ -2055,6 +2059,9 @@ export const WbsTreeView = ({
 
 
   const dependencyEditorRef = useRef<HTMLDivElement | null>(null);
+
+
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
 
 
@@ -2793,6 +2800,83 @@ export const WbsTreeView = ({
   }, [editingDependenciesId]);
 
 
+  useEffect(() => {
+
+
+
+    if (!openMenuId) return;
+
+
+
+
+
+    const handleDocumentMouseDown = (event: MouseEvent) => {
+
+
+
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+
+
+
+        setOpenMenuId(null);
+
+
+
+      }
+
+
+
+    };
+
+
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+
+
+
+      if (event.key === "Escape") {
+
+
+
+        setOpenMenuId(null);
+
+
+
+      }
+
+
+
+    };
+
+
+
+    document.addEventListener("mousedown", handleDocumentMouseDown);
+
+
+
+    document.addEventListener("keydown", handleKeyDown);
+
+
+
+    return () => {
+
+
+
+      document.removeEventListener("mousedown", handleDocumentMouseDown);
+
+
+
+      document.removeEventListener("keydown", handleKeyDown);
+
+
+
+    };
+
+
+
+  }, [openMenuId]);
+
+
 
 
 
@@ -3454,6 +3538,26 @@ export const WbsTreeView = ({
 
 
 
+    const row = rowMap.get(nodeId);
+
+
+
+    if (row && typeof onOpenDetails === "function") {
+
+
+
+      onOpenDetails(row.node);
+
+
+
+      return;
+
+
+
+    }
+
+
+
     handleRowSelect(nodeId);
 
 
@@ -3491,69 +3595,21 @@ export const WbsTreeView = ({
 
 
       <div className="edt-horizontal-scroll">
-
-
-
         <table className="wbs-table">
-
-
-
           <thead>
-
-
-
             <tr>
-
-
-
               <th className="col-id">ID</th>
-
-
-
               <th className="col-level">Nível</th>
-
-
-
               <th className="col-name">Nome da tarefa</th>
-
-
-
-              <th>Status</th>
-
-
-
-              <th>DurAção</th>
-
-
-
-              <th>Início</th>
-
-
-
-              <th>Término</th>
-
-
-
-              <th>Responsável</th>
-
-
-
-              <th>Dependências</th>
-
-
-
-              <th>Detalhes</th>
-
-
-
+              <th className="col-status">Situação</th>
+              <th className="col-duration">Duração</th>
+              <th className="col-date">Início</th>
+              <th className="col-date">Término</th>
+              <th className="col-owner">Responsável</th>
+              <th className="col-dependencies">Dependências</th>
+              <th className="col-actions">Detalhes</th>
               <th />
-
-
-
             </tr>
-
-
-
           </thead>
 
 
@@ -3750,6 +3806,15 @@ export const WbsTreeView = ({
 
 
 
+              const progressValue = progressMap.get(row.node.id) ?? 0;
+
+
+
+              const isRootLevel = visualLevel === 0;
+              const formattedLevel = `${visualLevel}`;
+
+
+
               return (
 
 
@@ -3758,7 +3823,11 @@ export const WbsTreeView = ({
 
 
 
-                  <tr className={`wbs-row level-${limitedLevel} ${isActive ? "is-active" : ""}`}>
+                  <tr
+                    className={`wbs-row level-${limitedLevel} ${isActive ? "is-active" : ""}`}
+                    data-progress={progressValue}
+                    data-node-id={row.node.id}
+                  >
 
 
 
@@ -3767,10 +3836,6 @@ export const WbsTreeView = ({
 
 
                     <td className="wbs-level-cell">
-
-
-
-                      <span className="wbs-level-pill">N{visualLevel}</span>
 
 
 
@@ -3811,6 +3876,10 @@ export const WbsTreeView = ({
 
 
                         </button>
+
+
+
+                        <span className={`wbs-level-pill ${isRootLevel ? "is-root" : ""}`}>{formattedLevel}</span>
 
 
 
@@ -4002,7 +4071,11 @@ export const WbsTreeView = ({
 
 
 
-                              <strong>{row.node.title ?? "Tarefa sem nome"}</strong>
+                              {isRootLevel ? (
+                                <strong>{row.node.title ?? "Tarefa sem nome"}</strong>
+                              ) : (
+                                <span className="wbs-task-title">{row.node.title ?? "Tarefa sem nome"}</span>
+                              )}
 
 
 
@@ -4182,11 +4255,15 @@ export const WbsTreeView = ({
 
 
 
-                    <td>
+                    <td className="wbs-duration-cell">
 
 
 
-                      <input
+                      <div className="wbs-duration-wrapper">
+
+
+
+                        <input
 
 
 
@@ -4222,7 +4299,23 @@ export const WbsTreeView = ({
 
 
 
-                    </td>
+                      <span className="wbs-duration-suffix">
+
+
+
+                        {Number(getDurationInputValue(row.node) || 0) === 1 ? "dia" : "dias"}
+
+
+
+                      </span>
+
+
+
+                    </div>
+
+
+
+                  </td>
 
 
 
@@ -4351,8 +4444,6 @@ export const WbsTreeView = ({
 
 
                     </td>
-
-
 
                     <td className="wbs-dependencies-cell">
 
@@ -4712,13 +4803,11 @@ export const WbsTreeView = ({
 
                     </td>
 
-
-
                     <td>
 
 
 
-                      <div className="wbs-actions">
+                      <div className="wbs-actions" ref={openMenuId === row.node.id ? menuRef : undefined}>
 
 
 
@@ -4730,7 +4819,7 @@ export const WbsTreeView = ({
 
 
 
-                          className="wbs-actions__trigger"
+                          className="wbs-actions-trigger"
 
 
 
@@ -4746,7 +4835,7 @@ export const WbsTreeView = ({
 
 
 
-                          <MoreIcon />
+                          &#183;&#183;&#183;
 
 
 
@@ -4758,7 +4847,7 @@ export const WbsTreeView = ({
 
 
 
-                          <div className="wbs-actions__menu">
+                          <div className="wbs-actions-menu">
 
 
 
@@ -4790,7 +4879,12 @@ export const WbsTreeView = ({
 
 
 
-                              <button type="button" key={label} onClick={(event) => handleMenuAction(event, label, row.node)}>
+                              <button
+                                type="button"
+                                key={label}
+                                className="wbs-actions-item"
+                                onClick={(event) => handleMenuAction(event, label, row.node)}
+                              >
 
 
 
@@ -4826,367 +4920,6 @@ export const WbsTreeView = ({
 
 
 
-                  {isActive && selectedNode && (
-
-
-
-                    <tr className="wbs-detail-row">
-
-
-
-                      <td colSpan={11}>
-
-
-
-                        <div className="wbs-detail-card">
-
-
-
-                          <header className="wbs-detail-card__header">
-
-
-
-                            <div>
-
-
-
-                              <span className="wbs-level-tag">{selectedNode.wbsCode ?? selectedRow?.displayId}</span>
-
-
-
-                              <h4>{selectedNode.title}</h4>
-
-
-
-                              <span className={`wbs-status wbs-status--${selectedStatus.tone}`}>{selectedStatus.label}</span>
-
-
-
-                            </div>
-
-
-
-                            <button type="button" className="ghost-button" onClick={handleCloseDetails}>
-
-
-
-                              Fechar
-
-
-
-                            </button>
-
-
-
-                          </header>
-
-
-
-                          <p className="wbs-detail-card__description">
-
-
-
-                            {selectedNode.description ?? "Nenhuma descrição registrada para esta tarefa."}
-
-
-
-                          </p>
-
-
-
-                          <div className="wbs-detail-card__grid">
-
-
-
-                            <div>
-
-
-
-                              <span className="subtext">Início</span>
-
-
-
-                              <strong>{formatDate(selectedNode.startDate)}</strong>
-
-
-
-                            </div>
-
-
-
-                            <div>
-
-
-
-                              <span className="subtext">Término</span>
-
-
-
-                              <strong>{formatDate(selectedNode.endDate)}</strong>
-
-
-
-                            </div>
-
-
-
-                            <div>
-
-
-
-                              <span className="subtext">DurAção</span>
-
-
-
-                              <strong>{formatDuration(selectedNode.startDate, selectedNode.endDate)}</strong>
-
-
-
-                            </div>
-
-
-
-                            <div>
-
-
-
-                              <span className="subtext">Progresso</span>
-
-
-
-                              <strong>{selectedProgress}%</strong>
-
-
-
-                            </div>
-
-
-
-                            <div>
-
-
-
-                              <span className="subtext">Horas registradas</span>
-
-
-
-                              <strong>{selectedNode.actualHours ?? 0}h</strong>
-
-
-
-                            </div>
-
-
-
-                            <div>
-
-
-
-                              <span className="subtext">Documentos</span>
-
-
-
-                              <strong>{selectedNode.documents ?? 0}</strong>
-
-
-
-                            </div>
-
-
-
-                          </div>
-
-
-
-                          <div className="wbs-detail-card__responsible">
-
-
-
-                            <h5>Responsável</h5>
-
-
-
-                            {selectedNode.owner ? (
-
-
-
-                              <div className="wbs-owner">
-
-
-
-                                <span className="wbs-owner__avatar">
-
-
-
-                                  {selectedNode.owner.name
-
-
-
-                                    ?.split(" ")
-
-
-
-                                    .map((part: string) => part[0])
-
-
-
-                                    .join("")
-
-
-
-                                    .slice(0, 2)
-
-
-
-                                    .toUpperCase()}
-
-
-
-                                </span>
-
-
-
-                                <div>
-
-
-
-                                  <strong>{selectedNode.owner.name}</strong>
-
-
-
-                                  {selectedNode.owner.email && <small>{selectedNode.owner.email}</small>}
-
-
-
-                                </div>
-
-
-
-                              </div>
-
-
-
-                            ) : (
-
-
-
-                              <p className="muted">Defina um Responsável para acompanhar esta atividade.</p>
-
-
-
-                            )}
-
-
-
-                          </div>
-
-
-
-                          <div className="wbs-detail-card__checklist">
-
-
-
-                            <h5>Checklist</h5>
-
-
-
-                            {selectedChecklist.length ? (
-
-
-
-                              <ul className="wbs-checklist">
-
-
-
-                                {selectedChecklist.map((item: any) => (
-
-
-
-                                  <li key={item.id ?? item.title}>
-
-
-
-                                    <input type="checkbox" checked={Boolean(item.done)} readOnly />
-
-
-
-                                    <span>{item.title}</span>
-
-
-
-                                  </li>
-
-
-
-                                ))}
-
-
-
-                              </ul>
-
-
-
-                            ) : (
-
-
-
-                              <p className="muted">Nenhum item de checklist cadastrado.</p>
-
-
-
-                            )}
-
-
-
-                          </div>
-
-
-
-                          <div className="wbs-detail-card__documents">
-
-
-
-                            <h5>Documentos</h5>
-
-
-
-                            <p className="muted">
-
-
-
-                              {selectedNode.documents
-
-
-
-                                ? `${selectedNode.documents} arquivos vinculados a esta entrega.`
-
-
-
-                                : "Sem anexos até o momento."}
-
-
-
-                            </p>
-
-
-
-                          </div>
-
-
-
-                        </div>
-
-
-
-                      </td>
-
-
-
-                    </tr>
-
-
-
-                  )}
 
 
 

@@ -96,6 +96,41 @@ const FirstProjectOnboarding = ({
   );
 };
 
+const NewProjectModal = ({
+  isOpen,
+  onClose,
+  children
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="gp-modal-backdrop" onClick={onClose}>
+      <div
+        className="gp-modal"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-project-title"
+      >
+        <div className="gp-modal-header">
+          <h2 id="new-project-title">Novo projeto</h2>
+          <button type="button" className="gp-modal-close" onClick={onClose} aria-label="Fechar">
+            ×
+          </button>
+        </div>
+        <p className="gp-modal-subtitle">
+          Planeje um novo trabalho informando os dados básicos do projeto no portfólio.
+        </p>
+        {children}
+      </div>
+    </div>
+  );
+};
+
 export const ProjectsPage = () => {
   const {
     portfolio,
@@ -133,8 +168,7 @@ export const ProjectsPage = () => {
 
   const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
   const canCreateProjects = canManageProjects(orgRole);
-  const currentOrganization =
-    organizations?.find((organization) => organization.id === selectedOrganizationId) ?? null;
+  const currentOrganization = organizations?.find((organization) => organization.id === selectedOrganizationId) ?? null;
 
   const handleCreateFirstProject = async (payload: FirstProjectPayload) => {
     await onCreateProject({
@@ -198,150 +232,6 @@ export const ProjectsPage = () => {
     }
   };
 
-  const NewProjectModal = ({
-    isOpen,
-    onClose,
-    onSubmit,
-    isSubmitting,
-    children
-  }: {
-    isOpen: boolean;
-    onClose: () => void;
-    onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-    isSubmitting: boolean;
-    children: React.ReactNode;
-  }) => {
-    if (!isOpen) return null;
-
-    return (
-      <div className="gp-modal-backdrop" onClick={onClose}>
-        <div
-          className="gp-modal"
-          onClick={(event) => event.stopPropagation()}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="new-project-title"
-        >
-          <div className="gp-modal-header">
-            <h2 id="new-project-title">Novo projeto</h2>
-            <button type="button" className="gp-modal-close" onClick={onClose} aria-label="Fechar">
-              ×
-            </button>
-          </div>
-          <p className="gp-modal-subtitle">
-            Planeje um novo trabalho informando os dados básicos do projeto no portfólio.
-          </p>
-          <form onSubmit={onSubmit} className="gp-modal-body new-project-form">
-            {createError && <div className="gp-alert-error">{createError}</div>}
-
-            <div className="form-field">
-              <label>Nome do projeto *</label>
-              <input
-                className="gp-input"
-                value={form.name}
-                onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                placeholder="Ex.: Implantação ERP 2025"
-                required
-              />
-              {fieldErrors.name && <small className="input-error">{fieldErrors.name}</small>}
-            </div>
-
-            <div className="form-field">
-              <label>Organização do projeto</label>
-              <input
-                className="gp-input gp-input-readonly"
-                type="text"
-                value={currentOrganization?.name ?? ""}
-                placeholder="Selecione uma organização no topo"
-                readOnly
-              />
-            </div>
-
-            <div className="form-field">
-              <label>Início planejado *</label>
-              <input
-                className="gp-input"
-                type="date"
-                value={form.startDate}
-                onChange={(event) => setForm((prev) => ({ ...prev, startDate: event.target.value }))}
-              />
-              {fieldErrors.startDate && <small className="input-error">{fieldErrors.startDate}</small>}
-            </div>
-
-            <div className="form-field">
-              <label>Conclusão prevista *</label>
-              <input
-                className="gp-input"
-                type="date"
-                value={form.endDate}
-                onChange={(event) => setForm((prev) => ({ ...prev, endDate: event.target.value }))}
-              />
-              {fieldErrors.endDate && <small className="input-error">{fieldErrors.endDate}</small>}
-            </div>
-
-            <div className="form-field">
-              <label>Orçamento aprovado (R$)</label>
-              <input
-                className="gp-input gp-input-currency"
-                type="text"
-                inputMode="decimal"
-                value={form.budget}
-                onChange={(event) => setForm((prev) => ({ ...prev, budget: event.target.value }))}
-                placeholder="250000"
-              />
-            </div>
-
-            <div className="form-field">
-              <label>Repositório GitHub</label>
-              <input
-                className="gp-input"
-                type="url"
-                value={form.repositoryUrl}
-                onChange={(event) => setForm((prev) => ({ ...prev, repositoryUrl: event.target.value }))}
-                placeholder="https://github.com/org/projeto"
-              />
-            </div>
-
-            <div className="form-field form-field-span-2">
-              <label>Equipe (e-mails separados por vírgula)</label>
-              <textarea
-                className="gp-input"
-                value={form.teamMembers}
-                onChange={(event) => setForm((prev) => ({ ...prev, teamMembers: event.target.value }))}
-                placeholder="ana@empresa.com, joao@empresa.com"
-                rows={2}
-              />
-            </div>
-
-            <div className="form-field form-field-span-2">
-              <label>Descrição</label>
-              <textarea
-                className="gp-input"
-                value={form.description}
-                onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-                placeholder="Objetivos, entregas e premissas iniciais..."
-                rows={3}
-              />
-            </div>
-
-            <div className="gp-modal-footer">
-              <button type="button" className="btn-secondary" onClick={onClose} disabled={isSubmitting}>
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                className="btn-primary"
-                disabled={isSubmitting || !currentOrganization}
-              >
-                {isSubmitting ? "Criando..." : "Criar projeto"}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="page-container projects-page">
       <header className="page-header">
@@ -391,18 +281,18 @@ export const ProjectsPage = () => {
         />
       )}
 
-      <NewProjectModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onSubmit={handleModalSubmit}
-        isSubmitting={isSubmitting}
-      >
-        <div className="new-project-form">
+      <NewProjectModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)}>
+        <form onSubmit={handleModalSubmit} className="gp-modal-body new-project-form">
+          {createError && <div className="gp-alert-error">{createError}</div>}
+
           <div className="form-field">
-            <label>Nome do projeto *</label>
+            <label htmlFor="projectName">Nome do projeto *</label>
             <input
+              id="projectName"
+              name="name"
+              type="text"
               className="gp-input"
-              value={form.name}
+              value={form.name ?? ""}
               onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
               placeholder="Ex.: Implantação ERP 2025"
               required
@@ -496,7 +386,7 @@ export const ProjectsPage = () => {
               {isSubmitting ? "Criando..." : "Criar projeto"}
             </button>
           </div>
-        </div>
+        </form>
       </NewProjectModal>
     </div>
   );
