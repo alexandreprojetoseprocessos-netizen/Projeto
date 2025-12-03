@@ -68,58 +68,49 @@ wbsRouter.get("/:nodeId/comments", async (req, res) => {
   const access = await assertNodeAccess(req, res, nodeId);
   if (!access) return;
 
-  const comments = await prisma.comment.findMany({
-    where: { wbsNodeId: nodeId },
-    include: { author: true },
-    orderBy: { createdAt: "desc" }
-  });
-
-  return res.json({
-    nodeId,
-    comments: comments.map((comment) => ({
-      id: comment.id,
-      body: comment.body,
-      createdAt: comment.createdAt,
-      author: {
-        id: comment.authorId,
-        name: comment.author.fullName,
-        email: comment.author.email
-      }
-    }))
-  });
+  try {
+    const comments = await prisma.wbsComment.findMany({
+      where: { wbsNodeId: nodeId },
+      orderBy: { createdAt: "asc" }
+    });
+    return res.json(comments);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Erro ao listar comentários" });
+  }
 });
 
 wbsRouter.post("/:nodeId/comments", async (req: RequestWithUser, res) => {
   const { nodeId } = req.params;
-  const { body } = req.body as { body?: string };
-
-  if (!req.user) {
-    return res.status(401).json({ message: "Authentication required" });
-  }
-
-  if (!body) {
-    return res.status(400).json({ message: "Comment body is required" });
-  }
+  const { message, authorName, authorId } = req.body as {
+    message?: string;
+    authorName?: string;
+    authorId?: string;
+  };
 
   const access = await assertNodeAccess(req, res, nodeId);
   if (!access) return;
 
-  const comment = await prisma.comment.create({
-    data: {
-      projectId: access.node.projectId,
-      targetType: "WBS_NODE",
-      wbsNodeId: nodeId,
-      authorId: req.user.id,
-      body,
-      mentions: []
-    }
-  });
+  const trimmed = message?.trim();
+  if (!trimmed) {
+    return res.status(400).json({ message: "Mensagem é obrigatória" });
+  }
 
-  await sendSlackMessage({
-    text: `Comentario em ${nodeId} por ${req.user.name ?? req.user.email}: ${body}`
-  });
+  try {
+    const comment = await prisma.wbsComment.create({
+      data: {
+        wbsNodeId: nodeId,
+        message: trimmed,
+        authorName: authorName ?? req.user?.fullName ?? null,
+        authorId: authorId ?? req.user?.id ?? null
+      }
+    });
 
-  return res.status(201).json({ comment });
+    return res.status(201).json(comment);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Erro ao criar comentário" });
+  }
 });
 
 wbsRouter.patch("/:nodeId", async (req, res) => {

@@ -1,4 +1,4 @@
-import type { DropResult } from "@hello-pangea/dnd";
+﻿import type { DropResult } from "@hello-pangea/dnd";
 
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -1706,6 +1706,46 @@ const DetailsIcon = () => (
 
 
 
+const ChatIcon = () => (
+
+
+
+  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+
+
+
+    <path
+
+
+
+      d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5A8.5 8.5 0 0 1 21 11.5Z"
+
+
+
+      fill="none"
+
+
+
+      stroke="currentColor"
+
+
+
+      strokeWidth="1.6"
+
+
+
+    />
+
+
+
+  </svg>
+
+
+
+);
+
+
+
 
 
 
@@ -2062,12 +2102,28 @@ export const WbsTreeView = ({
 
 
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  const [openChatTaskId, setOpenChatTaskId] = useState<string | null>(null);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatMessages, setChatMessages] = useState<WbsComment[]>([]);
+  const [chatCounts, setChatCounts] = useState<Record<string, number>>({});
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
 
 
 
 
 
 
+
+  type WbsComment = {
+    id: string;
+    wbsNodeId: string;
+    authorName?: string | null;
+    message: string;
+    createdAt: string;
+  };
 
   type Row = {
 
@@ -2453,15 +2509,15 @@ export const WbsTreeView = ({
 
 
 
-    const durationDays = computeDurationDays(nextStart, nextEnd);
+    const DurationDays = computeDurationDays(nextStart, nextEnd);
 
 
 
-    if (durationDays !== null) {
+    if (DurationDays !== null) {
 
 
 
-      updates.estimateHours = durationDays * WORKDAY_HOURS;
+      updates.estimateHours = DurationDays * WORKDAY_HOURS;
 
 
 
@@ -2505,7 +2561,7 @@ export const WbsTreeView = ({
 
 
 
-    const durationDays = Math.max(1, Math.round(parsed));
+    const DurationDays = Math.max(1, Math.round(parsed));
 
 
 
@@ -2521,7 +2577,7 @@ export const WbsTreeView = ({
 
 
 
-      estimateHours: durationDays * WORKDAY_HOURS
+      estimateHours: DurationDays * WORKDAY_HOURS
 
 
 
@@ -2545,7 +2601,7 @@ export const WbsTreeView = ({
 
 
 
-        newEnd.setDate(startDate.getDate() + (durationDays - 1));
+        newEnd.setDate(startDate.getDate() + (DurationDays - 1));
 
 
 
@@ -2938,6 +2994,124 @@ export const WbsTreeView = ({
 
 
 
+  const handleSelectAllVisible = (checked: boolean) => {
+
+    const ids = visibleRows.map((row) => row.node.id);
+    if (checked) {
+      const merged = Array.from(new Set([...selectedTaskIds, ...ids]));
+      setSelectedTaskIds(merged);
+    } else {
+      setSelectedTaskIds((prev) => prev.filter((id) => !ids.includes(id)));
+    }
+  };
+
+  const handleSelectRow = (checked: boolean, nodeId: string) => {
+
+    if (checked) {
+      setSelectedTaskIds((prev) => (prev.includes(nodeId) ? prev : [...prev, nodeId]));
+    } else {
+      setSelectedTaskIds((prev) => prev.filter((id) => id !== nodeId));
+    }
+  };
+
+  const isAllVisibleSelected = useMemo(() => {
+
+    if (!visibleRows.length) return false;
+
+    return visibleRows.every((row) => selectedTaskIds.includes(row.node.id));
+
+  }, [visibleRows, selectedTaskIds]);
+
+  useEffect(() => {
+
+    if (!selectAllRef.current) return;
+
+    const someSelected = selectedTaskIds.length > 0 && !isAllVisibleSelected;
+    selectAllRef.current.indeterminate = someSelected;
+
+  }, [isAllVisibleSelected, selectedTaskIds]);
+
+  useEffect(() => {
+
+    setSelectedTaskIds([]);
+
+  }, [nodes]);
+
+
+
+  const openChatRow = openChatTaskId ? rowMap.get(openChatTaskId) ?? null : null;
+
+  useEffect(() => {
+    if (!openChatTaskId) {
+      setChatMessages([]);
+      setChatError(null);
+      return;
+    }
+
+    let active = true;
+    setIsChatLoading(true);
+    setChatError(null);
+
+    fetch(`/api/wbs/${openChatTaskId}/comments`)
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Erro ao listar comentários");
+        }
+        return (await response.json()) as WbsComment[];
+      })
+      .then((data) => {
+        if (!active) return;
+        setChatMessages(data);
+        setChatCounts((prev) => ({ ...prev, [openChatTaskId]: data.length }));
+      })
+      .catch((error) => {
+        console.error(error);
+        if (active) setChatError("Erro ao listar comentários");
+      })
+      .finally(() => {
+        if (active) setIsChatLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [openChatTaskId]);
+
+  const chatMessagesForModal = openChatTaskId ? chatMessages : [];
+
+  const handleSendChat = async () => {
+    const trimmed = chatDraft.trim();
+    if (!trimmed || !openChatTaskId) return;
+    
+    setIsChatLoading(true);
+    setChatError(null);
+    
+    try {
+      const response = await fetch(`/api/wbs/${openChatTaskId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: trimmed })
+      });
+      
+      if (!response.ok) {
+        throw new Error("Erro ao criar comentário");
+      }
+      
+      const created = (await response.json()) as WbsComment;
+      setChatMessages((prev) => [...prev, created]);
+      setChatCounts((prev) => ({ ...prev, [openChatTaskId]: (prev[openChatTaskId] ?? 0) + 1 }));
+      setChatDraft("");
+    } catch (error) {
+      console.error(error);
+      setChatError("Erro ao enviar comentário");
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+
+
+
 
 
 
@@ -3094,34 +3268,13 @@ export const WbsTreeView = ({
 
 
 
-  const formatDuration = (start?: string | null, end?: string | null) => {
-
-
-
-    if (!start || !end) return "â€”";
-
-
-
+  const formatDuracao = (start?: string | null, end?: string | null) => {
+    if (!start || !end) return "N/A";
     const diff = Math.max(
-
-
-
       1,
-
-
-
       Math.round((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24))
-
-
-
     );
-
-
-
     return `${diff}d`;
-
-
-
   };
 
 
@@ -3587,10 +3740,8 @@ export const WbsTreeView = ({
 
 
   return (
-
-
-
-    <div className="wbs-table-card">
+    <>
+      <div className="wbs-table-card" data-has-selection={selectedTaskIds.length > 0}>
 
 
 
@@ -3598,7 +3749,17 @@ export const WbsTreeView = ({
         <table className="wbs-table">
           <thead>
             <tr>
+              <th className="col-select">
+                <input
+                  type="checkbox"
+                  aria-label="Selecionar todas as tarefas"
+                  ref={selectAllRef}
+                  checked={isAllVisibleSelected}
+                  onChange={(event) => handleSelectAllVisible(event.target.checked)}
+                />
+              </th>
               <th className="col-id">ID</th>
+              <th className="col-chat" title="Comentários da tarefa">Chat</th>
               <th className="col-level">Nível</th>
               <th className="col-name">Nome da tarefa</th>
               <th className="col-status">Situação</th>
@@ -3611,8 +3772,6 @@ export const WbsTreeView = ({
               <th />
             </tr>
           </thead>
-
-
 
           <tbody>
 
@@ -3831,7 +3990,41 @@ export const WbsTreeView = ({
 
 
 
+                    <td className="wbs-select-cell">
+                      <input
+                        type="checkbox"
+                        aria-label={`Selecionar tarefa ${displayId}`}
+                        checked={selectedTaskIds.includes(row.node.id)}
+                        onChange={(event) => {
+                          event.stopPropagation();
+                          handleSelectRow(event.target.checked, row.node.id);
+                        }}
+                        onClick={(event) => event.stopPropagation()}
+                      />
+                    </td>
+
                     <td className="wbs-id">{displayId}</td>
+                    <td className="wbs-chat-cell">
+                      <button
+                        type="button"
+                        className="wbs-chat-button"
+                        aria-label={`Comentários da tarefa ${displayId}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setOpenChatTaskId(row.node.id);
+                        }}
+                      >
+                        <ChatIcon />
+                        <span className="wbs-chat-count">
+                          {Array.isArray(row.node.comments) && row.node.comments.length
+                            ? row.node.comments.length
+                            : chatCounts[row.node.id] ?? 0}
+                        </span>
+                        {(chatCounts[row.node.id] ?? row.node.comments?.length ?? 0) > 0 && (
+                          <span className="wbs-chat-unread" />
+                        )}
+                      </button>
+                    </td>
 
 
 
@@ -4255,11 +4448,11 @@ export const WbsTreeView = ({
 
 
 
-                    <td className="wbs-duration-cell">
+                    <td className="wbs-Duration-cell">
 
 
 
-                      <div className="wbs-duration-wrapper">
+                      <div className="wbs-Duration-wrapper">
 
 
 
@@ -4275,11 +4468,11 @@ export const WbsTreeView = ({
 
 
 
-                        className="wbs-duration-input"
+                        className="wbs-Duration-input"
 
 
 
-                        aria-label="DurAção em dias"
+                        aria-label="Duração em dias"
 
 
 
@@ -4287,7 +4480,7 @@ export const WbsTreeView = ({
 
 
 
-                        placeholder="â€”"
+                        placeholder="âââ€šÂ¬ââ‚¬Â"
 
 
 
@@ -4299,7 +4492,7 @@ export const WbsTreeView = ({
 
 
 
-                      <span className="wbs-duration-suffix">
+                      <span className="wbs-Duration-suffix">
 
 
 
@@ -4941,19 +5134,70 @@ export const WbsTreeView = ({
 
         </table>
 
-
-
       </div>
-
-
 
     </div>
 
-
-
+    {openChatRow && (
+      <div className="gp-modal-backdrop" onClick={() => setOpenChatTaskId(null)}>
+        <div
+          className="gp-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="wbs-chat-title"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="gp-modal-header">
+            <h2 id="wbs-chat-title">
+              Chat da tarefa {openChatRow.node.wbsCode ?? openChatRow.displayId} - {openChatRow.node.title ?? "Tarefa"}
+            </h2>
+            <button type="button" className="gp-modal-close" aria-label="Fechar" onClick={() => setOpenChatTaskId(null)}>
+              X
+            </button>
+          </div>
+          <div className="gp-modal-body wbs-chat-body">
+            <div className="wbs-chat-messages">
+              {isChatLoading && <p className="muted">Carregando comentários...</p>}
+              {!isChatLoading &&
+                chatMessagesForModal.map((message: WbsComment) => (
+                  <div key={message.id} className="wbs-chat-message">
+                    <div className="wbs-chat-message__meta">
+                      <strong>{message.authorName ?? "Autor"}</strong>
+                      <span>{message.createdAt ? new Date(message.createdAt).toLocaleString("pt-BR") : ""}</span>
+                    </div>
+                    <p>{message.message}</p>
+                  </div>
+                ))}
+              {!isChatLoading && chatMessagesForModal.length === 0 && <p className="muted">Nenhum comentário ainda.</p>}
+              {chatError && <p className="error-text">{chatError}</p>}
+            </div>
+            <div className="wbs-chat-composer">
+              <textarea
+                value={chatDraft}
+                onChange={(event) => setChatDraft(event.target.value)}
+                placeholder="Escreva um comentário… use @ para mencionar alguém"
+                rows={3}
+              />
+              <div className="wbs-chat-actions">
+                <button type="button" className="btn-secondary" onClick={() => setOpenChatTaskId(null)}>
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleSendChat}
+                  disabled={!chatDraft.trim() || isChatLoading}
+                >
+                  Enviar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+  )}
+    </>
   );
-
-
 
 };
 
@@ -5803,7 +6047,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-    if (!value) return "â€”";
+    if (!value) return "âââ€šÂ¬ââ‚¬Â";
 
 
 
@@ -5831,7 +6075,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-      return "â€”";
+      return "âââ€šÂ¬ââ‚¬Â";
 
 
 
@@ -5851,7 +6095,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-    if (!value) return "â€”";
+    if (!value) return "âââ€šÂ¬ââ‚¬Â";
 
 
 
@@ -6038,15 +6282,8 @@ export const ProjectDetailsTabs = ({
           <h2>{projectMeta.projectName}</h2>
 
 
-
           <p className="subtext">
-
-
-
-            Código {projectMeta.code ?? "â€”"} Â· Cliente {projectMeta.clientName ?? "Não informado"}
-
-
-
+            Código {projectMeta.code ?? "N/A"} • Cliente {projectMeta.clientName ?? "Não informado"}
           </p>
 
 
@@ -6059,7 +6296,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            <span>Responsável: {projectMeta.responsibleName ?? "â€”"}</span>
+            <span>Responsável: {projectMeta.responsibleName ?? "âââ€šÂ¬ââ‚¬Â"}</span>
 
 
 
@@ -6067,7 +6304,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              Período: {formatShortDate(projectMeta.startDate)} â€” {formatShortDate(projectMeta.endDate)}
+              Período: {formatShortDate(projectMeta.startDate)} âââ€šÂ¬ââ‚¬Â {formatShortDate(projectMeta.endDate)}
 
 
 
@@ -7175,6 +7412,9 @@ export const ProjectDetailsTabs = ({
 
     </div>
 
+
+
+
   );
 
 
@@ -7367,7 +7607,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-                {doc.uploadedBy?.fullName ?? doc.uploadedBy?.email ?? "Equipe"} Â· {formatShortDate(doc.createdAt)}
+                {doc.uploadedBy?.fullName ?? doc.uploadedBy?.email ?? "Equipe"} · {formatShortDate(doc.createdAt)}
 
 
 
@@ -7379,7 +7619,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-                {formatFileSize(doc.fileSize)} Â· {doc.targetType === "WBS_NODE" ? "Vinculado à WBS" : "Projeto"}
+                {formatFileSize(doc.fileSize)} · {doc.targetType === "WBS_NODE" ? "Vinculado à WBS" : "Projeto"}
 
 
 
@@ -7399,7 +7639,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-                onClick={() => window.alert("IntegrAção de download em breve.")}
+                onClick={() => window.alert("Integração de download em breve.")}
 
 
 
@@ -7523,7 +7763,7 @@ export const ProjectDetailsTabs = ({
 
             description="Compartilhe atualizações ou registre horas para construir o histórico colaborativo do projeto."
 
-            actionLabel="Registrar atualizAção"
+            actionLabel="Registrar atualização"
 
             onAction={focusCommentComposer}
 
@@ -9075,11 +9315,11 @@ const SettingsPanel = () => {
 
 
 
-    { id: "notifications", label: "NotificAções" },
+    { id: "notifications", label: "Notificações" },
 
 
 
-    { id: "organization", label: "OrganizAção" },
+    { id: "organization", label: "Organização" },
 
 
 
@@ -9087,7 +9327,7 @@ const SettingsPanel = () => {
 
 
 
-    { id: "integrations", label: "IntegrAções" },
+    { id: "integrations", label: "Integrações" },
 
 
 
@@ -9119,7 +9359,7 @@ const SettingsPanel = () => {
 
 
 
-          <p className="eyebrow">ConfigurAções</p>
+          <p className="eyebrow">Configurações</p>
 
 
 
@@ -9127,7 +9367,7 @@ const SettingsPanel = () => {
 
 
 
-          <p className="subtext">Gerencie perfil, notificAções, organizAção e integrAções.</p>
+          <p className="subtext">Gerencie perfil, notificAçÃƒÂµes, organizAção e integrAçÃƒÂµes.</p>
 
 
 
@@ -9307,7 +9547,7 @@ const SettingsPanel = () => {
 
 
 
-              <h3>NotificAções</h3>
+              <h3>Notificações</h3>
 
 
 
@@ -9579,7 +9819,7 @@ const SettingsPanel = () => {
 
 
 
-              <h3>IntegrAções</h3>
+              <h3>Integrações</h3>
 
 
 
@@ -9651,7 +9891,7 @@ const SettingsPanel = () => {
 
 
 
-              <p className="muted">Plano atual: <strong>Pro â€“ 20/50 projetos</strong></p>
+              <p className="muted">Plano atual: <strong>Pro âââ€šÂ¬ââ‚¬Å“ 20/50 projetos</strong></p>
 
 
 
@@ -10841,7 +11081,7 @@ export const DashboardLayout = ({
                 <span className="brand-subtitle">Gestão de Projetos</span>
               </div>
             )}
-            <span className="sidebar-toggle-icon">{isCollapsed ? "›" : "‹"}</span>
+            <span className="sidebar-toggle-icon">{isCollapsed ? "»" : "«"}</span>
           </button>
         </div>
 
@@ -10894,7 +11134,7 @@ export const DashboardLayout = ({
 
           <p>
 
-            Plano Pro Â· <strong>20/50</strong> projetos
+            Plano Pro · <strong>20/50</strong> projetos
 
           </p>
 
@@ -11020,7 +11260,7 @@ export const DashboardLayout = ({
 
 
 
-                  <h3>{projectModalMode === "edit" ? "Atualize as informAções principais" : "Planeje um novo trabalho"}</h3>
+                  <h3>{projectModalMode === "edit" ? "Atualize as informções principais" : "Planeje um novo trabalho"}</h3>
 
 
 
@@ -11412,7 +11652,7 @@ export const DashboardLayout = ({
 
 
 
-                      ? "Salvar alterAções"
+                      ? "Salvar alterações"
 
 
 
@@ -12296,7 +12536,7 @@ export const TemplatesPanel = ({
 
 
 
-        { id: "field-risk", label: "Nivel de risco", type: "select" }
+        { id: "field-risk", label: "Nível de risco", type: "select" }
 
 
 
@@ -14541,6 +14781,23 @@ export const TemplatesPanel = ({
 
 
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
