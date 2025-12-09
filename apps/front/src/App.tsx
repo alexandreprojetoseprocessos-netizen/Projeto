@@ -983,21 +983,17 @@ export const App = () => {
       endDate?: string | null;
       estimateHours?: number | null;
       dependencies?: string[];
+      ownerId?: string | null;
+      owner?: { id: string; name?: string; email?: string | null } | null;
     }
   ) => {
     if (!token || !selectedOrganizationId) return;
-    if (
-      changes.title === undefined &&
-      changes.status === undefined &&
-      changes.startDate === undefined &&
-      changes.endDate === undefined &&
-      changes.estimateHours === undefined &&
-      changes.dependencies === undefined
-    ) {
+    const { owner, ...rest } = changes;
+    const payload: Record<string, any> = { ...rest };
+    if (Object.keys(payload).length === 0 && owner === undefined) {
       return;
     }
 
-    const payload: Record<string, any> = { ...changes };
     if ("estimateHours" in payload && payload.estimateHours !== undefined) {
       payload.estimateHours =
         payload.estimateHours === null
@@ -1008,7 +1004,9 @@ export const App = () => {
       payload.dependencies = Array.isArray(payload.dependencies) ? payload.dependencies : [];
     }
 
-    setWbsNodes((prev) => patchWbsNode(prev, nodeId, payload));
+    const payloadForState = { ...payload, ...(owner !== undefined ? { owner } : {}) };
+
+    setWbsNodes((prev) => patchWbsNode(prev, nodeId, payloadForState));
 
     try {
       await fetchJson(

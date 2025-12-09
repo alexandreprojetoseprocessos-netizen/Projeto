@@ -1,6 +1,6 @@
-﻿import type { DropResult } from "@hello-pangea/dnd";
+import type { DropResult } from "@hello-pangea/dnd";
 
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate, useOutletContext } from "react-router-dom";
 
 import { useAuth } from "../contexts/AuthContext";
 
@@ -1822,6 +1822,20 @@ const statusDictionary: Record<string, { label: string; tone: StatusTone }> = {
 
 
 
+const STATUS_CLASS: Record<string, string> = {
+  NOT_STARTED: "bg-slate-100 text-slate-700",
+  BACKLOG: "bg-slate-100 text-slate-700",
+  IN_PROGRESS: "bg-blue-100 text-blue-700",
+  WORKING: "bg-blue-100 text-blue-700",
+  DONE: "bg-emerald-100 text-emerald-700",
+  COMPLETED: "bg-emerald-100 text-emerald-700",
+  FINISHED: "bg-emerald-100 text-emerald-700",
+  LATE: "bg-red-100 text-red-700",
+  OVERDUE: "bg-red-100 text-red-700",
+  AT_RISK: "bg-amber-100 text-amber-800",
+  BLOCKED: "bg-amber-100 text-amber-800"
+};
+
 const editableStatusValues = ["BACKLOG", "IN_PROGRESS", "DONE", "LATE", "AT_RISK"];
 
 
@@ -1831,6 +1845,8 @@ const WORKDAY_HOURS = 8;
 
 
 const MS_IN_DAY = 1000 * 60 * 60 * 24;
+
+const API_BASE_URL = (import.meta as any)?.env?.VITE_API_BASE_URL ?? "http://localhost:4000";
 
 
 
@@ -1902,30 +1918,29 @@ const isoFromDateInput = (value: string) => {
 
 
 
+const parseDate = (value?: string | null): Date | null => {
+  if (!value) return null;
+  if (value.includes("/")) {
+    const [d, m, y] = value.split("/");
+    if (!d || !m || !y) return null;
+    const parsed = new Date(Number(y), Number(m) - 1, Number(d));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const calcDurationInDays = (start?: string | null, end?: string | null): number => {
+  const s = parseDate(start);
+  const e = parseDate(end);
+  if (!s || !e) return 0;
+  const diff = Math.floor((e.getTime() - s.getTime()) / MS_IN_DAY) + 1;
+  return diff > 0 ? diff : 0;
+};
+
 const computeDurationDays = (start?: string | null, end?: string | null): number | null => {
-
-
-
-  if (!start || !end) return null;
-
-
-
-  const startTime = new Date(start).getTime();
-
-
-
-  const endTime = new Date(end).getTime();
-
-
-
-  if (Number.isNaN(startTime) || Number.isNaN(endTime)) return null;
-
-
-
-  return Math.max(1, Math.round((endTime - startTime) / MS_IN_DAY));
-
-
-
+  const duration = calcDurationInDays(start, end);
+  return duration === 0 && (!start || !end) ? null : duration;
 };
 
 
@@ -2067,6 +2082,11 @@ export const WbsTreeView = ({
   onOpenDetails
 
 }: WbsTreeViewProps) => {
+
+
+
+  const { selectedOrganizationId: currentOrganizationId } = useOutletContext<DashboardOutletContext>();
+  const { token: authToken, user: currentUser } = useAuth();
 
 
 
@@ -2405,7 +2425,7 @@ export const WbsTreeView = ({
 
 
 
-  const handleStatusToggle = (event: MouseEvent<HTMLButtonElement>, nodeId: string) => {
+  const handleStatusToggle = (event: { stopPropagation: () => void }, nodeId: string) => {
 
 
 
@@ -2417,7 +2437,7 @@ export const WbsTreeView = ({
 
 
 
-    setStatusPickerId((current) => (current === nodeId ? null : nodeId));
+    setStatusPickerId(nodeId);
 
 
 
@@ -2429,7 +2449,7 @@ export const WbsTreeView = ({
 
 
 
-  const handleStatusChange = (event: MouseEvent<HTMLButtonElement>, nodeId: string, statusValue: string) => {
+  const handleStatusChange = (event: { stopPropagation: () => void }, nodeId: string, statusValue: string) => {
 
 
 
@@ -2509,18 +2529,10 @@ export const WbsTreeView = ({
 
 
 
-    const DurationDays = computeDurationDays(nextStart, nextEnd);
-
-
-
-    if (DurationDays !== null) {
-
-
-
-      updates.estimateHours = DurationDays * WORKDAY_HOURS;
-
-
-
+    const duration = calcDurationInDays(nextStart, nextEnd);
+    updates.durationInDays = duration;
+    if (duration > 0) {
+      updates.estimateHours = duration * WORKDAY_HOURS;
     }
 
 
@@ -3052,25 +3064,35 @@ export const WbsTreeView = ({
     setIsChatLoading(true);
     setChatError(null);
 
-    fetch(`/api/wbs/${openChatTaskId}/comments`)
-      .then(async (response) => {
+    const loadComments = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/wbs/${openChatTaskId}/comments`, {
+          headers: {
+            Authorization: `Bearer ${authToken ?? ""}`,
+            "X-Organization-Id": currentOrganizationId
+          }
+        });
+
         if (!response.ok) {
-          throw new Error("Erro ao listar comentários");
+          console.error("Erro na API de comentários (GET)", response.status, await response.text());
+          if (active) setChatError("Erro ao listar comentários");
+          return;
         }
-        return (await response.json()) as WbsComment[];
-      })
-      .then((data) => {
+
+        const data = (await response.json()) as WbsComment[];
         if (!active) return;
         setChatMessages(data);
         setChatCounts((prev) => ({ ...prev, [openChatTaskId]: data.length }));
-      })
-      .catch((error) => {
-        console.error(error);
+        setChatError(null);
+      } catch (error) {
+        console.error("Erro na API de comentários (GET)", error);
         if (active) setChatError("Erro ao listar comentários");
-      })
-      .finally(() => {
+      } finally {
         if (active) setIsChatLoading(false);
-      });
+      }
+    };
+
+    loadComments();
 
     return () => {
       active = false;
@@ -3087,22 +3109,29 @@ export const WbsTreeView = ({
     setChatError(null);
     
     try {
-      const response = await fetch(`/api/wbs/${openChatTaskId}/comments`, {
+      const response = await fetch(`${API_BASE_URL}/wbs/${openChatTaskId}/comments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed })
+        headers: {
+          Authorization: `Bearer ${authToken ?? ""}`,
+          "Content-Type": "application/json",
+          "X-Organization-Id": currentOrganizationId
+        },
+        body: JSON.stringify({ message: trimmed, authorName: currentUser?.name ?? null })
       });
       
       if (!response.ok) {
-        throw new Error("Erro ao criar comentário");
+        console.error("Erro na API de comentários (POST)", response.status, await response.text());
+        setChatError("Erro ao criar comentário");
+        return;
       }
       
       const created = (await response.json()) as WbsComment;
       setChatMessages((prev) => [...prev, created]);
       setChatCounts((prev) => ({ ...prev, [openChatTaskId]: (prev[openChatTaskId] ?? 0) + 1 }));
       setChatDraft("");
+      setChatError(null);
     } catch (error) {
-      console.error(error);
+      console.error("Erro na API de comentários (POST)", error);
       setChatError("Erro ao enviar comentário");
     } finally {
       setIsChatLoading(false);
@@ -3749,7 +3778,7 @@ export const WbsTreeView = ({
         <table className="wbs-table">
           <thead>
             <tr>
-              <th className="col-select">
+              <th className="w-[45px] text-center px-2">
                 <input
                   type="checkbox"
                   aria-label="Selecionar todas as tarefas"
@@ -3758,10 +3787,10 @@ export const WbsTreeView = ({
                   onChange={(event) => handleSelectAllVisible(event.target.checked)}
                 />
               </th>
-              <th className="col-id">ID</th>
-              <th className="col-chat" title="Comentários da tarefa">Chat</th>
-              <th className="col-level">Nível</th>
-              <th className="col-name">Nome da tarefa</th>
+              <th className="w-[60px] text-center px-2">ID</th>
+              <th className="w-[70px] text-center px-2" title="Comentários da tarefa">Chat</th>
+              <th className="w-[90px] text-center px-2">Nível</th>
+              <th className="px-3 text-left text-xs font-semibold text-slate-500 min-w-[260px]">Nome da tarefa</th>
               <th className="col-status">Situação</th>
               <th className="col-duration">Duração</th>
               <th className="col-date">Início</th>
@@ -3958,9 +3987,8 @@ export const WbsTreeView = ({
 
 
               const normalizedStatus = (row.node.status ?? "").toUpperCase();
-
-
-
+              const statusClass = STATUS_CLASS[normalizedStatus] ?? STATUS_CLASS.NOT_STARTED;
+              const duration = calcDurationInDays(row.node.startDate, row.node.endDate);
               const isStatusPickerOpen = statusPickerId === row.node.id;
 
 
@@ -3990,7 +4018,7 @@ export const WbsTreeView = ({
 
 
 
-                    <td className="wbs-select-cell">
+                    <td className="text-center align-middle px-2">
                       <input
                         type="checkbox"
                         aria-label={`Selecionar tarefa ${displayId}`}
@@ -4003,8 +4031,8 @@ export const WbsTreeView = ({
                       />
                     </td>
 
-                    <td className="wbs-id">{displayId}</td>
-                    <td className="wbs-chat-cell">
+                    <td className="text-center align-middle px-2">{displayId}</td>
+                    <td className="text-center align-middle px-2">
                       <button
                         type="button"
                         className="wbs-chat-button"
@@ -4028,11 +4056,11 @@ export const WbsTreeView = ({
 
 
 
-                    <td className="wbs-level-cell">
+                    <td className="text-center align-middle px-2">
 
 
 
-                      <div className="wbs-level-actions" role="group" aria-label="Ajustar Nível">
+                      <div className="inline-flex items-center gap-1 justify-center" role="group" aria-label="Ajustar Nível">
 
 
 
@@ -4120,11 +4148,11 @@ export const WbsTreeView = ({
 
 
 
-                    <td className="wbs-name-cell">
+                    <td className="px-3 align-middle">
 
 
 
-                      <div className={`wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""} ${levelClass}`}>
+                      <div className={`flex items-center gap-2 min-w-[260px] max-w-[500px] wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""} ${levelClass}`}>
 
 
 
@@ -4265,9 +4293,9 @@ export const WbsTreeView = ({
 
 
                               {isRootLevel ? (
-                                <strong>{row.node.title ?? "Tarefa sem nome"}</strong>
+                                <strong>{row.node.title ?? row.node.name ?? "Tarefa sem nome"}</strong>
                               ) : (
-                                <span className="wbs-task-title">{row.node.title ?? "Tarefa sem nome"}</span>
+                                <span className="wbs-task-title">{row.node.title ?? row.node.name ?? "Tarefa sem nome"}</span>
                               )}
 
 
@@ -4296,223 +4324,36 @@ export const WbsTreeView = ({
 
 
 
-                    <td>
-
-
-
-                      <div style={{ position: "relative", display: "inline-flex" }}>
-
-
-
-                        <button
-
-
-
-                          type="button"
-
-
-
-                          className={`wbs-status wbs-status--${status.tone}`}
-
-
-
-                          onClick={(event) => handleStatusToggle(event, row.node.id)}
-
-
-
-                        >
-
-
-
-                          {status.label}
-
-
-
-                        </button>
-
-
-
-                        {isStatusPickerOpen && (
-
-
-
-                          <div className="wbs-status-picker" style={statusPopoverStyle}>
-
-
-
-                            {editableStatusValues.map((value) => {
-
-
-
-                              const option = statusDictionary[value] ?? {
-
-
-
-                                label: value,
-
-
-
-                                tone: "neutral" as StatusTone
-
-
-
-                              };
-
-
-
-                              const isActiveOption = normalizedStatus === value;
-
-
-
-                              return (
-
-
-
-                                <button
-
-
-
-                                  type="button"
-
-
-
-                                  key={value}
-
-
-
-                                  onClick={(event) => handleStatusChange(event, row.node.id, value)}
-
-
-
-                                  style={{
-
-
-
-                                    border: "none",
-
-
-
-                                    background: isActiveOption ? "rgba(99, 102, 241, 0.08)" : "transparent",
-
-
-
-                                    padding: 0,
-
-
-
-                                    textAlign: "left",
-
-
-
-                                    cursor: "pointer"
-
-
-
-                                  }}
-
-
-
-                                >
-
-
-
-                                  <span className={`wbs-status wbs-status--${option.tone}`}>{option.label}</span>
-
-
-
-                                </button>
-
-
-
-                              );
-
-
-
-                            })}
-
-
-
-                          </div>
-
-
-
-                        )}
-
-
-
-                      </div>
-
-
-
+                    <td className="px-3 align-middle">
+                      <select
+                        value={row.node.status}
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={(event) => {
+                          event.stopPropagation();
+                          onUpdate(row.node.id, { status: event.target.value });
+                        }}
+                        className={`min-w-[150px] rounded-full px-3 py-1 text-xs font-medium border-0 cursor-pointer ${STATUS_CLASS[row.node.status ?? ""] || STATUS_CLASS.NOT_STARTED}`}
+                        aria-label={`Situação: ${status.label}`}
+                      >
+                        <option value="NOT_STARTED">Não iniciado</option>
+                        <option value="IN_PROGRESS">Em andamento</option>
+                        <option value="DONE">Finalizado</option>
+                        <option value="LATE">Em atraso</option>
+                        <option value="AT_RISK">Em risco</option>
+                      </select>
                     </td>
 
 
 
-                    <td className="wbs-Duration-cell">
-
-
-
-                      <div className="wbs-Duration-wrapper">
-
-
-
-                        <input
-
-
-
-                        type="number"
-
-
-
-                        min={1}
-
-
-
-                        className="wbs-Duration-input"
-
-
-
-                        aria-label="Duração em dias"
-
-
-
-                        value={getDurationInputValue(row.node)}
-
-
-
-                        placeholder="âââ€šÂ¬ââ‚¬Â"
-
-
-
-                        onChange={(event) => handleDurationInputChange(row.node.id, event.target.value)}
-
-
-
-                      />
-
-
-
-                      <span className="wbs-Duration-suffix">
-
-
-
-                        {Number(getDurationInputValue(row.node) || 0) === 1 ? "dia" : "dias"}
-
-
-
+                    <td className="px-3 text-center align-middle">
+                      <span className="inline-flex items-center justify-center rounded-full bg-slate-50 border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700">
+                        {duration} {duration === 1 ? "dia" : "dias"}
                       </span>
+                    </td>
 
 
 
-                    </div>
-
-
-
-                  </td>
-
-
-
-                    <td>
+                    <td className="px-3 align-middle">
 
 
 
@@ -4556,7 +4397,7 @@ export const WbsTreeView = ({
 
 
 
-                    <td>
+                    <td className="px-3 align-middle">
 
 
 
@@ -4600,7 +4441,7 @@ export const WbsTreeView = ({
 
 
 
-                    <td>
+                    <td className="px-3 align-middle">
 
 
 
@@ -4638,7 +4479,7 @@ export const WbsTreeView = ({
 
                     </td>
 
-                    <td className="wbs-dependencies-cell">
+                    <td className="wbs-dependencies-cell px-3 align-middle">
 
 
 
@@ -4954,7 +4795,7 @@ export const WbsTreeView = ({
 
 
 
-                    <td className="wbs-details-cell">
+                    <td className="wbs-details-cell px-3 align-middle">
 
 
 
@@ -14781,7 +14622,6 @@ export const TemplatesPanel = ({
 
 
 };
-
 
 
 
