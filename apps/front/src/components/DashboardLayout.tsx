@@ -32,6 +32,7 @@ import {
 
 } from "react";
 
+import clsx from "clsx";
 import type { PortfolioProject } from "./ProjectPortfolio";
 
 import {
@@ -1823,17 +1824,12 @@ const statusDictionary: Record<string, { label: string; tone: StatusTone }> = {
 
 
 const STATUS_CLASS: Record<string, string> = {
-  NOT_STARTED: "bg-slate-100 text-slate-700",
-  BACKLOG: "bg-slate-100 text-slate-700",
-  IN_PROGRESS: "bg-blue-100 text-blue-700",
-  WORKING: "bg-blue-100 text-blue-700",
-  DONE: "bg-emerald-100 text-emerald-700",
-  COMPLETED: "bg-emerald-100 text-emerald-700",
-  FINISHED: "bg-emerald-100 text-emerald-700",
-  LATE: "bg-red-100 text-red-700",
-  OVERDUE: "bg-red-100 text-red-700",
-  AT_RISK: "bg-amber-100 text-amber-800",
-  BLOCKED: "bg-amber-100 text-amber-800"
+  NOT_STARTED: "bg-slate-50 text-slate-700 border-slate-300",
+  IN_PROGRESS: "bg-blue-50 text-blue-700 border-blue-300",
+  DONE: "bg-emerald-50 text-emerald-700 border-emerald-300",
+  LATE: "bg-red-50 text-red-700 border-red-300",
+  AT_RISK: "bg-amber-50 text-amber-800 border-amber-300",
+  default: "bg-slate-50 text-slate-700 border-slate-300",
 };
 
 const editableStatusValues = ["BACKLOG", "IN_PROGRESS", "DONE", "LATE", "AT_RISK"];
@@ -3049,6 +3045,50 @@ export const WbsTreeView = ({
 
   }, [nodes]);
 
+  useEffect(() => {
+    if (!visibleRows.length) return;
+    if (!authToken || !currentOrganizationId) return;
+
+    const nodesWithoutCount = visibleRows.filter((row) => chatCounts[row.node.id] == null);
+    if (nodesWithoutCount.length === 0) return;
+
+    const controller = new AbortController();
+
+    const loadAllCounts = async () => {
+      const newCounts: Record<string, number> = {};
+
+      await Promise.all(
+        nodesWithoutCount.map(async (row) => {
+          try {
+            const res = await fetch(`${API_BASE_URL}/wbs/${row.node.id}/comments`, {
+              headers: {
+                Authorization: `Bearer ${authToken ?? ""}`,
+                "X-Organization-Id": currentOrganizationId
+              },
+              signal: controller.signal
+            });
+
+            if (!res.ok) return;
+
+            const comments: unknown = await res.json();
+            newCounts[row.node.id] = Array.isArray(comments) ? comments.length : 0;
+          } catch (error) {
+            if (controller.signal.aborted) return;
+            console.error("Erro ao carregar contador de comentários", error);
+          }
+        })
+      );
+
+      if (Object.keys(newCounts).length > 0) {
+        setChatCounts((prev) => ({ ...prev, ...newCounts }));
+      }
+    };
+
+    loadAllCounts();
+
+    return () => controller.abort();
+  }, [visibleRows, authToken, currentOrganizationId, chatCounts]);
+
 
 
   const openChatRow = openChatTaskId ? rowMap.get(openChatTaskId) ?? null : null;
@@ -3775,10 +3815,24 @@ export const WbsTreeView = ({
 
 
       <div className="edt-horizontal-scroll">
-        <table className="wbs-table">
+        <table className="wbs-table w-full border-collapse table-fixed" style={{ borderSpacing: 0 }}>
+          <colgroup>
+            <col style={{ width: "32px" }} />
+            <col style={{ width: "50px" }} />
+            <col style={{ width: "70px" }} />
+            <col style={{ width: "90px" }} />
+          <col style={{ width: "320px" }} />
+          <col style={{ width: "170px" }} />
+          <col style={{ width: "85px" }} />
+          <col style={{ width: "180px" }} />
+          <col style={{ width: "180px" }} />
+          <col style={{ width: "180px" }} />
+          <col style={{ width: "140px" }} />
+          <col style={{ width: "110px" }} />
+        </colgroup>
           <thead>
-            <tr>
-              <th className="w-[45px] text-center px-2">
+            <tr className="bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase">
+              <th className="px-1 py-2 text-center align-middle">
                 <input
                   type="checkbox"
                   aria-label="Selecionar todas as tarefas"
@@ -3787,18 +3841,17 @@ export const WbsTreeView = ({
                   onChange={(event) => handleSelectAllVisible(event.target.checked)}
                 />
               </th>
-              <th className="w-[60px] text-center px-2">ID</th>
-              <th className="w-[70px] text-center px-2" title="Comentários da tarefa">Chat</th>
-              <th className="w-[90px] text-center px-2">Nível</th>
-              <th className="px-3 text-left text-xs font-semibold text-slate-500 min-w-[260px]">Nome da tarefa</th>
-              <th className="col-status">Situação</th>
-              <th className="col-duration">Duração</th>
-              <th className="col-date">Início</th>
-              <th className="col-date">Término</th>
-              <th className="col-owner">Responsável</th>
-              <th className="col-dependencies">Dependências</th>
-              <th className="col-actions">Detalhes</th>
-              <th />
+              <th className="px-1 py-2 text-center align-middle">ID</th>
+              <th className="px-1 py-2 text-center align-middle" title="Comentários da tarefa">Chat</th>
+              <th className="px-1 py-2 text-center align-middle">Nível</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Nome da tarefa</th>
+              <th className="w-[150px] px-3 py-2 text-left align-middle">Situação</th>
+              <th className="w-[140px] px-3 py-2 text-left align-middle">Duração</th>
+              <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Início</th>
+              <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Término</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Responsável</th>
+              <th className="w-[150px] px-3 py-2 text-left align-middle">Dependências</th>
+              <th className="w-[115px] px-3 py-2 text-center align-middle">Detalhes</th>
             </tr>
           </thead>
 
@@ -3987,8 +4040,8 @@ export const WbsTreeView = ({
 
 
               const normalizedStatus = (row.node.status ?? "").toUpperCase();
-              const statusClass = STATUS_CLASS[normalizedStatus] ?? STATUS_CLASS.NOT_STARTED;
-              const duration = calcDurationInDays(row.node.startDate, row.node.endDate);
+              const statusClass = STATUS_CLASS[normalizedStatus] ?? STATUS_CLASS.default;
+              const durationInDays = calcDurationInDays(row.node.startDate, row.node.endDate);
               const isStatusPickerOpen = statusPickerId === row.node.id;
 
 
@@ -4018,7 +4071,7 @@ export const WbsTreeView = ({
 
 
 
-                    <td className="text-center align-middle px-2">
+                    <td className="px-1 py-2 text-center align-middle">
                       <input
                         type="checkbox"
                         aria-label={`Selecionar tarefa ${displayId}`}
@@ -4031,11 +4084,11 @@ export const WbsTreeView = ({
                       />
                     </td>
 
-                    <td className="text-center align-middle px-2">{displayId}</td>
-                    <td className="text-center align-middle px-2">
+                    <td className="px-1 py-2 text-center align-middle text-[11px] text-slate-700">{displayId}</td>
+                    <td className="px-1 py-2 text-center align-middle">
                       <button
                         type="button"
-                        className="wbs-chat-button"
+                        className="wbs-chat-button relative inline-flex h-7 min-w-[40px] items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-2 text-[11px] text-slate-700 hover:bg-slate-50 transition"
                         aria-label={`Comentários da tarefa ${displayId}`}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -4043,116 +4096,88 @@ export const WbsTreeView = ({
                         }}
                       >
                         <ChatIcon />
-                        <span className="wbs-chat-count">
-                          {Array.isArray(row.node.comments) && row.node.comments.length
-                            ? row.node.comments.length
-                            : chatCounts[row.node.id] ?? 0}
+                        <span className="text-xs font-medium text-slate-600">
+                          {chatCounts[row.node.id] ?? row.node.comments?.length ?? 0}
                         </span>
                         {(chatCounts[row.node.id] ?? row.node.comments?.length ?? 0) > 0 && (
-                          <span className="wbs-chat-unread" />
+                          <span className="absolute -top-[3px] -right-[3px] h-2.5 w-2.5 rounded-full bg-red-500 border border-white shadow-sm" />
                         )}
                       </button>
                     </td>
 
 
 
-                    <td className="text-center align-middle px-2">
-
-
-
-                      <div className="inline-flex items-center gap-1 justify-center" role="group" aria-label="Ajustar Nível">
-
-
-
+                    <td className="px-2 py-2 text-center align-middle w-[80px]">
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "6px",
+                          lineHeight: 1
+                        }}
+                      >
                         <button
-
-
-
                           type="button"
-
-
-
-                          className="level-arrow"
-
-
-
-                          aria-label="Subir Nível"
-
-
-
-                          onClick={(event) => handleLevelAdjust(event, row.node.id, "up")}
-
-
-
-                          disabled={!canLevelUp}
-
-
-
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDecreaseLevel(row.node.id);
+                          }}
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            padding: 0,
+                            margin: 0,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "14px"
+                          }}
                         >
-
-
-
-                          {"<"}
-
-
-
+                          ◀
                         </button>
-
-
-
-                        <span className={`wbs-level-pill ${isRootLevel ? "is-root" : ""}`}>{formattedLevel}</span>
-
-
-
+                        <span
+                          style={{
+                            minWidth: "12px",
+                            textAlign: "center",
+                            fontSize: "14px",
+                            fontWeight: 600
+                          }}
+                        >
+                          {row.node.level}
+                        </span>
                         <button
-
-
-
                           type="button"
-
-
-
-                          className="level-arrow"
-
-
-
-                          aria-label="Descer Nível"
-
-
-
-                          onClick={(event) => handleLevelAdjust(event, row.node.id, "down")}
-
-
-
-                          disabled={!canLevelDown}
-
-
-
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleIncreaseLevel(row.node.id);
+                          }}
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            padding: 0,
+                            margin: 0,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "14px"
+                          }}
                         >
-
-
-
-                          {">"}
-
-
-
+                          ▶
                         </button>
-
-
-
                       </div>
-
-
-
                     </td>
 
 
 
-                    <td className="px-3 align-middle">
+                    <td className="px-3 py-2 align-middle">
 
 
 
-                      <div className={`flex items-center gap-2 min-w-[260px] max-w-[500px] wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""} ${levelClass}`}>
+                      <div className={`flex w-full items-center gap-2 flex-1 min-w-[380px] max-w-none wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""} ${levelClass}`}>
 
 
 
@@ -4208,107 +4233,118 @@ export const WbsTreeView = ({
 
 
 
-                        <span className={`wbs-node-icon ${row.hasChildren ? "is-folder" : "is-task"}`}>
+                        <div className="flex items-center gap-2 flex-1 min-w-[380px] max-w-none">
 
 
 
-                          {row.hasChildren ? <FolderIcon /> : <TaskIcon />}
+                          <span className={`wbs-node-icon ${row.hasChildren ? "is-folder" : "is-task"}`}>
 
 
 
-                        </span>
+                            {row.hasChildren ? <FolderIcon /> : <TaskIcon />}
 
 
 
-                        <div
+                          </span>
 
 
 
-                          className="wbs-task-text"
+                          <div
 
 
 
-                          title={row.node.title ?? "Tarefa sem nome"}
+                            className="wbs-task-text"
 
 
 
-                          onDoubleClick={(event) => handleBeginTitleEdit(event, row.node)}
+                            title={row.node.title ?? "Tarefa sem nome"}
 
 
 
-                        >
+                            onDoubleClick={(event) => handleBeginTitleEdit(event, row.node)}
 
 
 
-                          {isEditingTitle ? (
+                          >
 
 
 
-                            <input
+                            {isEditingTitle ? (
 
 
 
-                              className="wbs-title-input"
+                              <input
 
 
 
-                              value={editingTitle}
+                                className="wbs-title-input"
 
 
 
-                              onChange={(event) => setEditingTitle(event.target.value)}
+                                value={editingTitle}
 
 
 
-                              onBlur={commitTitleEdit}
+                                onChange={(event) => setEditingTitle(event.target.value)}
 
 
 
-                              onKeyDown={handleTitleKeyDown}
+                                onBlur={commitTitleEdit}
 
 
 
-                              onClick={(event) => event.stopPropagation()}
+                                onKeyDown={handleTitleKeyDown}
 
 
 
-                              autoFocus
+                                onClick={(event) => event.stopPropagation()}
 
 
 
-                              placeholder="Nome da tarefa"
+                                autoFocus
 
 
 
-                            />
+                                placeholder="Nome da tarefa"
 
 
 
-                          ) : (
+                              />
 
 
 
-                            <>
+                            ) : (
 
 
 
-                              {isRootLevel ? (
-                                <strong>{row.node.title ?? row.node.name ?? "Tarefa sem nome"}</strong>
-                              ) : (
-                                <span className="wbs-task-title">{row.node.title ?? row.node.name ?? "Tarefa sem nome"}</span>
-                              )}
+                              <>
 
 
 
-                              {row.node.description && <small title={row.node.description}>{row.node.description}</small>}
+                                <span
+                                  className={clsx(
+                                    "truncate",
+                                    row.node.level === 0 ? "font-semibold" : "font-normal"
+                                  )}
+                                >
+                                  {row.node.title ?? row.node.name ?? "Tarefa sem nome"}
+                                </span>
 
 
 
-                            </>
+                                {row.node.description && <small title={row.node.description}>{row.node.description}</small>}
 
 
 
-                          )}
+                              </>
+
+
+
+                            )}
+
+
+
+                          </div>
 
 
 
@@ -4324,7 +4360,7 @@ export const WbsTreeView = ({
 
 
 
-                    <td className="px-3 align-middle">
+                    <td className="px-3 py-2 align-middle">
                       <select
                         value={row.node.status}
                         onClick={(event) => event.stopPropagation()}
@@ -4332,8 +4368,11 @@ export const WbsTreeView = ({
                           event.stopPropagation();
                           onUpdate(row.node.id, { status: event.target.value });
                         }}
-                        className={`min-w-[150px] rounded-full px-3 py-1 text-xs font-medium border-0 cursor-pointer ${STATUS_CLASS[row.node.status ?? ""] || STATUS_CLASS.NOT_STARTED}`}
-                        aria-label={`Situação: ${status.label}`}
+                        aria-label="Alterar situação da tarefa"
+                        className={clsx(
+                          "min-w-[150px] rounded-full px-4 py-1 text-xs font-semibold cursor-pointer border shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-200 focus:ring-offset-1 appearance-none",
+                          STATUS_CLASS[row.node.status] ?? STATUS_CLASS.default
+                        )}
                       >
                         <option value="NOT_STARTED">Não iniciado</option>
                         <option value="IN_PROGRESS">Em andamento</option>
@@ -4345,103 +4384,45 @@ export const WbsTreeView = ({
 
 
 
-                    <td className="px-3 text-center align-middle">
-                      <span className="inline-flex items-center justify-center rounded-full bg-slate-50 border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700">
-                        {duration} {duration === 1 ? "dia" : "dias"}
+                    <td className="w-[140px] px-3 py-2 align-middle">
+                      <span className="inline-flex items-center whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+                        {durationInDays} {durationInDays === 1 ? "dia" : "dias"}
                       </span>
                     </td>
 
 
 
-                    <td className="px-3 align-middle">
-
-
-
+                    <td className="px-4 py-2 align-middle w-[220px]">
                       <div className="wbs-date-input-wrapper">
-
-
-
-                        <CalendarIcon />
-
-
-
                         <input
-
-
-
                           type="date"
-
-
-
-                          aria-label="Data de Início"
-
-
-
                           value={formatDateInputValue(row.node.startDate)}
-
-
-
                           onChange={(event) => handleDateFieldChange(row.node.id, "startDate", event.target.value)}
-
-
-
+                          onClick={(event) => event.stopPropagation()}
+                          placeholder="dd/mm/aaaa"
+                          className="wbs-date-input"
                         />
-
-
-
                       </div>
-
-
-
                     </td>
 
 
 
-                    <td className="px-3 align-middle">
-
-
-
+                    <td className="px-4 py-2 align-middle w-[220px]">
                       <div className="wbs-date-input-wrapper">
-
-
-
-                        <CalendarIcon />
-
-
-
                         <input
-
-
-
                           type="date"
-
-
-
-                          aria-label="Data de Término"
-
-
-
                           value={formatDateInputValue(row.node.endDate)}
-
-
-
                           onChange={(event) => handleDateFieldChange(row.node.id, "endDate", event.target.value)}
-
-
-
+                          onClick={(event) => event.stopPropagation()}
+                          placeholder="dd/mm/aaaa"
+                          className="wbs-date-input"
                         />
-
-
-
                       </div>
-
-
-
                     </td>
 
 
 
-                    <td className="px-3 align-middle">
+                    <td className="px-4 py-2 align-middle min-w-[180px]">
 
 
 
@@ -4479,7 +4460,7 @@ export const WbsTreeView = ({
 
                     </td>
 
-                    <td className="wbs-dependencies-cell px-3 align-middle">
+                    <td className="wbs-dependencies-cell w-[150px] px-3 py-2 align-middle">
 
 
 
@@ -4795,7 +4776,7 @@ export const WbsTreeView = ({
 
 
 
-                    <td className="wbs-details-cell px-3 align-middle">
+                    <td className="wbs-details-cell w-[115px] px-3 py-2 align-middle text-center">
 
 
 
