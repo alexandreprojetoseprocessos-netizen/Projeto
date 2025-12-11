@@ -69,6 +69,7 @@ model OrganizationMembership {
   updatedAt      DateTime       @updatedAt
   organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  responsibleNodes WbsNode[]    @relation("ResponsibleMembership")
 
   @@unique([organizationId, userId])
 }
@@ -104,6 +105,7 @@ model Project {
   risks            Risk[]
   timeEntries      TimeEntry[]
   wbsNodes         WbsNode[]
+  serviceCatalogs  ServiceCatalog[]
 }
 
 model ProjectTemplate {
@@ -169,6 +171,7 @@ model WbsNode {
   progress                  Float?          @default(0)
   epicId                    String?
   boardColumnId             String?
+  responsibleMembershipId   String?
   createdAt                 DateTime        @default(now())
   updatedAt                 DateTime        @updatedAt
   wbsCode                   String?
@@ -184,10 +187,28 @@ model WbsNode {
   epic                      WbsNode?        @relation("Epic", fields: [epicId], references: [id])
   epicChildren              WbsNode[]       @relation("Epic")
   owner                     User?           @relation("NodeOwner", fields: [ownerId], references: [id])
+  responsibleMembership     OrganizationMembership? @relation("ResponsibleMembership", fields: [responsibleMembershipId], references: [id])
+  serviceCatalogId          String?
+  serviceCatalog            ServiceCatalog? @relation(fields: [serviceCatalogId], references: [id])
+  serviceMultiplier         Float?
+  serviceHours              Float?
   parent                    WbsNode?        @relation("WbsParent", fields: [parentId], references: [id], onDelete: Cascade)
   children                  WbsNode[]       @relation("WbsParent")
   project                   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
+
+model ServiceCatalog {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  name        String
+  description String?
+  hoursBase   Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  wbsNodes    WbsNode[]
+}
+
 
 model WbsComment {
   id         String   @id @default(uuid())

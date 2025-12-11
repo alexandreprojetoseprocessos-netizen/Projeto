@@ -126,7 +126,9 @@ wbsRouter.patch("/:nodeId", async (req, res) => {
     progress,
     estimateHours,
     boardColumnId,
-    dependencies
+    dependencies,
+    serviceCatalogId,
+    serviceMultiplier
   } = req.body as Record<string, any>;
 
   const access = await assertNodeAccess(req, res, nodeId, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
@@ -152,6 +154,28 @@ wbsRouter.patch("/:nodeId", async (req, res) => {
   if (progress !== undefined) data.progress = progress;
   if (estimateHours !== undefined) data.estimateHours = estimateHours ? new Prisma.Decimal(estimateHours) : null;
   if (boardColumnId !== undefined) data.boardColumnId = boardColumnId;
+  if (serviceCatalogId !== undefined || serviceMultiplier !== undefined) {
+    if (!serviceCatalogId) {
+      data.serviceCatalogId = null;
+      data.serviceMultiplier = serviceMultiplier !== undefined ? Number(serviceMultiplier) || null : null;
+      data.serviceHours = null;
+    } else {
+      const catalog = await prisma.serviceCatalog.findFirst({
+        where: { id: serviceCatalogId, projectId: access.node.projectId }
+      });
+      if (!catalog) {
+        return res.status(400).json({ message: "Catálogo de serviço não encontrado para este projeto" });
+      }
+      const multiplierValue =
+        serviceMultiplier !== undefined && serviceMultiplier !== null
+          ? Number(serviceMultiplier)
+          : null;
+      const multiplier = multiplierValue && !Number.isNaN(multiplierValue) ? multiplierValue : 1;
+      data.serviceCatalogId = serviceCatalogId;
+      data.serviceMultiplier = multiplier;
+      data.serviceHours = catalog.hoursBase * multiplier;
+    }
+  }
 
   if (parentId !== undefined) {
     if (!parentId) {
@@ -194,6 +218,40 @@ wbsRouter.patch("/:nodeId", async (req, res) => {
   const refreshed = await prisma.wbsNode.findUnique({ where: { id: nodeId } });
 
   return res.json({ node: refreshed ?? node });
+});
+
+wbsRouter.patch("/:nodeId/responsible", async (req, res) => {
+  const { nodeId } = req.params;
+  const { membershipId } = req.body as { membershipId?: string | null };
+
+  const access = await assertNodeAccess(req as RequestWithUser, res, nodeId, [
+    ProjectRole.MANAGER,
+    ProjectRole.CONTRIBUTOR
+  ]);
+  if (!access) return;
+
+  const updated = await prisma.wbsNode.update({
+    where: { id: nodeId },
+    data: {
+      responsibleMembershipId: membershipId || null
+    },
+    include: {
+      responsibleMembership: {
+        include: { user: true }
+      }
+    }
+  });
+
+  return res.json({
+    id: updated.id,
+    responsible: updated.responsibleMembership
+      ? {
+          membershipId: updated.responsibleMembership.id,
+          userId: updated.responsibleMembership.userId,
+          name: updated.responsibleMembership.user.fullName ?? updated.responsibleMembership.user.email ?? ""
+        }
+      : null
+  });
 });
 
 wbsRouter.post("/:nodeId/time-entries", async (req: RequestWithUser, res) => {

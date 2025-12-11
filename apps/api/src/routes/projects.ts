@@ -35,6 +35,14 @@ type FlatWbsNode = {
   storyPoints?: number | null;
   actualHours?: number;
   documents?: number;
+  responsible?: {
+    membershipId: string;
+    userId: string;
+    name: string;
+  } | null;
+  serviceCatalogId?: string | null;
+  serviceMultiplier?: number | null;
+  serviceHours?: number | null;
   dependencies: string[];
 };
 
@@ -143,6 +151,43 @@ projectsRouter.get("/", async (req, res) => {
       wbsNodeCount: project.wbsNodes.length
     }))
   });
+});
+
+projectsRouter.get("/:projectId/members", async (req, res) => {
+  const { projectId } = req.params;
+  const userId = (req as any).user?.id as string | undefined;
+
+  if (!userId) {
+    return res.status(401).json({ message: "User not authenticated" });
+  }
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId }
+  });
+
+  if (!project) {
+    return res.status(404).json({ message: "Project not found" });
+  }
+
+  const memberships = await prisma.organizationMembership.findMany({
+    where: { organizationId: project.organizationId },
+    include: { user: true },
+    orderBy: {
+      user: {
+        fullName: "asc"
+      }
+    }
+  });
+
+  const members = memberships.map((membership) => ({
+    id: membership.id,
+    userId: membership.userId,
+    name: membership.user.fullName ?? membership.user.email ?? membership.userId,
+    email: membership.user.email,
+    role: membership.role
+  }));
+
+  return res.json({ members });
 });
 
 projectsRouter.post("/", async (req, res) => {
@@ -716,6 +761,11 @@ projectsRouter.get("/:projectId/wbs", async (req, res) => {
         where: { projectId },
         include: {
           taskDetail: true,
+          responsibleMembership: {
+            include: {
+              user: true
+            }
+          },
           owner: {
             select: {
               id: true,
@@ -728,6 +778,13 @@ projectsRouter.get("/:projectId/wbs", async (req, res) => {
           },
           attachments: {
             select: { id: true }
+          },
+          serviceCatalog: {
+            select: {
+              id: true,
+              name: true,
+              hoursBase: true
+            }
           },
           dependenciesAsSuccessor: {
             select: { predecessorId: true }
@@ -768,6 +825,16 @@ projectsRouter.get("/:projectId/wbs", async (req, res) => {
     storyPoints: node.taskDetail?.storyPoints ?? null,
     actualHours: node.timeEntries.reduce((acc, entry) => acc + Number(entry.hours), 0),
     documents: node.attachments.length,
+    serviceCatalogId: node.serviceCatalogId ?? null,
+    serviceMultiplier: node.serviceMultiplier ?? null,
+    serviceHours: node.serviceHours ?? null,
+    responsible: node.responsibleMembership
+      ? {
+          membershipId: node.responsibleMembership.id,
+          userId: node.responsibleMembership.userId,
+          name: node.responsibleMembership.user.fullName ?? node.responsibleMembership.user.email ?? ""
+        }
+      : null,
     dependencies: node.dependenciesAsSuccessor.map((dependency) => dependency.predecessorId)
   }));
 

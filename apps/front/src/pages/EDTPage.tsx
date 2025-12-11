@@ -1,5 +1,5 @@
-﻿import { useNavigate, useOutletContext } from "react-router-dom";
-import { useState, type FormEvent } from "react";
+﻿import { useMemo, useState, type FormEvent } from "react";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import { WbsTreeView, type DashboardOutletContext } from "../components/DashboardLayout";
 
 export const EDTPage = () => {
@@ -10,11 +10,18 @@ export const EDTPage = () => {
     wbsLoading,
     onMoveNode,
     onUpdateWbsNode,
+    onUpdateWbsResponsible,
+    members,
     selectedNodeId,
     onSelectNode,
     onCreateWbsItem,
     projects,
     selectedProjectId,
+    serviceCatalog,
+    serviceCatalogError,
+    onImportServiceCatalog,
+    onCreateServiceCatalog,
+    onDeleteServiceCatalog,
   } = useOutletContext<DashboardOutletContext>();
 
   const currentProject = projects.find((project: any) => project.id === selectedProjectId) ?? null;
@@ -24,6 +31,16 @@ export const EDTPage = () => {
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [catalogName, setCatalogName] = useState("");
+  const [catalogHours, setCatalogHours] = useState("");
+  const [catalogDescription, setCatalogDescription] = useState("");
+  const [catalogActionError, setCatalogActionError] = useState<string | null>(null);
+  const [catalogActionLoading, setCatalogActionLoading] = useState(false);
   const [form, setForm] = useState({
     name: "",
     status: "BACKLOG",
@@ -77,6 +94,63 @@ export const EDTPage = () => {
     }
   };
 
+  const sortedServiceCatalog = useMemo(
+    () =>
+      [...(serviceCatalog ?? [])].sort((a, b) =>
+        (a?.name ?? "").localeCompare(b?.name ?? "", "pt-BR", { sensitivity: "base" })
+      ),
+    [serviceCatalog]
+  );
+
+  const handleManualServiceCreate = async () => {
+    if (!onCreateServiceCatalog) return;
+    setCatalogActionError(null);
+    const name = catalogName.trim();
+    const hoursNumber = Number(catalogHours);
+
+    if (!name) {
+      setCatalogActionError("Informe o nome do serviço.");
+      return;
+    }
+    if (Number.isNaN(hoursNumber) || hoursNumber < 0) {
+      setCatalogActionError("Horas base inválidas.");
+      return;
+    }
+
+    setCatalogActionLoading(true);
+    try {
+      await onCreateServiceCatalog({
+        name,
+        hoursBase: hoursNumber,
+        description: catalogDescription.trim() || null
+      });
+      setCatalogName("");
+      setCatalogHours("");
+      setCatalogDescription("");
+    } catch (error: any) {
+      setCatalogActionError(error?.message ?? "Erro ao adicionar serviço.");
+    } finally {
+      setCatalogActionLoading(false);
+    }
+  };
+
+  const handleDeleteService = async (serviceId: string, name?: string) => {
+    if (!onDeleteServiceCatalog) return;
+    const confirmed = window.confirm(
+      `Remover o serviço${name ? ` \"${name}\"` : ""}? Tarefas vinculadas ficarão sem serviço.`
+    );
+    if (!confirmed) return;
+    setCatalogActionError(null);
+    setCatalogActionLoading(true);
+    try {
+      await onDeleteServiceCatalog(serviceId);
+    } catch (error: any) {
+      setCatalogActionError(error?.message ?? "Erro ao remover serviço.");
+    } finally {
+      setCatalogActionLoading(false);
+    }
+  };
+
   if (!selectedProjectId) {
     return (
       <section className="page-container edt-page">
@@ -124,6 +198,9 @@ export const EDTPage = () => {
           <button type="button" className="btn-secondary">
             Importar
           </button>
+          <button type="button" className="btn-secondary" onClick={() => setImportOpen(true)}>
+            Catálogo de Serviços
+          </button>
           <button type="button" className="btn-ghost">
             Lixeira
           </button>
@@ -154,9 +231,12 @@ export const EDTPage = () => {
               onCreate={(parentId) => onCreateWbsItem?.(parentId ?? null)}
               onMove={onMoveNode}
               onUpdate={onUpdateWbsNode}
+              onChangeResponsible={onUpdateWbsResponsible}
+              members={members}
               selectedNodeId={selectedNodeId}
               onSelect={onSelectNode}
               onOpenDetails={handleOpenDetails}
+              serviceCatalog={serviceCatalog}
             />
           </div>
         </div>
@@ -285,6 +365,164 @@ export const EDTPage = () => {
         </div>
       )}
 
+      {importOpen && (
+        <div className="gp-modal-backdrop" onClick={() => !importLoading && setImportOpen(false)}>
+          <div
+            className="gp-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="import-service-catalog-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="gp-modal-header">
+              <h2 id="import-service-catalog-title">Importar Catálogo de Serviços</h2>
+              <button
+                type="button"
+                className="gp-modal-close"
+                onClick={() => setImportOpen(false)}
+                aria-label="Fechar"
+                disabled={importLoading}
+              >
+                ×
+              </button>
+            </div>
+            <div className="gp-modal-body">
+              {importError && <div className="gp-alert-error">{importError}</div>}
+              {importSuccess && <div className="gp-alert-success">{importSuccess}</div>}
+              {serviceCatalogError && <div className="gp-alert-error">{serviceCatalogError}</div>}
+              {catalogActionError && <div className="gp-alert-error">{catalogActionError}</div>}
+              <div className="form-field">
+                <label>Arquivo (.xlsx ou .xls)</label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+                  disabled={importLoading}
+                />
+              </div>
+              <div className="form-field" style={{ marginTop: "1rem" }}>
+                <h3 className="gp-modal-subtitle" style={{ marginBottom: "0.5rem" }}>
+                  Adicionar serviço manualmente
+                </h3>
+                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.6fr 1fr auto", gap: "8px", alignItems: "center" }}>
+                  <input
+                    className="gp-input"
+                    placeholder="Nome do serviço"
+                    value={catalogName}
+                    onChange={(e) => setCatalogName(e.target.value)}
+                    disabled={catalogActionLoading}
+                  />
+                  <input
+                    className="gp-input"
+                    type="number"
+                    min={0}
+                    step={0.25}
+                    placeholder="Horas base"
+                    value={catalogHours}
+                    onChange={(e) => setCatalogHours(e.target.value)}
+                    disabled={catalogActionLoading}
+                  />
+                  <input
+                    className="gp-input"
+                    placeholder="Descrição (opcional)"
+                    value={catalogDescription}
+                    onChange={(e) => setCatalogDescription(e.target.value)}
+                    disabled={catalogActionLoading}
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleManualServiceCreate}
+                    disabled={catalogActionLoading}
+                    style={{ whiteSpace: "nowrap" }}
+                  >
+                    {catalogActionLoading ? "Salvando..." : "Adicionar serviço"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-field" style={{ marginTop: "1rem" }}>
+                <h3 className="gp-modal-subtitle" style={{ marginBottom: "0.5rem" }}>
+                  Serviços cadastrados
+                </h3>
+                <div className="gp-table-wrapper">
+                  <table className="gp-table">
+                    <thead>
+                      <tr>
+                        <th>Nome</th>
+                        <th>Horas base</th>
+                        <th>Descrição</th>
+                        <th style={{ width: "110px" }}>Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedServiceCatalog.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} style={{ textAlign: "center", padding: "12px" }}>
+                            Nenhum serviço cadastrado.
+                          </td>
+                        </tr>
+                      ) : (
+                        sortedServiceCatalog.map((service) => (
+                          <tr key={service.id}>
+                            <td>{service.name}</td>
+                            <td>{service.hoursBase ?? service.hours ?? "-"}</td>
+                            <td>{service.description || "-"}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="btn-ghost"
+                                onClick={() => handleDeleteService(service.id, service.name)}
+                                disabled={catalogActionLoading}
+                              >
+                                Excluir
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div className="gp-modal-footer">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setImportOpen(false)}
+                disabled={importLoading}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!importFile || importLoading}
+                onClick={async () => {
+                  if (!onImportServiceCatalog || !importFile) return;
+                  setImportError(null);
+                  setImportSuccess(null);
+                  setImportLoading(true);
+                  try {
+                    await onImportServiceCatalog(importFile);
+                    setImportSuccess("Catálogo importado com sucesso.");
+                    setImportFile(null);
+                    setTimeout(() => setImportOpen(false), 800);
+                  } catch (err: any) {
+                    setImportError(err?.message ?? "Erro ao importar catálogo.");
+                  } finally {
+                    setImportLoading(false);
+                  }
+                }}
+              >
+                {importLoading ? "Importando..." : "Importar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {detailsOpen && selectedTask && (
         <div className="gp-modal-backdrop" onClick={() => setDetailsOpen(false)}>
           <div
@@ -371,3 +609,4 @@ export const EDTPage = () => {
     </section>
   );
 };
+

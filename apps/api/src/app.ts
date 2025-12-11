@@ -14,6 +14,7 @@ import { organizationsRouter } from "./routes/organizations";
 import { logger } from "./config/logger";
 import { subscriptionsRouter } from "./routes/subscriptions";
 import teamRouter from "./routes/team";
+import { serviceCatalogRouter } from "./routes/serviceCatalog";
 
 export const createApp = () => {
   const app = express();
@@ -40,6 +41,7 @@ export const createApp = () => {
   app.use("/organizations", organizationsRouter);
   app.use("/subscriptions", subscriptionsRouter);
   app.use("/organizations", teamRouter);
+  app.use("/service-catalog", serviceCatalogRouter);
 
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     logger.error(err, "Unhandled error");

@@ -33,6 +33,7 @@ import {
 } from "react";
 
 import clsx from "clsx";
+import { DependenciesDropdown, type DependencyOption } from "./DependenciesDropdown";
 import type { PortfolioProject } from "./ProjectPortfolio";
 
 import {
@@ -1036,6 +1037,19 @@ type DashboardLayoutProps = {
 
 
   wbsError: string | null;
+  serviceCatalog: Array<{
+    id: string;
+    name: string;
+    description?: string | null;
+    hoursBase?: number | null;
+    hours?: number | null;
+  }>;
+  serviceCatalogError?: string | null;
+  onImportServiceCatalog?: (file: File | null) => Promise<any>;
+  onCreateServiceCatalog?: (payload: { name: string; hoursBase: number; description?: string | null }) => Promise<any>;
+  onDeleteServiceCatalog?: (serviceId: string) => Promise<any>;
+  onCreateServiceCatalog?: (payload: { name: string; hoursBase: number; description?: string | null }) => Promise<any>;
+  onDeleteServiceCatalog?: (serviceId: string) => Promise<any>;
 
 
 
@@ -1359,6 +1373,15 @@ export type DashboardOutletContext = {
   wbsNodes: any[];
 
   wbsError: string | null;
+  serviceCatalog: Array<{
+    id: string;
+    name: string;
+    description?: string | null;
+    hoursBase?: number | null;
+    hours?: number | null;
+  }>;
+  serviceCatalogError?: string | null;
+  onImportServiceCatalog?: (file: File | null) => Promise<any>;
 
   onMoveNode: (id: string, parentId: string | null, position: number) => void;
 
@@ -1379,10 +1402,15 @@ export type DashboardOutletContext = {
       estimateHours?: number | null;
 
       dependencies?: string[];
+      serviceCatalogId?: string | null;
+      serviceMultiplier?: number | null;
+      serviceHours?: number | null;
 
     }
 
   ) => void;
+
+  onUpdateWbsResponsible: (nodeId: string, membershipId: string | null) => void;
 
   wbsLoading?: boolean;
 
@@ -1419,6 +1447,8 @@ export type DashboardOutletContext = {
   onDeleteProjectWbsItem?: (nodeId: string) => void;
 
   onRestoreProjectWbsItem?: (nodeId: string) => void;
+
+  onUpdateWbsResponsible?: (nodeId: string, membershipId: string | null) => void;
 
   projectDependencyOptions?: any[];
 
@@ -2024,6 +2054,9 @@ type WbsTreeViewProps = {
       estimateHours?: number | null;
 
       dependencies?: string[];
+      serviceCatalogId?: string | null;
+      serviceMultiplier?: number | null;
+      serviceHours?: number | null;
 
     }
 
@@ -2035,6 +2068,16 @@ type WbsTreeViewProps = {
 
   onMove: (id: string, parentId: string | null, position: number) => void;
 
+  members?: Array<{
+    id: string;
+    userId: string;
+    name: string;
+    email?: string;
+    role?: string | null;
+  }>;
+
+  onChangeResponsible?: (nodeId: string, membershipId: string | null) => void;
+
   selectedNodeId: string | null;
 
   onSelect: (nodeId: string | null) => void;
@@ -2044,6 +2087,14 @@ type WbsTreeViewProps = {
   onUpdateDependency?: (nodeId: string, dependencyId: string | null) => void;
 
   onOpenDetails?: (node: any) => void;
+
+  serviceCatalog?: Array<{
+    id: string;
+    name: string;
+    description?: string | null;
+    hoursBase?: number | null;
+    hours?: number | null;
+  }>;
 
 };
 
@@ -2067,6 +2118,10 @@ export const WbsTreeView = ({
 
   onMove,
 
+  members = [],
+
+  onChangeResponsible,
+
   selectedNodeId,
 
   onSelect,
@@ -2075,7 +2130,9 @@ export const WbsTreeView = ({
 
   onUpdateDependency,
 
-  onOpenDetails
+  onOpenDetails,
+
+  serviceCatalog = []
 
 }: WbsTreeViewProps) => {
 
@@ -3816,20 +3873,23 @@ export const WbsTreeView = ({
 
       <div className="edt-horizontal-scroll">
         <table className="wbs-table w-full border-collapse table-fixed" style={{ borderSpacing: 0 }}>
-          <colgroup>
+<colgroup>
             <col style={{ width: "32px" }} />
             <col style={{ width: "50px" }} />
             <col style={{ width: "70px" }} />
             <col style={{ width: "90px" }} />
-          <col style={{ width: "320px" }} />
-          <col style={{ width: "170px" }} />
-          <col style={{ width: "85px" }} />
-          <col style={{ width: "180px" }} />
-          <col style={{ width: "180px" }} />
-          <col style={{ width: "180px" }} />
-          <col style={{ width: "140px" }} />
-          <col style={{ width: "110px" }} />
-        </colgroup>
+            <col style={{ width: "320px" }} />
+            <col style={{ width: "170px" }} />
+            <col style={{ width: "85px" }} />
+            <col style={{ width: "180px" }} />
+            <col style={{ width: "180px" }} />
+            <col style={{ width: "180px" }} />
+            <col style={{ width: "200px" }} />
+            <col style={{ width: "110px" }} />
+            <col style={{ width: "90px" }} />
+            <col style={{ width: "150px" }} />
+            <col style={{ width: "150px" }} />
+          </colgroup>
           <thead>
             <tr className="bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase">
               <th className="px-1 py-2 text-center align-middle">
@@ -3850,8 +3910,11 @@ export const WbsTreeView = ({
               <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Início</th>
               <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Término</th>
               <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Responsável</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Catálogo de Serviços</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Multiplicador</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">HR</th>
               <th className="w-[150px] px-3 py-2 text-left align-middle">Dependências</th>
-              <th className="w-[115px] px-3 py-2 text-center align-middle">Detalhes</th>
+              <th className="w-[150px] px-3 py-2 text-center align-middle">Detalhes</th>
             </tr>
           </thead>
 
@@ -3883,127 +3946,67 @@ export const WbsTreeView = ({
 
 
 
-              const ownerName = row.node.owner?.name ?? null;
-
-
-
-              const ownerEmail = row.node.owner?.email ?? null;
-
-
-
-              const ownerTooltip =
-
-
-
-                ownerName && ownerEmail ? `${ownerName} (${ownerEmail})` : ownerName ?? "Sem Responsável definido";
-
-
-
-              const initials = ownerName
-
-
-
-                ? ownerName
-
-
-
-                    .split(" ")
-
-
-
-                    .map((part: string) => part[0])
-
-
-
-                    .join("")
-
-
-
-                    .slice(0, 2)
-
-
-
-                    .toUpperCase()
-
-
-
-                : null;
+              const responsibleMembershipId = row.node.responsible?.membershipId ?? "";
 
 
 
               const dependencyBadges = Array.isArray(row.node.dependencies) ? row.node.dependencies : [];
-
-
+              const dependencyOptionsList: DependencyOption[] = allRows
+                .filter((optionRow) => optionRow.node.id !== row.node.id)
+                .map((optionRow) => ({
+                  id: optionRow.node.id,
+                  wbsCode: optionRow.node.wbsCode ?? optionRow.displayId,
+                  name: optionRow.node.title ?? optionRow.node.name ?? "Tarefa sem nome"
+                }));
 
               const dependencyInfos = dependencyBadges.map((dependencyId: string) => {
-
-
-
                 const dependencyRow = rowMap.get(dependencyId);
 
-
-
                 if (!dependencyRow) {
-
-
-
                   return {
-
-
-
                     id: dependencyId,
-
-
-
                     label: dependencyId,
-
-
-
-                    tooltip: "Tarefa Não encontrada",
-
-
-
+                    tooltip: "Tarefa N?o encontrada",
                     row: null
-
-
-
                   };
-
-
-
                 }
-
-
 
                 const label = dependencyRow.node.wbsCode ?? dependencyRow.displayId;
 
-
-
                 return {
-
-
-
                   id: dependencyId,
-
-
-
                   label,
-
-
-
-                  tooltip: `${label} - ${dependencyRow.node.title}`,
-
-
-
+                  tooltip: `${label} - ${dependencyRow.node.title ?? ""}`,
                   row: dependencyRow
-
-
-
                 };
-
-
-
               });
+
+
+
+              const selectedService =
+                serviceCatalog.find((service) => service.id === row.node.serviceCatalogId) ?? null;
+
+
+
+              const serviceMultiplierValue = Number(row.node.serviceMultiplier ?? 1) || 1;
+
+
+
+              const serviceBaseHours =
+                selectedService && selectedService.hoursBase !== undefined
+                  ? Number(selectedService.hoursBase ?? 0)
+                  : selectedService && selectedService.hours !== undefined
+                  ? Number(selectedService.hours ?? 0)
+                  : null;
+
+
+
+              const computedServiceHours =
+                typeof row.node.serviceHours === "number"
+                  ? row.node.serviceHours
+                  : serviceBaseHours !== null
+                  ? serviceBaseHours * serviceMultiplierValue
+                  : null;
 
 
 
@@ -4117,25 +4120,22 @@ export const WbsTreeView = ({
                           gap: "6px",
                           lineHeight: 1
                         }}
+                    >
+                      <button
+                        type="button"
+                        onClick={(event) => handleLevelAdjust(event, row.node.id, "up")}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          padding: 0,
+                          margin: 0,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "14px"
+                        }}
                       >
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDecreaseLevel(row.node.id);
-                          }}
-                          style={{
-                            border: "none",
-                            background: "transparent",
-                            padding: 0,
-                            margin: 0,
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: "14px"
-                          }}
-                        >
                           ◀
                         </button>
                         <span
@@ -4150,10 +4150,7 @@ export const WbsTreeView = ({
                         </span>
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleIncreaseLevel(row.node.id);
-                          }}
+                          onClick={(event) => handleLevelAdjust(event, row.node.id, "down")}
                           style={{
                             border: "none",
                             background: "transparent",
@@ -4323,7 +4320,7 @@ export const WbsTreeView = ({
 
                                 <span
                                   className={clsx(
-                                    "truncate",
+                                    "wbs-task-text",
                                     row.node.level === 0 ? "font-semibold" : "font-normal"
                                   )}
                                 >
@@ -4423,509 +4420,186 @@ export const WbsTreeView = ({
 
 
                     <td className="px-4 py-2 align-middle min-w-[180px]">
-
-
-
-                      {ownerName ? (
-
-
-
-                        <div className="wbs-owner" title={ownerTooltip}>
-
-
-
-                          <span className="wbs-owner__avatar">{initials}</span>
-
-
-
-                          <strong>{ownerName}</strong>
-
-
-
-                        </div>
-
-
-
-                      ) : (
-
-
-
-                        <span className="muted">Sem Responsável</span>
-
-
-
-                      )}
-
-
-
+                      <select
+                        className="wbs-responsible-select"
+                        value={responsibleMembershipId}
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={(event) => onChangeResponsible?.(row.node.id, event.target.value || null)}
+                      >
+                        <option value="">Sem responsável</option>
+                        {members.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.name ?? member.email ?? member.userId}
+                          </option>
+                        ))}
+                      </select>
                     </td>
+
+
+
+                    <td className="px-3 py-2 align-middle min-w-[200px]">
+                      <select
+                        className="wbs-service-select"
+                        value={row.node.serviceCatalogId ?? ""}
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={(event) => {
+                          event.stopPropagation();
+                          const newServiceId = event.target.value || null;
+                          const catalogItem = serviceCatalog.find((service) => service.id === newServiceId);
+                          const baseHours = catalogItem ? Number(catalogItem.hoursBase ?? catalogItem.hours ?? 0) : null;
+                          const hours =
+                            baseHours !== null && baseHours !== undefined
+                              ? baseHours * (Number(serviceMultiplierValue) || 1)
+                              : null;
+                          onUpdate(row.node.id, {
+                            serviceCatalogId: newServiceId,
+                            serviceMultiplier: serviceMultiplierValue,
+                            serviceHours: hours ?? undefined
+                          });
+                        }}
+                      >
+                        <option value="">Sem serviço</option>
+                        {serviceCatalog.map((service) => {
+                          const base = service.hoursBase ?? service.hours ?? null;
+                          const label = base !== null && base !== undefined ? `${service.name} (${base}h)` : service.name;
+                          return (
+                            <option key={service.id} value={service.id} title={label}>
+                              {label}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </td>
+
+
+
+                    <td className="px-3 py-2 align-middle w-[110px]">
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        className="wbs-multiplier-input"
+                        value={serviceMultiplierValue}
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={(event) => {
+                          event.stopPropagation();
+                          const value = Math.max(1, Number(event.target.value) || 1);
+                          const catalogItem = row.node.serviceCatalogId
+                            ? serviceCatalog.find((service) => service.id === row.node.serviceCatalogId)
+                            : null;
+                          const baseHours = catalogItem ? Number(catalogItem.hoursBase ?? catalogItem.hours ?? 0) : null;
+                          const hours = baseHours !== null && baseHours !== undefined ? baseHours * value : null;
+                          onUpdate(row.node.id, {
+                            serviceCatalogId: row.node.serviceCatalogId ?? null,
+                            serviceMultiplier: value,
+                            serviceHours: hours ?? undefined,
+                          });
+                        }}
+                      />
+                    </td>
+
+
+
+                    <td className="px-3 py-2 align-middle text-center">
+                      <span className="wbs-hr-badge">
+                        {computedServiceHours !== null && computedServiceHours !== undefined
+                          ? `${Math.max(0, Math.round(computedServiceHours * 100) / 100)}h`
+                          : "-"}
+                      </span>
+                    </td>
+
+
 
                     <td className="wbs-dependencies-cell w-[150px] px-3 py-2 align-middle">
 
-
-
-                      <div
-
-
-
-                        className={`wbs-dependencies-display ${editingDependenciesId === row.node.id ? "is-open" : ""}`}
-
-
-
-                        role="button"
-
-
-
-                        tabIndex={0}
-
-
-
-                        onClick={(event) => {
-
-
-
-                          event.stopPropagation();
-
-
-
-                          openDependencyEditorForNode(row.node.id, dependencyBadges);
-
-
-
-                        }}
-
-
-
-                        onKeyDown={(event) => handleDependencyAreaKeyDown(event, row.node.id, dependencyBadges)}
-
-
-
-                      >
-
-
-
-                        {dependencyInfos.length ? (
-
-
-
-                          <div className="wbs-dependencies">
-
-
-
-                            <span className="wbs-dependencies__label">Depende de</span>
-
-
-
-                            <div className="wbs-dependencies__items">
-
-
-
-                              {dependencyInfos.slice(0, 3).map((info) => (
-
-
-
-                                <span key={`${row.node.id}-${info.id}`} className="wbs-dependency-pill" title={info.tooltip}>
-
-
-
-                                  {info.label}
-
-
-
-                                </span>
-
-
-
-                              ))}
-
-
-
-                              {dependencyInfos.length > 3 && (
-
-
-
-                                <span
-
-
-
-                                  className="wbs-dependency-pill extra"
-
-
-
-                                  title={dependencyInfos
-
-
-
-                                    .slice(3)
-
-
-
-                                    .map((info) => info.tooltip)
-
-
-
-                                    .join("\n")}
-
-
-
-                                >
-
-
-
-                                  +{dependencyInfos.length - 3}
-
-
-
-                                </span>
-
-
-
-                              )}
-
-
-
-                            </div>
-
-
-
-                          </div>
-
-
-
-                        ) : (
-
-
-
-                          <span className="wbs-dependency-pill muted">Sem Dependências</span>
-
-
-
-                        )}
-
-
-
-                      </div>
-
-
-
-                      {editingDependenciesId === row.node.id && (
-
-
-
-                        <div
-
-
-
-                          className="wbs-dependencies-editor"
-
-
-
-                          ref={(element) => {
-
-
-
-                            if (editingDependenciesId === row.node.id) {
-
-
-
-                              dependencyEditorRef.current = element;
-
-
-
-                            }
-
-
-
-                          }}
-
-
-
-                          onClick={(event) => event.stopPropagation()}
-
-
-
-                        >
-
-
-
-                          <div className="wbs-dependencies-editor__header">
-
-
-
-                            <strong>Selecione predecessoras</strong>
-
-
-
-                            <p className="subtext">Marque as tarefas das quais esta atividade depende.</p>
-
-
-
-                          </div>
-
-
-
-                          <div className="wbs-dependencies-editor__list">
-
-
-
-                            {allRows
-
-
-
-                              .filter((optionRow) => optionRow.node.id !== row.node.id)
-
-
-
-                              .map((optionRow) => {
-
-
-
-                                const optionId = optionRow.node.id;
-
-
-
-                                const label = optionRow.node.wbsCode ?? optionRow.displayId;
-
-
-
-                                const title = optionRow.node.title ?? "Tarefa sem nome";
-
-
-
-                                const checked = pendingDependencies.includes(optionId);
-
-
-
-                                return (
-
-
-
-                                  <label key={optionId} className="dependency-option" title={`${label} - ${title}`}>
-
-
-
-                                    <input
-
-
-
-                                      type="checkbox"
-
-
-
-                                      checked={checked}
-
-
-
-                                      onChange={(event) => {
-
-
-
-                                        event.stopPropagation();
-
-
-
-                                        handleDependencyToggle(row.node.id, optionId, event.currentTarget.checked);
-
-
-
-                                      }}
-
-
-
-                                    />
-
-
-
-                                    <span className="dependency-option__title">
-
-
-
-                                      {label} - {title}
-
-
-
-                                    </span>
-
-
-
-                                  </label>
-
-
-
-                                );
-
-
-
-                              })}
-
-
-
-                          </div>
-
-
-
-                        </div>
-
-
-
-                      )}
-
-
+                      <DependenciesDropdown
+                        options={dependencyOptionsList}
+                        selectedIds={dependencyBadges}
+                        onChange={(newSelected) => onUpdate(row.node.id, { dependencies: newSelected })}
+                      />
 
                     </td>
 
 
 
-                    <td className="wbs-details-cell w-[115px] px-3 py-2 align-middle text-center">
+                    <td className="wbs-details-cell w-[150px] px-3 py-2 align-middle text-center">
 
-
-
-                      <button
-
-
-
-                        type="button"
-
-
-
-                        className={`wbs-details-button ${isActive ? "is-active" : ""}`}
-
-
-
-                        onClick={(event) => handleDetailsButton(event, row.node.id)}
-
-
-
-                        aria-label="Ver detalhes da tarefa"
-
-
-
-                      >
-
-
-
-                        <DetailsIcon />
-
-
-
-                        <span className="details-label">Detalhes</span>
-
-
-
-                      </button>
-
-
-
-                    </td>
-
-                    <td>
-
-
-
-                      <div className="wbs-actions" ref={openMenuId === row.node.id ? menuRef : undefined}>
-
-
+                      <div className="wbs-details-actions">
 
                         <button
-
-
-
                           type="button"
-
-
-
-                          className="wbs-actions-trigger"
-
-
-
-                          onClick={(event) => handleMenuToggle(event, row.node.id)}
-
-
-
-                          aria-label="Opções da tarefa"
-
-
-
+                          className={`wbs-details-button ${isActive ? "is-active" : ""}`}
+                          onClick={(event) => handleDetailsButton(event, row.node.id)}
+                          aria-label="Ver detalhes da tarefa"
                         >
 
+                          <DetailsIcon />
 
-
-                          &#183;&#183;&#183;
-
-
+                          <span className="details-label">Detalhes</span>
 
                         </button>
 
+                        <div className="wbs-actions" ref={openMenuId === row.node.id ? menuRef : undefined}>
 
+                          <button
 
-                        {openMenuId === row.node.id && (
+                            type="button"
 
+                            className="wbs-actions-trigger"
 
+                            onClick={(event) => handleMenuToggle(event, row.node.id)}
 
-                          <div className="wbs-actions-menu">
+                            aria-label="Op??es da tarefa"
 
+                          >
 
+                            &#183;&#183;&#183;
 
-                            {[
+                          </button>
 
+                          {openMenuId === row.node.id && (
 
+                            <div className="wbs-actions-menu">
 
-                              "Editar tarefa",
+                              {[
 
+                                "Editar tarefa",
 
+                                "Mover N?vel",
 
-                              "Mover Nível",
+                                "Adicionar subtarefa",
 
+                                "Duplicar",
 
+                                "Excluir"
 
-                              "Adicionar subtarefa",
+                              ].map((label) => (
 
+                                <button
 
+                                  type="button"
 
-                              "Duplicar",
+                                  key={label}
 
+                                  className="wbs-actions-item"
 
+                                  onClick={(event) => handleMenuAction(event, label, row.node)}
 
-                              "Excluir"
+                                >
 
+                                  {label}
 
+                                </button>
 
-                            ].map((label) => (
+                              ))}
 
+                            </div>
 
+                          )}
 
-                              <button
-                                type="button"
-                                key={label}
-                                className="wbs-actions-item"
-                                onClick={(event) => handleMenuAction(event, label, row.node)}
-                              >
-
-
-
-                                {label}
-
-
-
-                              </button>
-
-
-
-                            ))}
-
-
-
-                          </div>
-
-
-
-                        )}
-
-
+                        </div>
 
                       </div>
-
-
 
                     </td>
 
@@ -5587,7 +5261,13 @@ export const ProjectDetailsTabs = ({
 
   wbsError,
 
+  serviceCatalog,
 
+  serviceCatalogError,
+
+  onImportServiceCatalog,
+  onCreateServiceCatalog,
+  onDeleteServiceCatalog,
 
   onMoveNode,
 
@@ -9933,13 +9613,21 @@ export const DashboardLayout = ({
 
   wbsError,
 
+  serviceCatalog,
 
+  serviceCatalogError,
+
+  onImportServiceCatalog,
+  onCreateServiceCatalog,
+  onDeleteServiceCatalog,
 
   onMoveNode,
 
 
 
   onUpdateWbsNode,
+
+  onUpdateWbsResponsible,
 
 
 
@@ -10795,6 +10483,14 @@ export const DashboardLayout = ({
 
   wbsError,
 
+  serviceCatalog,
+
+  serviceCatalogError,
+
+  onImportServiceCatalog,
+  onCreateServiceCatalog,
+  onDeleteServiceCatalog,
+
   wbsLoading: undefined,
 
   onCreateWbsItem,
@@ -10828,6 +10524,8 @@ export const DashboardLayout = ({
   onMoveNode,
 
   onUpdateWbsNode,
+
+  onUpdateWbsResponsible,
 
   selectedNodeId,
 
@@ -14603,9 +14301,6 @@ export const TemplatesPanel = ({
 
 
 };
-
-
-
 
 
 

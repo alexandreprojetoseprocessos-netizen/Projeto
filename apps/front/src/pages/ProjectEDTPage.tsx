@@ -17,7 +17,9 @@ export const ProjectEDTPage = () => {
     onDeleteProjectWbsItem,
     onRestoreProjectWbsItem,
     projectDependencyOptions,
-    onUpdateProjectDependency
+    onUpdateProjectDependency,
+    members,
+    onUpdateWbsResponsible
   } = useOutletContext<DashboardOutletContext>();
 
   useEffect(() => {
@@ -59,6 +61,8 @@ export const ProjectEDTPage = () => {
             dependencyOptions={projectDependencyOptions}
             onUpdateDependency={onUpdateProjectDependency}
             onMove={() => {}}
+            members={members ?? []}
+            onChangeResponsible={onUpdateWbsResponsible}
             selectedNodeId={null}
             onSelect={() => {}}
           />
