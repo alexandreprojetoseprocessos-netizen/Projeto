@@ -58,6 +58,10 @@ export const EDTPage = () => {
   const [trashLoading, setTrashLoading] = useState(false);
   const [trashError, setTrashError] = useState<string | null>(null);
   const [filterText, setFilterText] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("ALL");
+  const [filterService, setFilterService] = useState<string>("ALL");
+  const [filterOwner, setFilterOwner] = useState<string>("ALL");
+  const [filterOverdue, setFilterOverdue] = useState<"ALL" | "OVERDUE">("ALL");
   const [form, setForm] = useState({
     name: "",
     status: "BACKLOG",
@@ -410,20 +414,85 @@ if (!selectedProjectId) {
           )}
         </div>
 
-        <div className="eap-actions-right">
-          <div className="eap-search">
-            <span className="eap-search-icon">⌕</span>
-            <input
-              className="eap-search-input"
-              placeholder="Filtrar: ID, nome, responsável, status…"
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-            />
-            {!!filterText && (
-              <button className="eap-search-clear" onClick={() => setFilterText("")} aria-label="Limpar filtro">
-                ×
-              </button>
-            )}
+        <div className="eap-actions-right no-grow">
+          <div className="eap-filters">
+            <div className="eap-filter-field">
+              <label>Status</label>
+              <select
+                className="eap-filter-select"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="ALL">Todos</option>
+                <option value="BACKLOG">Não iniciado</option>
+                <option value="IN_PROGRESS">Em andamento</option>
+                <option value="DONE">Finalizado</option>
+                <option value="RISK">Em risco</option>
+              </select>
+            </div>
+
+            <div className="eap-filter-field">
+              <label>Catálogo</label>
+              <select
+                className="eap-filter-select"
+                value={filterService}
+                onChange={(e) => setFilterService(e.target.value)}
+              >
+                <option value="ALL">Todos</option>
+                {serviceCatalog?.map((svc) => (
+                  <option key={svc.id} value={svc.id}>
+                    {svc.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="eap-filter-field">
+              <label>Responsável</label>
+              <select
+                className="eap-filter-select"
+                value={filterOwner}
+                onChange={(e) => setFilterOwner(e.target.value)}
+              >
+                <option value="ALL">Todos</option>
+                {members?.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name ?? m.email ?? "Membro"}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="eap-filter-field">
+              <label>Em atraso</label>
+              <select
+                className="eap-filter-select is-small"
+                value={filterOverdue}
+                onChange={(e) => setFilterOverdue(e.target.value as "ALL" | "OVERDUE")}
+              >
+                <option value="ALL">Todos</option>
+                <option value="OVERDUE">Somente em atraso</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="eap-filter-field">
+            <label>Tarefas</label>
+            <div className="eap-search">
+              <span className="eap-search-icon">⌕</span>
+              <input
+                className="eap-search-input compact"
+                placeholder="Filtrar tarefas..."
+                title="Filtrar por ID, nome, responsável ou status"
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+              />
+              {!!filterText && (
+                <button className="eap-search-clear" onClick={() => setFilterText("")} aria-label="Limpar filtro">
+                  ×
+                </button>
+              )}
+            </div>
           </div>
           <span className="eap-count">
             {/** filteredRows is computed inside WbsTreeView; showing quick counts from props */}
@@ -466,6 +535,10 @@ if (!selectedProjectId) {
               onSelectionChange={setSelectedIds}
               clearSelectionKey={clearSelectionKey}
               filterText={filterText}
+              filterStatus={filterStatus}
+              filterService={filterService}
+              filterOwner={filterOwner}
+              filterOverdue={filterOverdue}
             />
           </div>
         </div>

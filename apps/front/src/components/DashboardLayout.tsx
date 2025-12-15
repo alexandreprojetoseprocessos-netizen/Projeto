@@ -2184,6 +2184,10 @@ type WbsTreeViewProps = {
   onSelectionChange?: (ids: string[]) => void;
   clearSelectionKey?: number;
   filterText?: string;
+  filterStatus?: string;
+  filterService?: string;
+  filterOwner?: string;
+  filterOverdue?: "ALL" | "OVERDUE";
 };
 
 
@@ -2226,7 +2230,11 @@ export const WbsTreeView = ({
 
   clearSelectionKey,
 
-  filterText
+  filterText,
+  filterStatus,
+  filterService,
+  filterOwner,
+  filterOverdue
 
 }: WbsTreeViewProps) => {
 
@@ -3257,12 +3265,49 @@ export const WbsTreeView = ({
   const resolveDisplayCode = (node: any, fallback?: string) =>
     node?.code ?? node?.wbsCode ?? node?.idNumber ?? node?.codeValue ?? fallback ?? node?.id;
 
+  const isOverdue = (node: any) => {
+    if (!node?.endDate) return false;
+    const statusValue = String(node.status ?? "").toUpperCase();
+    const isDone =
+      statusValue === "DONE" ||
+      statusValue === "FINISHED" ||
+      statusValue === "COMPLETED" ||
+      statusValue === "FINALIZADO";
+    if (isDone) return false;
+
+    const end = new Date(node.endDate);
+    if (Number.isNaN(end.getTime())) return false;
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+
+    return end < now;
+  };
+
   const filteredRows = useMemo(() => {
     const q = filterText?.trim().toLowerCase();
-    if (!q) return visibleRows;
 
     return visibleRows.filter((row) => {
       const node = row.node || {};
+
+      // status filter
+      if (filterStatus && filterStatus !== "ALL" && String(node.status ?? "") !== filterStatus) return false;
+
+      // service filter
+      if (filterService && filterService !== "ALL" && String(node.serviceCatalogId ?? "") !== filterService) {
+        return false;
+      }
+
+      // owner/responsible filter (using responsibleMembershipId as priority)
+      const ownerValue = String(node.responsibleMembershipId ?? node.ownerId ?? "");
+      if (filterOwner && filterOwner !== "ALL" && ownerValue !== filterOwner) return false;
+
+      // overdue filter
+      if (filterOverdue === "OVERDUE" && !isOverdue(node)) return false;
+
+      if (!q) return true;
+
       const code = String(resolveDisplayCode(node, row.displayId) ?? "").toLowerCase();
       const title = String(node.title ?? node.name ?? "").toLowerCase();
       const status = String(node.status ?? "").toLowerCase();
@@ -3284,7 +3329,7 @@ export const WbsTreeView = ({
         service.includes(q)
       );
     });
-  }, [filterText, visibleRows]);
+  }, [filterText, filterOverdue, filterOwner, filterService, filterStatus, resolveDisplayCode, visibleRows]);
 
   const visibleIds = useMemo(() => filteredRows.map((row) => row.node.id), [filteredRows]);
 
@@ -14768,4 +14813,3 @@ export const TemplatesPanel = ({
 
 
 };
-

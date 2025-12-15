@@ -317,8 +317,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 12px 14px;
+  gap: 12px;
+  padding: 10px 14px;
   border: 1px solid #e2e8f0;
   border-radius: 14px;
   background: #f8fafc;
@@ -327,7 +327,7 @@ body {
 .eap-actions-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -380,6 +380,10 @@ body {
   flex: 1;
 }
 
+.eap-actions-right.no-grow {
+  flex: 0 0 auto;
+}
+
 .eap-search {
   display: flex;
   align-items: center;
@@ -389,9 +393,9 @@ body {
   border-radius: 999px;
   border: 1px solid #cbd5e1;
   background: #ffffff;
-  min-width: 420px;
-  max-width: 60vw;
-  flex: 1;
+  min-width: 320px;
+  max-width: 380px;
+  flex: 0 0 auto;
 }
 
 .eap-search:focus-within {
@@ -411,6 +415,14 @@ body {
   font-size: 13px;
   color: #0f172a;
   background: transparent;
+}
+.eap-search-input.compact {
+  width: 260px;
+  max-width: 260px;
+  min-width: 220px;
+  height: 36px;
+  font-size: 13px;
+  padding: 0 14px;
 }
 
 .eap-search-clear {
@@ -435,6 +447,34 @@ body {
   color: #64748b;
   font-size: 12px;
   white-space: nowrap;
+}
+
+.eap-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.eap-filter-field label {
+  font-size: 11px;
+  color: #64748b;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.eap-filter-select {
+  height: 36px;
+  min-width: 120px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  padding: 0 10px;
+  background: #fff;
+  font-size: 13px;
+  color: #0f172a;
+}
+.eap-filter-select.is-small {
+  min-width: 110px;
 }
 .sidebar-brand-text .brand-sigla { font-size: 15px; font-weight: 700; color: var(--primary-dark); }
 .sidebar-brand-text .brand-subtitle { font-size: 11px; font-weight: 500; color: var(--text-light); }
