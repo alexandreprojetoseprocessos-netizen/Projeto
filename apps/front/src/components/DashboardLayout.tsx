@@ -1,6 +1,7 @@
-import type { DropResult } from "@hello-pangea/dnd";
+﻿import type { DropResult } from "@hello-pangea/dnd";
 
 import { NavLink, Outlet, useLocation, useNavigate, useOutletContext } from "react-router-dom";
+import { createPortal } from "react-dom";
 
 import { useAuth } from "../contexts/AuthContext";
 
@@ -28,9 +29,17 @@ import {
 
   type SVGProps,
 
-  type KeyboardEvent as ReactKeyboardEvent
+  type KeyboardEvent as ReactKeyboardEvent,
+
+  type ReactNode,
+
+  type HTMLAttributes
 
 } from "react";
+
+import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 import clsx from "clsx";
 import { DependenciesDropdown, type DependencyOption } from "./DependenciesDropdown";
@@ -217,6 +226,99 @@ const AlertTriangleIcon: KPIIcon = (props) => (
 
 
 );
+
+
+
+
+
+
+function SortableRow({
+
+  id,
+
+  children,
+
+  dragDisabled,
+
+  className,
+
+  ...rest
+
+}: {
+
+  id: string;
+
+  children: (props: {
+
+    attributes: Record<string, any>;
+
+    listeners: Record<string, any>;
+
+    isDragging: boolean;
+
+  }) => ReactNode;
+
+  dragDisabled?: boolean;
+
+  className?: string;
+
+} & HTMLAttributes<HTMLTableRowElement>) {
+
+
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+
+    id,
+
+    disabled: !!dragDisabled
+
+  });
+
+
+
+  const style: CSSProperties = {
+
+
+
+    transform: CSS.Transform.toString(transform),
+
+
+
+    transition
+
+
+
+  };
+
+
+
+  return (
+
+
+
+    <tr
+
+      ref={setNodeRef}
+
+      style={style}
+
+      className={clsx(className, isDragging ? "wbs-row-dragging" : "")}
+
+      {...rest}
+
+    >
+
+      {children({ attributes, listeners, isDragging })}
+
+    </tr>
+
+
+
+  );
+
+
+
+}
 
 
 
@@ -488,7 +590,7 @@ const MenuDotsIcon: KPIIcon = (props) => (
 
 const sidebarNavigation = [
 
-  { id: "organizacao", label: "Organizacoes", icon: BuildingIcon, path: "/organizacao" },
+  { id: "organizacao", label: "Organiza??es", icon: BuildingIcon, path: "/organizacao" },
 
   { id: "dashboard", label: "Dashboard", icon: BriefcaseIcon, path: "/dashboard" },
 
@@ -1047,11 +1149,13 @@ type DashboardLayoutProps = {
   serviceCatalogError?: string | null;
   onImportServiceCatalog?: (file: File | null) => Promise<any>;
   onCreateServiceCatalog?: (payload: { name: string; hoursBase: number; description?: string | null }) => Promise<any>;
-  onDeleteServiceCatalog?: (serviceId: string) => Promise<any>;
-  onCreateServiceCatalog?: (payload: { name: string; hoursBase: number; description?: string | null }) => Promise<any>;
+  onUpdateServiceCatalog?: (
+    serviceId: string,
+    payload: { name?: string; hoursBase?: number; description?: string | null }
+  ) => Promise<any>;
   onDeleteServiceCatalog?: (serviceId: string) => Promise<any>;
 
-
+  onReloadWbs: () => void;
 
   onMoveNode: (id: string, parentId: string | null, position: number) => void;
 
@@ -1101,7 +1205,7 @@ type DashboardLayoutProps = {
 
 
 
-  onCreateWbsItem?: (parentId: string | null) => void;
+  onCreateWbsItem?: (parentId: string | null, data?: Record<string, any>) => Promise<void> | void;
 
 
 
@@ -1382,6 +1486,14 @@ export type DashboardOutletContext = {
   }>;
   serviceCatalogError?: string | null;
   onImportServiceCatalog?: (file: File | null) => Promise<any>;
+  onCreateServiceCatalog?: (payload: { name: string; hoursBase: number; description?: string | null }) => Promise<any>;
+  onUpdateServiceCatalog?: (
+    serviceId: string,
+    payload: { name?: string; hoursBase?: number; description?: string | null }
+  ) => Promise<any>;
+  onDeleteServiceCatalog?: (serviceId: string) => Promise<any>;
+
+  onReloadWbs: () => void;
 
   onMoveNode: (id: string, parentId: string | null, position: number) => void;
 
@@ -2028,46 +2140,27 @@ const getDurationInputValue = (node: any): string => {
 
 
 type WbsTreeViewProps = {
-
   nodes: any[];
-
   loading?: boolean;
-
   error?: string | null;
-
   onCreate?: (parentId: string | null) => void;
-
   onUpdate: (
-
     nodeId: string,
-
     changes: {
-
       title?: string;
-
       status?: string;
-
       startDate?: string | null;
-
       endDate?: string | null;
-
       estimateHours?: number | null;
-
       dependencies?: string[];
       serviceCatalogId?: string | null;
       serviceMultiplier?: number | null;
       serviceHours?: number | null;
-
     }
-
   ) => void;
-
   onDelete?: (nodeId: string) => void;
-
   onRestore?: (nodeId: string) => void;
-
   onMove: (id: string, parentId: string | null, position: number) => void;
-
   members?: Array<{
     id: string;
     userId: string;
@@ -2075,19 +2168,12 @@ type WbsTreeViewProps = {
     email?: string;
     role?: string | null;
   }>;
-
   onChangeResponsible?: (nodeId: string, membershipId: string | null) => void;
-
   selectedNodeId: string | null;
-
   onSelect: (nodeId: string | null) => void;
-
   dependencyOptions?: Array<{ id: string; label: string; title?: string }>;
-
   onUpdateDependency?: (nodeId: string, dependencyId: string | null) => void;
-
   onOpenDetails?: (node: any) => void;
-
   serviceCatalog?: Array<{
     id: string;
     name: string;
@@ -2095,7 +2181,8 @@ type WbsTreeViewProps = {
     hoursBase?: number | null;
     hours?: number | null;
   }>;
-
+  onSelectionChange?: (ids: string[]) => void;
+  clearSelectionKey?: number;
 };
 
 
@@ -2132,15 +2219,45 @@ export const WbsTreeView = ({
 
   onOpenDetails,
 
-  serviceCatalog = []
+  serviceCatalog = [],
+
+  onSelectionChange,
+
+  clearSelectionKey
 
 }: WbsTreeViewProps) => {
 
 
 
-  const { selectedOrganizationId: currentOrganizationId } = useOutletContext<DashboardOutletContext>();
+  const {
+
+    selectedOrganizationId: currentOrganizationId,
+
+    selectedProjectId,
+
+    onReloadWbs
+
+  } = useOutletContext<DashboardOutletContext>();
   const { token: authToken, user: currentUser } = useAuth();
 
+
+
+
+
+
+  const [treeNodes, setTreeNodes] = useState(nodes);
+
+
+
+  useEffect(() => {
+
+
+
+    setTreeNodes(nodes);
+
+
+
+  }, [nodes]);
 
 
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
@@ -2148,6 +2265,8 @@ export const WbsTreeView = ({
 
 
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [activeMenuNode, setActiveMenuNode] = useState<any | null>(null);
 
 
 
@@ -2183,6 +2302,7 @@ export const WbsTreeView = ({
   const [chatCounts, setChatCounts] = useState<Record<string, number>>({});
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const lastClearKeyRef = useRef<number | undefined>(undefined);
 
 
 
@@ -2290,11 +2410,11 @@ export const WbsTreeView = ({
 
 
 
-    return buildRows(nodes);
+    return buildRows(treeNodes);
 
 
 
-  }, [nodes]);
+  }, [treeNodes]);
 
 
 
@@ -2322,6 +2442,76 @@ export const WbsTreeView = ({
 
 
 
+
+
+
+  const updateSiblingsInTree = useCallback(
+
+    (list: any[], parentId: string | null, updatedSiblings: any[]): any[] => {
+
+
+
+      if (parentId === null) {
+
+
+
+        return updatedSiblings.map((child) => ({
+
+          ...child,
+
+          children: Array.isArray(child.children) ? child.children : child.children
+
+        }));
+
+      }
+
+
+
+      return list.map((node) => {
+
+
+
+        if (node.id === parentId) {
+
+
+
+          return {
+
+            ...node,
+
+            children: updatedSiblings
+
+          };
+
+        }
+
+
+
+        if (Array.isArray(node.children) && node.children.length) {
+
+
+
+          return {
+
+            ...node,
+
+            children: updateSiblingsInTree(node.children, parentId, updatedSiblings)
+
+          };
+
+        }
+
+
+
+        return node;
+
+      });
+
+    },
+
+    []
+
+  );
 
 
 
@@ -2810,7 +3000,7 @@ export const WbsTreeView = ({
 
 
 
-    nodes.forEach((node) => compute(node));
+    treeNodes.forEach((node) => compute(node));
 
 
 
@@ -2818,7 +3008,7 @@ export const WbsTreeView = ({
 
 
 
-  }, [nodes]);
+  }, [treeNodes]);
 
 
 
@@ -2932,21 +3122,13 @@ export const WbsTreeView = ({
 
 
     const handleDocumentMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      const clickedTrigger = target.closest(".wbs-actions-trigger");
+      if (clickedTrigger) return;
 
-
-
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-
-
-
+      if (menuRef.current && !menuRef.current.contains(target)) {
         setOpenMenuId(null);
-
-
-
       }
-
-
-
     };
 
 
@@ -2976,6 +3158,8 @@ export const WbsTreeView = ({
 
 
     document.addEventListener("keydown", handleKeyDown);
+    const handleScroll = () => setOpenMenuId(null);
+    window.addEventListener("scroll", handleScroll, true);
 
 
 
@@ -2988,6 +3172,7 @@ export const WbsTreeView = ({
 
 
       document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("scroll", handleScroll, true);
 
 
 
@@ -2995,6 +3180,13 @@ export const WbsTreeView = ({
 
 
 
+  }, [openMenuId]);
+
+  useEffect(() => {
+    if (!openMenuId) {
+      setMenuPosition(null);
+      setActiveMenuNode(null);
+    }
   }, [openMenuId]);
 
 
@@ -3059,6 +3251,132 @@ export const WbsTreeView = ({
 
 
 
+  const visibleIds = useMemo(() => visibleRows.map((row) => row.node.id), [visibleRows]);
+
+
+
+  const handleDragEnd = useCallback(
+
+    async (event: DragEndEvent) => {
+
+
+
+      const { active, over } = event;
+
+
+
+      if (!over || active.id === over.id) return;
+
+
+
+      const activeId = String(active.id);
+
+      const overId = String(over.id);
+
+
+
+      const activeRow = rowMap.get(activeId);
+
+      const overRow = rowMap.get(overId);
+
+
+
+      if (!activeRow || !overRow) return;
+
+
+
+      const activeParentId = activeRow.parentId ?? null;
+
+
+
+      if (activeParentId !== (overRow.parentId ?? null)) return;
+
+
+
+      const parentRow = activeParentId ? rowMap.get(activeParentId) : null;
+
+
+
+      const siblings = parentRow ? parentRow.node.children ?? [] : treeNodes;
+
+      const activeIndex = siblings.findIndex((child: any) => child.id === activeId);
+
+      const overIndex = siblings.findIndex((child: any) => child.id === overId);
+
+
+
+      if (activeIndex < 0 || overIndex < 0) return;
+
+
+
+      const reorderedSiblings = arrayMove(siblings, activeIndex, overIndex).map((sibling, index) => ({
+
+        ...sibling,
+
+        sortOrder: index * 1000
+
+      }));
+
+
+
+      const orderedIds = reorderedSiblings.map((item) => item.id);
+
+
+
+      setTreeNodes((prev) => updateSiblingsInTree(prev, activeParentId, reorderedSiblings));
+
+
+
+      if (!authToken || !selectedProjectId) return;
+
+
+
+      try {
+
+        await fetch(`${API_BASE_URL}/wbs/reorder`, {
+
+          method: "PATCH",
+
+          headers: {
+
+            "Content-Type": "application/json",
+
+            Authorization: `Bearer ${authToken}`,
+
+            "X-Organization-Id": currentOrganizationId
+
+          },
+
+          body: JSON.stringify({
+
+            projectId: selectedProjectId,
+
+            parentId: activeParentId,
+
+            orderedIds
+
+          })
+
+        });
+
+      } catch (error) {
+
+        console.error("Failed to reorder WBS", error);
+
+        setTreeNodes(nodes);
+
+        onReloadWbs?.();
+
+      }
+
+    },
+
+    [authToken, currentOrganizationId, nodes, onReloadWbs, rowMap, selectedProjectId, treeNodes, updateSiblingsInTree]
+
+  );
+
+
+
   const handleSelectAllVisible = (checked: boolean) => {
 
     const ids = visibleRows.map((row) => row.node.id);
@@ -3103,6 +3421,19 @@ export const WbsTreeView = ({
   }, [nodes]);
 
   useEffect(() => {
+    if (onSelectionChange) {
+      onSelectionChange(selectedTaskIds);
+    }
+  }, [selectedTaskIds, onSelectionChange]);
+
+  useEffect(() => {
+    if (clearSelectionKey !== undefined && clearSelectionKey !== lastClearKeyRef.current) {
+      lastClearKeyRef.current = clearSelectionKey;
+      setSelectedTaskIds([]);
+    }
+  }, [clearSelectionKey]);
+
+  useEffect(() => {
     if (!visibleRows.length) return;
     if (!authToken || !currentOrganizationId) return;
 
@@ -3131,7 +3462,7 @@ export const WbsTreeView = ({
             newCounts[row.node.id] = Array.isArray(comments) ? comments.length : 0;
           } catch (error) {
             if (controller.signal.aborted) return;
-            console.error("Erro ao carregar contador de comentários", error);
+            console.error("Erro ao carregar contador de Comentários", error);
           }
         })
       );
@@ -3171,8 +3502,8 @@ export const WbsTreeView = ({
         });
 
         if (!response.ok) {
-          console.error("Erro na API de comentários (GET)", response.status, await response.text());
-          if (active) setChatError("Erro ao listar comentários");
+          console.error("Erro na API de Comentários (GET)", response.status, await response.text());
+          if (active) setChatError("Erro ao listar Comentários");
           return;
         }
 
@@ -3182,8 +3513,8 @@ export const WbsTreeView = ({
         setChatCounts((prev) => ({ ...prev, [openChatTaskId]: data.length }));
         setChatError(null);
       } catch (error) {
-        console.error("Erro na API de comentários (GET)", error);
-        if (active) setChatError("Erro ao listar comentários");
+        console.error("Erro na API de Comentários (GET)", error);
+        if (active) setChatError("Erro ao listar Comentários");
       } finally {
         if (active) setIsChatLoading(false);
       }
@@ -3217,7 +3548,7 @@ export const WbsTreeView = ({
       });
       
       if (!response.ok) {
-        console.error("Erro na API de comentários (POST)", response.status, await response.text());
+        console.error("Erro na API de Comentários (POST)", response.status, await response.text());
         setChatError("Erro ao criar comentário");
         return;
       }
@@ -3228,7 +3559,7 @@ export const WbsTreeView = ({
       setChatDraft("");
       setChatError(null);
     } catch (error) {
-      console.error("Erro na API de comentários (POST)", error);
+      console.error("Erro na API de Comentários (POST)", error);
       setChatError("Erro ao enviar comentário");
     } finally {
       setIsChatLoading(false);
@@ -3298,7 +3629,7 @@ export const WbsTreeView = ({
 
 
 
-      const siblings = newParentRow ? newParentRow.node.children ?? [] : nodes;
+      const siblings = newParentRow ? newParentRow.node.children ?? [] : treeNodes;
 
 
 
@@ -3330,7 +3661,7 @@ export const WbsTreeView = ({
 
 
 
-    const siblings = parentRow ? parentRow.node.children ?? [] : nodes;
+    const siblings = parentRow ? parentRow.node.children ?? [] : treeNodes;
 
 
 
@@ -3387,6 +3718,13 @@ export const WbsTreeView = ({
 
 
   };
+
+
+
+
+
+  const resolveDisplayCode = (node: any, fallback?: string) =>
+    node?.code ?? node?.wbsCode ?? node?.idNumber ?? node?.codeValue ?? fallback ?? node?.id;
 
 
 
@@ -3729,7 +4067,7 @@ export const WbsTreeView = ({
 
 
 
-  const handleMenuToggle = (event: MouseEvent<HTMLButtonElement>, nodeId: string) => {
+  const handleMenuToggle = (event: MouseEvent<HTMLButtonElement>, node: any) => {
 
 
 
@@ -3749,15 +4087,27 @@ export const WbsTreeView = ({
 
 
 
-    setOpenMenuId((current) => (current === nodeId ? null : nodeId));
+    const target = event.currentTarget as HTMLButtonElement;
+    const rect = target.getBoundingClientRect();
+    setMenuPosition({
+      top: rect.bottom + 4,
+      left: rect.left - 120,
+      width: 160
+    });
+    setActiveMenuNode(node);
+
+    setOpenMenuId((current) => {
+      const next = current === node.id ? null : node.id;
+      if (next === null) {
+        setMenuPosition(null);
+        setActiveMenuNode(null);
+      }
+      return next;
+    });
 
 
 
   };
-
-
-
-
 
 
 
@@ -3769,7 +4119,7 @@ export const WbsTreeView = ({
 
 
 
-    window.alert(`Ação "${label}" para ${node.title} dispoNível em breve.`);
+    window.alert(`Ação "${label}" para ${node.title} disponível em breve.`);
 
 
 
@@ -3849,7 +4199,7 @@ export const WbsTreeView = ({
 
 
 
-  if (!nodes.length) {
+  if (!treeNodes.length) {
 
 
 
@@ -3871,9 +4221,11 @@ export const WbsTreeView = ({
 
 
 
-      <div className="edt-horizontal-scroll">
-        <table className="wbs-table w-full border-collapse table-fixed" style={{ borderSpacing: 0 }}>
+      <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <div className="edt-horizontal-scroll">
+          <table className="wbs-table w-full border-collapse table-fixed" style={{ borderSpacing: 0 }}>
 <colgroup>
+            <col style={{ width: "28px" }} />
             <col style={{ width: "32px" }} />
             <col style={{ width: "50px" }} />
             <col style={{ width: "70px" }} />
@@ -3891,42 +4243,44 @@ export const WbsTreeView = ({
             <col style={{ width: "150px" }} />
           </colgroup>
           <thead>
-            <tr className="bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase">
-              <th className="px-1 py-2 text-center align-middle">
-                <input
-                  type="checkbox"
-                  aria-label="Selecionar todas as tarefas"
-                  ref={selectAllRef}
-                  checked={isAllVisibleSelected}
-                  onChange={(event) => handleSelectAllVisible(event.target.checked)}
-                />
-              </th>
-              <th className="px-1 py-2 text-center align-middle">ID</th>
-              <th className="px-1 py-2 text-center align-middle" title="Comentários da tarefa">Chat</th>
-              <th className="px-1 py-2 text-center align-middle">Nível</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Nome da tarefa</th>
-              <th className="w-[150px] px-3 py-2 text-left align-middle">Situação</th>
-              <th className="w-[140px] px-3 py-2 text-left align-middle">Duração</th>
-              <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Início</th>
-              <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Término</th>
-              <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Responsável</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Catálogo de Serviços</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Multiplicador</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">HR</th>
-              <th className="w-[150px] px-3 py-2 text-left align-middle">Dependências</th>
-              <th className="w-[150px] px-3 py-2 text-center align-middle">Detalhes</th>
-            </tr>
-          </thead>
+          <tr className="bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase">
+            <th className="px-1 py-2 text-center align-middle" aria-hidden="true" />
+            <th className="px-1 py-2 text-center align-middle">
+              <input
+                type="checkbox"
+                aria-label="Selecionar todas as tarefas"
+                ref={selectAllRef}
+                checked={isAllVisibleSelected}
+                onChange={(event) => handleSelectAllVisible(event.target.checked)}
+              />
+            </th>
+            <th className="px-1 py-2 text-center align-middle">ID</th>
+            <th className="px-1 py-2 text-center align-middle" title="Comentários da tarefa">Chat</th>
+            <th className="px-1 py-2 text-center align-middle">Nível</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Nome da tarefa</th>
+            <th className="w-[150px] px-3 py-2 text-left align-middle">Situação</th>
+            <th className="w-[140px] px-3 py-2 text-left align-middle">Duração</th>
+            <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Início</th>
+            <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Término</th>
+            <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Responsável</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Catálogo de Serviços</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Multiplicador</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">HR</th>
+            <th className="w-[150px] px-3 py-2 text-left align-middle">Dependências</th>
+            <th className="w-[150px] px-3 py-2 text-center align-middle">Detalhes</th>
+          </tr>
+        </thead>
 
-          <tbody>
-
-
-
-            {visibleRows.map((row) => {
+          <SortableContext items={visibleIds} strategy={verticalListSortingStrategy}>
+            <tbody>
 
 
 
-              const displayId = row.node.wbsCode ?? row.displayId;
+                {visibleRows.map((row) => {
+
+
+
+              const displayId = resolveDisplayCode(row.node, row.displayId);
 
 
 
@@ -3953,11 +4307,16 @@ export const WbsTreeView = ({
               const dependencyBadges = Array.isArray(row.node.dependencies) ? row.node.dependencies : [];
               const dependencyOptionsList: DependencyOption[] = allRows
                 .filter((optionRow) => optionRow.node.id !== row.node.id)
-                .map((optionRow) => ({
-                  id: optionRow.node.id,
-                  wbsCode: optionRow.node.wbsCode ?? optionRow.displayId,
-                  name: optionRow.node.title ?? optionRow.node.name ?? "Tarefa sem nome"
-                }));
+                .map((optionRow) => {
+                  const optionDisplayCode = resolveDisplayCode(optionRow.node, optionRow.displayId);
+
+                  return {
+                    id: optionRow.node.id,
+                    name: optionRow.node.title ?? optionRow.node.name ?? "Tarefa sem nome",
+                    displayCode: optionDisplayCode,
+                    wbsCode: optionRow.node.wbsCode ?? optionRow.displayId
+                  };
+                });
 
               const dependencyInfos = dependencyBadges.map((dependencyId: string) => {
                 const dependencyRow = rowMap.get(dependencyId);
@@ -3971,7 +4330,7 @@ export const WbsTreeView = ({
                   };
                 }
 
-                const label = dependencyRow.node.wbsCode ?? dependencyRow.displayId;
+                const label = resolveDisplayCode(dependencyRow.node, dependencyRow.displayId);
 
                 return {
                   id: dependencyId,
@@ -4014,7 +4373,7 @@ export const WbsTreeView = ({
 
 
 
-              const siblingsAtLevel = parentRow ? parentRow.node.children ?? [] : nodes;
+              const siblingsAtLevel = parentRow ? parentRow.node.children ?? [] : treeNodes;
 
 
 
@@ -4062,30 +4421,44 @@ export const WbsTreeView = ({
 
 
 
-                <Fragment key={row.node.id}>
+                <SortableRow
+                  key={row.node.id}
+                  id={row.node.id}
+                  className={`wbs-row level-${limitedLevel} ${isActive ? "is-active" : ""}`}
+                  data-progress={progressValue}
+                  data-node-id={row.node.id}
+                >
+                  {({ attributes, listeners, isDragging }) => (
 
 
 
-                  <tr
-                    className={`wbs-row level-${limitedLevel} ${isActive ? "is-active" : ""}`}
-                    data-progress={progressValue}
-                    data-node-id={row.node.id}
-                  >
+                    <>
+                      <td className="px-1 py-2 text-center align-middle">
+                        <button
+                          type="button"
+                          className="wbs-drag-handle"
+                          onClick={(event) => event.stopPropagation()}
+                          {...attributes}
+                          {...listeners}
+                          data-dragging={isDragging || undefined}
+                          aria-label="Arrastar para reordenar"
+                        >
+                          ⋮⋮
+                        </button>
+                      </td>
 
-
-
-                    <td className="px-1 py-2 text-center align-middle">
-                      <input
-                        type="checkbox"
-                        aria-label={`Selecionar tarefa ${displayId}`}
-                        checked={selectedTaskIds.includes(row.node.id)}
-                        onChange={(event) => {
-                          event.stopPropagation();
-                          handleSelectRow(event.target.checked, row.node.id);
-                        }}
-                        onClick={(event) => event.stopPropagation()}
-                      />
-                    </td>
+                      <td className="px-1 py-2 text-center align-middle">
+                        <input
+                          type="checkbox"
+                          aria-label={`Selecionar tarefa ${displayId}`}
+                          checked={selectedTaskIds.includes(row.node.id)}
+                          onChange={(event) => {
+                            event.stopPropagation();
+                            handleSelectRow(event.target.checked, row.node.id);
+                          }}
+                          onClick={(event) => event.stopPropagation()}
+                        />
+                      </td>
 
                     <td className="px-1 py-2 text-center align-middle text-[11px] text-slate-700">{displayId}</td>
                     <td className="px-1 py-2 text-center align-middle">
@@ -4136,8 +4509,8 @@ export const WbsTreeView = ({
                           fontSize: "14px"
                         }}
                       >
-                          ◀
-                        </button>
+                        ◀
+                      </button>
                         <span
                           style={{
                             minWidth: "12px",
@@ -4163,8 +4536,8 @@ export const WbsTreeView = ({
                             fontSize: "14px"
                           }}
                         >
-                          ▶
-                        </button>
+                        ▶
+                      </button>
                       </div>
                     </td>
 
@@ -4365,7 +4738,7 @@ export const WbsTreeView = ({
                           event.stopPropagation();
                           onUpdate(row.node.id, { status: event.target.value });
                         }}
-                        aria-label="Alterar situação da tarefa"
+                        aria-label="Alterar situAção da tarefa"
                         className={clsx(
                           "min-w-[150px] rounded-full px-4 py-1 text-xs font-semibold cursor-pointer border shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-200 focus:ring-offset-1 appearance-none",
                           STATUS_CLASS[row.node.status] ?? STATUS_CLASS.default
@@ -4426,7 +4799,7 @@ export const WbsTreeView = ({
                         onClick={(event) => event.stopPropagation()}
                         onChange={(event) => onChangeResponsible?.(row.node.id, event.target.value || null)}
                       >
-                        <option value="">Sem responsável</option>
+                        <option value="">Sem Responsável</option>
                         {members.map((member) => (
                           <option key={member.id} value={member.id}>
                             {member.name ?? member.email ?? member.userId}
@@ -4538,8 +4911,7 @@ export const WbsTreeView = ({
                           <span className="details-label">Detalhes</span>
 
                         </button>
-
-                        <div className="wbs-actions" ref={openMenuId === row.node.id ? menuRef : undefined}>
+                        <div className="wbs-actions">
 
                           <button
 
@@ -4547,9 +4919,9 @@ export const WbsTreeView = ({
 
                             className="wbs-actions-trigger"
 
-                            onClick={(event) => handleMenuToggle(event, row.node.id)}
+                            onClick={(event) => handleMenuToggle(event, row.node)}
 
-                            aria-label="Op??es da tarefa"
+                            aria-label="Opções da tarefa"
 
                           >
 
@@ -4557,62 +4929,16 @@ export const WbsTreeView = ({
 
                           </button>
 
-                          {openMenuId === row.node.id && (
-
-                            <div className="wbs-actions-menu">
-
-                              {[
-
-                                "Editar tarefa",
-
-                                "Mover N?vel",
-
-                                "Adicionar subtarefa",
-
-                                "Duplicar",
-
-                                "Excluir"
-
-                              ].map((label) => (
-
-                                <button
-
-                                  type="button"
-
-                                  key={label}
-
-                                  className="wbs-actions-item"
-
-                                  onClick={(event) => handleMenuAction(event, label, row.node)}
-
-                                >
-
-                                  {label}
-
-                                </button>
-
-                              ))}
-
-                            </div>
-
-                          )}
-
                         </div>
-
                       </div>
 
                     </td>
 
 
 
-                  </tr>
-
-
-
-
-
-
-                </Fragment>
+                    </>
+                  )}
+                </SortableRow>
 
 
 
@@ -4624,13 +4950,49 @@ export const WbsTreeView = ({
 
 
 
-          </tbody>
+            </tbody>
+          </SortableContext>
 
 
+          </table>
 
-        </table>
+        </div>
+      </DndContext>
 
-      </div>
+      {openMenuId && menuPosition && activeMenuNode &&
+        createPortal(
+          <div
+            className="wbs-actions-menu-overlay"
+            style={{
+              position: "fixed",
+              top: menuPosition.top,
+              left: menuPosition.left,
+              zIndex: 9999,
+              width: menuPosition.width
+            }}
+            ref={menuRef}
+          >
+            <div className="wbs-actions-menu">
+              {[
+                "Editar tarefa",
+                "Mover Nível",
+                "Adicionar subtarefa",
+                "Duplicar",
+                "Excluir"
+              ].map((label) => (
+                <button
+                  type="button"
+                  key={label}
+                  className="wbs-actions-item"
+                  onClick={(event) => handleMenuAction(event, label, activeMenuNode)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>,
+          document.body
+        )}
 
     </div>
 
@@ -4653,7 +5015,7 @@ export const WbsTreeView = ({
           </div>
           <div className="gp-modal-body wbs-chat-body">
             <div className="wbs-chat-messages">
-              {isChatLoading && <p className="muted">Carregando comentários...</p>}
+              {isChatLoading && <p className="muted">Carregando Comentários...</p>}
               {!isChatLoading &&
                 chatMessagesForModal.map((message: WbsComment) => (
                   <div key={message.id} className="wbs-chat-message">
@@ -4671,7 +5033,7 @@ export const WbsTreeView = ({
               <textarea
                 value={chatDraft}
                 onChange={(event) => setChatDraft(event.target.value)}
-                placeholder="Escreva um comentário… use @ para mencionar alguém"
+                placeholder="Escreva um comentárioÃ¢â‚¬Â¦ use @ para mencionar alguém"
                 rows={3}
               />
               <div className="wbs-chat-actions">
@@ -5267,7 +5629,10 @@ export const ProjectDetailsTabs = ({
 
   onImportServiceCatalog,
   onCreateServiceCatalog,
+  onUpdateServiceCatalog,
   onDeleteServiceCatalog,
+
+  onReloadWbs,
 
   onMoveNode,
 
@@ -5546,45 +5911,16 @@ export const ProjectDetailsTabs = ({
 
 
   const formatShortDate = (value?: string | null) => {
-
-
-
-    if (!value) return "âââ€šÂ¬ââ‚¬Â";
-
-
+    if (!value) return "-";
 
     try {
-
-
-
       return new Date(value).toLocaleDateString("pt-BR", {
-
-
-
         day: "2-digit",
-
-
-
         month: "short"
-
-
-
       });
-
-
-
     } catch {
-
-
-
-      return "âââ€šÂ¬ââ‚¬Â";
-
-
-
+      return "-";
     }
-
-
-
   };
 
 
@@ -5594,25 +5930,11 @@ export const ProjectDetailsTabs = ({
 
 
   const formatFileSize = (value?: number | null) => {
-
-
-
-    if (!value) return "âââ€šÂ¬ââ‚¬Â";
-
-
+    if (!value) return "-";
 
     if (value < 1024) return `${value} B`;
-
-
-
     if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-
-
-
     return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-
-
-
   };
 
 
@@ -5733,7 +6055,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            {projectLoading ? "Buscando cards do portfólio para montar o cabeçalho." : "Escolha um projeto no topo para ver os detalhes completos."}
+            {projectLoading ? "Buscando cards do portfÃƒÂ³lio para montar o cabeÃƒÂ§alho." : "Escolha um projeto no topo para ver os detalhes completos."}
 
 
 
@@ -5785,7 +6107,7 @@ export const ProjectDetailsTabs = ({
 
 
           <p className="subtext">
-            Código {projectMeta.code ?? "N/A"} • Cliente {projectMeta.clientName ?? "Não informado"}
+            Código {projectMeta.code ?? "N/A"} Ã¢â‚¬Â¢ Cliente {projectMeta.clientName ?? "Não informado"}
           </p>
 
 
@@ -5798,7 +6120,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            <span>Responsável: {projectMeta.responsibleName ?? "âââ€šÂ¬ââ‚¬Â"}</span>
+            <span>Respons?vel: {projectMeta.responsibleName ?? "N?o informado"}</span>
 
 
 
@@ -5806,7 +6128,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              Período: {formatShortDate(projectMeta.startDate)} âââ€šÂ¬ââ‚¬Â {formatShortDate(projectMeta.endDate)}
+              PerÃƒÂ­odo: {formatShortDate(projectMeta.startDate)} ÃƒÂ¢ÃƒÂ¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÂ¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â {formatShortDate(projectMeta.endDate)}
 
 
 
@@ -6196,7 +6518,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              <p className="subtext">Visão dos últimos {filters.rangeDays} dias</p>
+              <p className="subtext">VisÃƒÂ£o dos ÃƒÂºltimos {filters.rangeDays} dias</p>
 
 
 
@@ -6620,7 +6942,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-          <p className="muted">Acompanhe o plano de mitigação e distribua responsáveis para cada item crítico.</p>
+          <p className="muted">Acompanhe o plano de mitigAção e distribua responsÃƒÂ¡veis para cada item crÃƒÂ­tico.</p>
 
 
 
@@ -6660,7 +6982,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-          <p className="subtext">Somatório das últimas entregas</p>
+          <p className="subtext">SomatÃƒÂ³rio das ÃƒÂºltimas entregas</p>
 
 
 
@@ -6760,7 +7082,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            <p className="muted">Nenhuma tarefa atribuída.</p>
+            <p className="muted">Nenhuma tarefa atribuÃƒÂ­da.</p>
 
 
 
@@ -7109,7 +7431,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-                {doc.uploadedBy?.fullName ?? doc.uploadedBy?.email ?? "Equipe"} · {formatShortDate(doc.createdAt)}
+                {doc.uploadedBy?.fullName ?? doc.uploadedBy?.email ?? "Equipe"} Ã‚Â· {formatShortDate(doc.createdAt)}
 
 
 
@@ -7121,7 +7443,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-                {formatFileSize(doc.fileSize)} · {doc.targetType === "WBS_NODE" ? "Vinculado à WBS" : "Projeto"}
+                {formatFileSize(doc.fileSize)} Ã‚Â· {doc.targetType === "WBS_NODE" ? "Vinculado ÃƒÂ  WBS" : "Projeto"}
 
 
 
@@ -7141,7 +7463,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-                onClick={() => window.alert("Integração de download em breve.")}
+                onClick={() => window.alert("IntegrAção de download em breve.")}
 
 
 
@@ -7263,9 +7585,9 @@ export const ProjectDetailsTabs = ({
 
             title="Nenhuma atividade registrada"
 
-            description="Compartilhe atualizações ou registre horas para construir o histórico colaborativo do projeto."
+            description="Compartilhe atualizaÃƒÂ§ÃƒÂµes ou registre horas para construir o histÃƒÂ³rico colaborativo do projeto."
 
-            actionLabel="Registrar atualização"
+            actionLabel="Registrar atualizAção"
 
             onAction={focusCommentComposer}
 
@@ -7311,7 +7633,7 @@ export const ProjectDetailsTabs = ({
 
               ref={commentTextareaRef}
 
-              placeholder="Anote atualizações ou decisões..."
+              placeholder="Anote atualizaÃƒÂ§ÃƒÂµes ou decisÃƒÂµes..."
 
               value={commentBody}
 
@@ -7351,7 +7673,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            <h3>Registro rápido de horas</h3>
+            <h3>Registro rÃƒÂ¡pido de horas</h3>
 
 
 
@@ -7427,7 +7749,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              descrição
+              descriÃƒÂ§ÃƒÂ£o
 
 
 
@@ -7495,7 +7817,7 @@ export const ProjectDetailsTabs = ({
 
     <div className="tab-panel">
 
-      <p className="muted">O board deste projeto está em uma página dedicada.</p>
+      <p className="muted">O board deste projeto estÃƒÂ¡ em uma pÃƒÂ¡gina dedicada.</p>
 
     </div>
 
@@ -7507,7 +7829,7 @@ export const ProjectDetailsTabs = ({
 
     <div className="tab-panel">
 
-      <p className="muted">O cronograma deste projeto está em uma página dedicada.</p>
+      <p className="muted">O cronograma deste projeto estÃƒÂ¡ em uma pÃƒÂ¡gina dedicada.</p>
 
     </div>
 
@@ -7519,7 +7841,7 @@ export const ProjectDetailsTabs = ({
 
     <div className="tab-panel">
 
-      <p className="muted">Os documentos deste projeto estão em uma página dedicada.</p>
+      <p className="muted">Os documentos deste projeto estÃƒÂ£o em uma pÃƒÂ¡gina dedicada.</p>
 
     </div>
 
@@ -7671,7 +7993,7 @@ const TeamPanel = ({
 
 
 
-        allocation >= 90 ? "Alta carga" : allocation <= 40 ? "DispoNível" : "Balanceado";
+        allocation >= 90 ? "Alta carga" : allocation <= 40 ? "disponível" : "Balanceado";
 
 
 
@@ -7839,7 +8161,7 @@ const TeamPanel = ({
 
 
 
-          <h2>Visão da Equipe do projeto</h2>
+          <h2>VisÃƒÂ£o da Equipe do projeto</h2>
 
 
 
@@ -7947,7 +8269,7 @@ const TeamPanel = ({
 
 
 
-            <option value="DispoNível">DispoNível</option>
+            <option value="disponível">disponível</option>
 
 
 
@@ -7955,7 +8277,7 @@ const TeamPanel = ({
 
 
 
-            <option value="Em férias / folga">Em férias / folga</option>
+            <option value="Em fÃƒÂ©rias / folga">Em fÃƒÂ©rias / folga</option>
 
 
 
@@ -8479,15 +8801,15 @@ export const ReportsPanel = ({
 
 
 
-          <p className="eyebrow">Relatórios</p>
+          <p className="eyebrow">RelatÃƒÂ³rios</p>
 
 
 
-          <h2>Visão analítica</h2>
+          <h2>VisÃƒÂ£o analÃƒÂ­tica</h2>
 
 
 
-          <p className="subtext">Escolha o foco para comparar resultados do portfólio.</p>
+          <p className="subtext">Escolha o foco para comparar resultados do portfÃƒÂ³lio.</p>
 
 
 
@@ -8583,7 +8905,7 @@ export const ReportsPanel = ({
 
 
 
-        <p className="muted">Carregando Relatórios...</p>
+        <p className="muted">Carregando RelatÃƒÂ³rios...</p>
 
 
 
@@ -8719,7 +9041,7 @@ export const ReportsPanel = ({
 
                   title="Sem apontamentos de horas"
 
-                  description="Registre horas nos projetos para comparar o esforço entre Equipes."
+                  description="Registre horas nos projetos para comparar o esforÃƒÂ§o entre Equipes."
 
                 />
 
@@ -8735,7 +9057,7 @@ export const ReportsPanel = ({
 
             <article className="reports-card">
 
-              <h3>Progresso médio</h3>
+              <h3>Progresso mÃƒÂ©dio</h3>
 
               {progressSeries.length ? (
 
@@ -8763,9 +9085,9 @@ export const ReportsPanel = ({
 
                   icon={InsightIcon}
 
-                  title="Progresso indispoNível"
+                  title="Progresso indisponível"
 
-                  description="Atualize o status das tarefas para gerar a linha de tendência do portfólio."
+                  description="Atualize o status das tarefas para gerar a linha de tendÃƒÂªncia do portfÃƒÂ³lio."
 
                 />
 
@@ -8817,19 +9139,19 @@ const SettingsPanel = () => {
 
 
 
-    { id: "notifications", label: "Notificações" },
+    { id: "notifications", label: "NotificaÃƒÂ§ÃƒÂµes" },
 
 
 
-    { id: "organization", label: "Organização" },
+    { id: "organization", label: "OrganizAção" },
 
 
 
-    { id: "permissions", label: "Permissões" },
+    { id: "permissions", label: "PermissÃƒÂµes" },
 
 
 
-    { id: "integrations", label: "Integrações" },
+    { id: "integrations", label: "IntegraÃƒÂ§ÃƒÂµes" },
 
 
 
@@ -8861,7 +9183,7 @@ const SettingsPanel = () => {
 
 
 
-          <p className="eyebrow">Configurações</p>
+          <p className="eyebrow">ConfiguraÃƒÂ§ÃƒÂµes</p>
 
 
 
@@ -8869,7 +9191,7 @@ const SettingsPanel = () => {
 
 
 
-          <p className="subtext">Gerencie perfil, notificAçÃƒÂµes, organizAção e integrAçÃƒÂµes.</p>
+          <p className="subtext">Gerencie perfil, notificAÃƒÂ§ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âµes, organizAção e integrAÃƒÂ§ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âµes.</p>
 
 
 
@@ -9001,11 +9323,11 @@ const SettingsPanel = () => {
 
 
 
-                  <option>Português (Brasil)</option>
+                  <option>PortuguÃƒÂªs (Brasil)</option>
 
 
 
-                  <option>Inglês</option>
+                  <option>InglÃƒÂªs</option>
 
 
 
@@ -9049,7 +9371,7 @@ const SettingsPanel = () => {
 
 
 
-              <h3>Notificações</h3>
+              <h3>NotificaÃƒÂ§ÃƒÂµes</h3>
 
 
 
@@ -9061,7 +9383,7 @@ const SettingsPanel = () => {
 
 
 
-                <span>E-mails sobre tarefas atribuídas</span>
+                <span>E-mails sobre tarefas atribuÃƒÂ­das</span>
 
 
 
@@ -9145,7 +9467,7 @@ const SettingsPanel = () => {
 
 
 
-                Domínio
+                DomÃƒÂ­nio
 
 
 
@@ -9189,7 +9511,7 @@ const SettingsPanel = () => {
 
 
 
-              <h3>Permissões e papéis</h3>
+              <h3>PermissÃƒÂµes e papÃƒÂ©is</h3>
 
 
 
@@ -9221,7 +9543,7 @@ const SettingsPanel = () => {
 
 
 
-                    <th>Ver Relatórios</th>
+                    <th>Ver RelatÃƒÂ³rios</th>
 
 
 
@@ -9321,7 +9643,7 @@ const SettingsPanel = () => {
 
 
 
-              <h3>Integrações</h3>
+              <h3>IntegraÃƒÂ§ÃƒÂµes</h3>
 
 
 
@@ -9393,7 +9715,7 @@ const SettingsPanel = () => {
 
 
 
-              <p className="muted">Plano atual: <strong>Pro âââ€šÂ¬ââ‚¬Å“ 20/50 projetos</strong></p>
+              <p className="muted">Plano atual: <strong>Pro ÃƒÂ¢ÃƒÂ¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÂ¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ 20/50 projetos</strong></p>
 
 
 
@@ -9619,7 +9941,10 @@ export const DashboardLayout = ({
 
   onImportServiceCatalog,
   onCreateServiceCatalog,
+  onUpdateServiceCatalog,
   onDeleteServiceCatalog,
+
+  onReloadWbs,
 
   onMoveNode,
 
@@ -10057,7 +10382,7 @@ export const DashboardLayout = ({
 
 
 
-      setProjectModalError("O nome do projeto é obrigatório.");
+      setProjectModalError("O nome do projeto ÃƒÂ© obrigatÃƒÂ³rio.");
 
 
 
@@ -10319,9 +10644,9 @@ export const DashboardLayout = ({
 
     selectedOrganizationId,
 
-  onOrganizationChange,
+    onOrganizationChange,
 
-  currentOrgRole,
+    currentOrgRole,
 
   projects,
 
@@ -10489,6 +10814,7 @@ export const DashboardLayout = ({
 
   onImportServiceCatalog,
   onCreateServiceCatalog,
+  onUpdateServiceCatalog,
   onDeleteServiceCatalog,
 
   wbsLoading: undefined,
@@ -10602,7 +10928,7 @@ export const DashboardLayout = ({
               </div>
             )}
             <span className="sidebar-toggle-icon">{isCollapsed ? "»" : "«"}</span>
-          </button>
+</button>
         </div>
 
 
@@ -10654,7 +10980,7 @@ export const DashboardLayout = ({
 
           <p>
 
-            Plano Pro · <strong>20/50</strong> projetos
+            Plano Pro Ã‚Â· <strong>20/50</strong> projetos
 
           </p>
 
@@ -10691,7 +11017,7 @@ export const DashboardLayout = ({
           <div className="topbar-center">
             <div className="header-context">
               <div className="context-item">
-                <span className="context-label">Organizacao</span>
+                <span className="context-label">Organiza??o</span>
                 <span className="context-value">{currentOrganization?.name ?? "Nenhuma selecionada"}</span>
               </div>
               <div className="context-item">
@@ -10780,7 +11106,7 @@ export const DashboardLayout = ({
 
 
 
-                  <h3>{projectModalMode === "edit" ? "Atualize as informções principais" : "Planeje um novo trabalho"}</h3>
+                  <h3>{projectModalMode === "edit" ? "Atualize as informÃƒÂ§ÃƒÂµes principais" : "Planeje um novo trabalho"}</h3>
 
 
 
@@ -10796,7 +11122,7 @@ export const DashboardLayout = ({
 
 
 
-                      : "Informe dados básicos para criarmos o projeto no portfólio."}
+                      : "Informe dados bÃƒÂ¡sicos para criarmos o projeto no portfÃƒÂ³lio."}
 
 
 
@@ -10916,7 +11242,7 @@ export const DashboardLayout = ({
 
 
 
-                  Orçamento aprovado (R$)
+                  OrÃƒÂ§amento aprovado (R$)
 
 
 
@@ -10960,7 +11286,7 @@ export const DashboardLayout = ({
 
 
 
-                  Repositório GitHub
+                  RepositÃƒÂ³rio GitHub
 
 
 
@@ -11032,7 +11358,7 @@ export const DashboardLayout = ({
 
 
 
-                    Conclusão prevista
+                    Conclus?o prevista
 
 
 
@@ -11068,7 +11394,7 @@ export const DashboardLayout = ({
 
 
 
-                  Equipe (e-mails separados por vírgula)
+                  Equipe (e-mails separados por vÃƒÂ­rgula)
 
 
 
@@ -11100,7 +11426,7 @@ export const DashboardLayout = ({
 
 
 
-                  descrição
+                  descriÃƒÂ§ÃƒÂ£o
 
 
 
@@ -11172,7 +11498,7 @@ export const DashboardLayout = ({
 
 
 
-                      ? "Salvar alterações"
+                      ? "Salvar alteraÃƒÂ§ÃƒÂµes"
 
 
 
@@ -11236,7 +11562,7 @@ export const DashboardLayout = ({
 
 
 
-                  <p className="subtext">Informe o título e escolha a coluna inicial.</p>
+                  <p className="subtext">Informe o tÃƒÂ­tulo e escolha a coluna inicial.</p>
 
 
 
@@ -11276,7 +11602,7 @@ export const DashboardLayout = ({
 
 
 
-                    título da tarefa
+                    tÃƒÂ­tulo da tarefa
 
 
 
@@ -13232,7 +13558,7 @@ export const TemplatesPanel = ({
 
 
 
-      setTemplateModalError("O nome do template é obrigatório.");
+      setTemplateModalError("O nome do template ÃƒÂ© obrigatÃƒÂ³rio.");
 
 
 
@@ -14104,7 +14430,7 @@ export const TemplatesPanel = ({
 
 
 
-                Cliente/área padrão
+                Cliente/ÃƒÂ¡rea padrÃƒÂ£o
 
 
 
@@ -14140,7 +14466,7 @@ export const TemplatesPanel = ({
 
 
 
-                Repositório GitHub
+                RepositÃƒÂ³rio GitHub
 
 
 
@@ -14176,7 +14502,7 @@ export const TemplatesPanel = ({
 
 
 
-                Orçamento base (R$)
+                OrÃƒÂ§amento base (R$)
 
 
 
@@ -14301,50 +14627,6 @@ export const TemplatesPanel = ({
 
 
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

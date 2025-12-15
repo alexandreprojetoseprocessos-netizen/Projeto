@@ -210,6 +210,39 @@ serviceCatalogRouter.post("/", async (req, res) => {
   }
 });
 
+serviceCatalogRouter.patch("/:id", async (req, res) => {
+  const { id } = req.params;
+  const { name, description, hoursBase } = req.body as {
+    name?: string;
+    description?: string | null;
+    hoursBase?: number;
+  };
+
+  const existing = await prisma.serviceCatalog.findUnique({ where: { id } });
+  if (!existing) {
+    return res.status(404).json({ message: "Service not found" });
+  }
+
+  const membership = await ensureProjectMembership(req, res, existing.projectId);
+  if (!membership) return;
+
+  try {
+    const updated = await prisma.serviceCatalog.update({
+      where: { id },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(description !== undefined ? { description } : {}),
+        ...(hoursBase !== undefined ? { hoursBase: Number(hoursBase) } : {})
+      }
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Failed to update service" });
+  }
+});
+
 serviceCatalogRouter.delete("/:id", async (req, res) => {
   const { id } = req.params;
 

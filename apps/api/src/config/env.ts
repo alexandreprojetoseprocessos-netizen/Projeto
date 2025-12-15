@@ -9,6 +9,7 @@ dotenv.config();
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   API_PORT: z.string().default("4000"),
+  FRONTEND_URL: z.string().optional(),
   SUPABASE_URL: z.string(),
   SUPABASE_ANON_KEY: z.string(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
@@ -43,6 +44,7 @@ if (!parsed.success) {
 export const config = {
   env: parsed.data.NODE_ENV,
   port: Number(parsed.data.API_PORT),
+  frontendUrl: parsed.data.FRONTEND_URL,
   supabase: {
     url: parsed.data.SUPABASE_URL,
     anonKey: parsed.data.SUPABASE_ANON_KEY,

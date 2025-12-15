@@ -756,42 +756,42 @@ projectsRouter.get("/:projectId/wbs", async (req, res) => {
   const membership = await ensureProjectMembership(req, res, projectId);
   if (!membership) return;
 
-    const fetchNodes = () =>
-      prisma.wbsNode.findMany({
-        where: { projectId },
-        include: {
-          taskDetail: true,
-          responsibleMembership: {
-            include: {
-              user: true
-            }
-          },
-          owner: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true
-            }
-          },
-          timeEntries: {
-            select: { hours: true }
-          },
-          attachments: {
-            select: { id: true }
-          },
-          serviceCatalog: {
-            select: {
-              id: true,
-              name: true,
-              hoursBase: true
-            }
-          },
-          dependenciesAsSuccessor: {
-            select: { predecessorId: true }
+  const fetchNodes = () =>
+    prisma.wbsNode.findMany({
+      where: { projectId, deletedAt: null },
+      include: {
+        taskDetail: true,
+        responsibleMembership: {
+          include: {
+            user: true
           }
         },
-        orderBy: [{ level: "asc" }, { order: "asc" }, { createdAt: "asc" }]
-      });
+        owner: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true
+          }
+        },
+        timeEntries: {
+          select: { hours: true }
+        },
+        attachments: {
+          select: { id: true }
+        },
+        serviceCatalog: {
+          select: {
+            id: true,
+            name: true,
+            hoursBase: true
+          }
+        },
+        dependenciesAsSuccessor: {
+          select: { predecessorId: true }
+        }
+      },
+      orderBy: [{ level: "asc" }, { order: "asc" }, { createdAt: "asc" }]
+    });
 
   let nodes = await fetchNodes();
   if (nodes.some((node) => !node.wbsCode)) {
@@ -1123,4 +1123,3 @@ projectsRouter.post("/:projectId/attachments", async (req, res) => {
     return res.status(500).json({ message: "Falha ao salvar anexo" });
   }
 });
-

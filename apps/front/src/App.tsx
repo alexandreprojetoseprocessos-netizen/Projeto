@@ -1149,15 +1149,22 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     }
   };
 
-  const handleCreateWbsItem = async (parentId: string | null) => {
+  const handleCreateWbsItem = async (parentId: string | null, data?: Record<string, any>) => {
     if (!token || !selectedOrganizationId || !selectedProjectId) return;
 
     const payload: Record<string, any> = {
-      title: "Nova tarefa",
+      title: data?.title ?? "Nova tarefa",
       type: "TASK",
       parentId,
-      status: "BACKLOG",
-      priority: "MEDIUM"
+      status: data?.status ?? "BACKLOG",
+      priority: data?.priority ?? "MEDIUM",
+      description: data?.description ?? undefined,
+      estimateHours:
+        data?.durationDays !== undefined && data?.durationDays !== null
+          ? String(Number(data.durationDays) * 8)
+          : undefined,
+      startDate: data?.startDate ?? undefined,
+      endDate: data?.endDate ?? undefined
     };
 
     try {
@@ -1251,6 +1258,27 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       setServiceCatalogRefresh((value) => value + 1);
     },
     [token, selectedProjectId, selectedOrganizationId]
+  );
+
+  const handleUpdateServiceCatalog = useCallback(
+    async (serviceId: string, payload: { name?: string; hoursBase?: number; description?: string | null }) => {
+      if (!token || !selectedOrganizationId) {
+        throw new Error("Organização é obrigatória.");
+      }
+
+      await fetchJson(
+        `/service-catalog/${serviceId}`,
+        token,
+        {
+          method: "PATCH",
+          body: JSON.stringify(payload)
+        },
+        selectedOrganizationId
+      );
+
+      setServiceCatalogRefresh((value) => value + 1);
+    },
+    [token, selectedOrganizationId]
   );
 
   const handleDeleteServiceCatalog = useCallback(
@@ -1467,7 +1495,9 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
             serviceCatalogError={serviceCatalogError}
             onImportServiceCatalog={handleImportServiceCatalog}
             onCreateServiceCatalog={handleCreateServiceCatalog}
+            onUpdateServiceCatalog={handleUpdateServiceCatalog}
             onDeleteServiceCatalog={handleDeleteServiceCatalog}
+            onReloadWbs={() => setWbsRefresh((value) => value + 1)}
           />
         }
       >
@@ -1654,4 +1684,3 @@ function findWbsNode(nodes: WbsNode[], nodeId: string): WbsNode | null {
   }
   return null;
 }
-
