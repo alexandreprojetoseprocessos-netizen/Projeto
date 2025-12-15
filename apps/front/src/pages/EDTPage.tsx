@@ -99,6 +99,78 @@ export const EDTPage = () => {
     setDetailsOpen(true);
   };
 
+  const statusLabel = (s?: string | null) => {
+    const v = String(s ?? "").toUpperCase();
+    if (["DONE", "FINISHED", "COMPLETED", "FINALIZADO"].includes(v)) return "Finalizado";
+    if (["IN_PROGRESS", "EM_ANDAMENTO"].includes(v)) return "Em andamento";
+    if (["NOT_STARTED", "NAO_INICIADO", "BACKLOG"].includes(v)) return "Não iniciado";
+    if (["DELAYED", "EM_ATRASO"].includes(v)) return "Em atraso";
+    if (["RISK", "EM_RISCO"].includes(v)) return "Em risco";
+    return s ?? "-";
+  };
+
+  const formatDateBR = (value?: string | null) => {
+    if (!value) return "—";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("pt-BR");
+  };
+
+  const formatDependencies = (deps?: string[]) => {
+    if (!deps?.length) return "Sem dependências";
+    return deps
+      .map((id) => {
+        const n = wbsNodes?.find((x: any) => x.id === id);
+        if (!n) return "Dependência desconhecida";
+        const code = n.code ?? n.wbsCode ?? n.idNumber ?? n.displayId ?? "";
+        const title = n.title ?? "";
+        if (code && title) return `${code} - ${title}`;
+        if (code) return code;
+        return title || "Dependência desconhecida";
+      })
+      .join(", ");
+  };
+
+  const formatServiceName = (serviceId?: string | null) => {
+    if (!serviceId) return "Sem serviço";
+    const svc = serviceCatalog?.find((item: any) => item.id === serviceId);
+    return svc?.name ?? "Sem serviço";
+  };
+
+  const formatServiceHours = (task: any) => {
+    if (task?.serviceHours !== null && task?.serviceHours !== undefined) {
+      const val = Number(task.serviceHours);
+      if (!Number.isNaN(val)) {
+        return `${Math.max(0, Math.round(val * 100) / 100)}h`;
+      }
+    }
+    const svc = task?.serviceCatalogId
+      ? serviceCatalog?.find((item: any) => item.id === task.serviceCatalogId)
+      : null;
+    if (svc) {
+      const base = Number(svc.hoursBase ?? svc.hours ?? 0);
+      const mult = task?.serviceMultiplier ?? 1;
+      const val = base * mult;
+      if (!Number.isNaN(val) && val !== 0) {
+        return `${Math.max(0, Math.round(val * 100) / 100)}h`;
+      }
+    }
+    return "—";
+  };
+
+  const displayTaskCode = selectedTask
+    ? selectedTask.code ?? selectedTask.wbsCode ?? selectedTask.displayId ?? selectedTask.id
+    : null;
+  const displayTaskLevel = selectedTask?.level ?? 0;
+  const displayTaskDuration = selectedTask?.estimateHours
+    ? `${Math.max(0, Math.round((selectedTask.estimateHours / 8) * 10) / 10)}d`
+    : "—";
+  const displayStartDate = formatDateBR(selectedTask?.startDate);
+  const displayEndDate = formatDateBR(selectedTask?.endDate);
+  const displayServiceName = selectedTask ? formatServiceName(selectedTask.serviceCatalogId) : "Sem serviço";
+  const displayServiceHours = selectedTask ? formatServiceHours(selectedTask) : "—";
+  const displayMultiplier = selectedTask?.serviceMultiplier ?? "—";
+
   const handleExportWbs = async () => {
     if (!selectedProjectId) {
       setImportFeedback("Selecione um projeto para exportar a EAP.");
@@ -888,14 +960,14 @@ if (!selectedProjectId) {
                 <p className="detail-value">{selectedTask.title ?? "Tarefa sem nome"}</p>
               </div>
               <div>
-                <p className="detail-label">ID / Nível</p>
+                <p className="detail-label">Código / Nível</p>
                 <p className="detail-value">
-                  {selectedTask.wbsCode ?? selectedTask.displayId ?? selectedTask.id} · N{selectedTask.level ?? 0}
+                  {displayTaskCode ?? "-"} - N{displayTaskLevel}
                 </p>
               </div>
               <div>
                 <p className="detail-label">Situação</p>
-                <p className="detail-value">{selectedTask.status ?? "Não informado"}</p>
+                <p className="detail-value">{statusLabel(selectedTask.status)}</p>
               </div>
               <div>
                 <p className="detail-label">Responsável</p>
@@ -904,47 +976,43 @@ if (!selectedProjectId) {
                 </p>
               </div>
               <div>
+                <p className="detail-label">Início</p>
+                <p className="detail-value">{displayStartDate}</p>
+              </div>
+              <div>
+                <p className="detail-label">Término</p>
+                <p className="detail-value">{displayEndDate}</p>
+              </div>
+              <div>
                 <p className="detail-label">Duração</p>
-                <p className="detail-value">{selectedTask.estimateHours ? `${selectedTask.estimateHours / 8}d` : "—"}</p>
+                <p className="detail-value">{displayTaskDuration}</p>
               </div>
               <div>
-                <p className="detail-label">Início / Término</p>
-                <p className="detail-value">
-                  {selectedTask.startDate ? new Date(selectedTask.startDate).toLocaleDateString("pt-BR") : "-"}{" "}
-                  {selectedTask.endDate ? new Date(selectedTask.endDate).toLocaleDateString("pt-BR") : "-"}
-                </p>
+                <p className="detail-label">Catálogo de Serviços</p>
+                <p className="detail-value">{displayServiceName}</p>
               </div>
               <div>
+                <p className="detail-label">Multiplicador</p>
+                <p className="detail-value">{displayMultiplier ?? "—"}</p>
+              </div>
+              <div>
+                <p className="detail-label">HR</p>
+                <p className="detail-value">{displayServiceHours}</p>
+              </div>
+              <div className="detail-span-2">
                 <p className="detail-label">Dependências</p>
-                <p className="detail-value">
-                  {selectedTask.dependencies?.length ? selectedTask.dependencies.join(", ") : "Sem dependências"}
-                </p>
+                <p className="detail-value">{formatDependencies(selectedTask.dependencies)}</p>
               </div>
               <div className="detail-span-2">
                 <p className="detail-label">Descrição</p>
-                <p className="detail-value">{selectedTask.description ?? "Sem descrição"}</p>
-              </div>
-              <div className="detail-span-2">
-                <p className="detail-label">Progresso</p>
-                <div className="wbs-progress-cell">
-                  <div className="wbs-progress-bar">
-                    <div
-                      className="wbs-progress-fill"
-                      style={{ width: `${Math.max(0, Math.min(100, selectedTask.progress ?? 0))}%` }}
-                    />
-                  </div>
-                  <span className="wbs-progress-value">
-                    {Math.max(0, Math.min(100, selectedTask.progress ?? 0))}%
-                  </span>
-                </div>
+                <p className="detail-value">
+                  {selectedTask.description?.trim() ? selectedTask.description : "Sem descrição"}
+                </p>
               </div>
             </div>
             <div className="gp-modal-footer">
               <button type="button" className="btn-secondary" onClick={() => setDetailsOpen(false)}>
                 Fechar
-              </button>
-              <button type="button" className="btn-primary" onClick={() => setDetailsOpen(false)}>
-                Editar (em breve)
               </button>
             </div>
           </div>
