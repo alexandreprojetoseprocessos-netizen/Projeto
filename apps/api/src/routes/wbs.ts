@@ -205,7 +205,8 @@ wbsRouter.patch("/reorder", async (req: RequestWithUser, res) => {
   const nodes = await prisma.wbsNode.findMany({
     where: {
       projectId: projectId!,
-      id: { in: orderedIds }
+      id: { in: orderedIds },
+      deletedAt: null
     },
     select: { id: true, parentId: true }
   });
@@ -226,6 +227,8 @@ wbsRouter.patch("/reorder", async (req: RequestWithUser, res) => {
       })
     )
   );
+
+  await recomputeProjectWbsCodes(projectId!);
 
   return res.json({ success: true });
 });
@@ -772,6 +775,8 @@ wbsRouter.patch("/:id/restore", async (req: RequestWithUser, res) => {
     where: { id },
     data: { deletedAt: null }
   });
+
+  await recomputeProjectWbsCodes(access.node.projectId);
 
   return res.json({ success: true });
 });

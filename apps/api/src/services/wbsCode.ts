@@ -4,7 +4,9 @@ type LightweightNode = {
   id: string;
   parentId: string | null;
   order: number;
+  sortOrder: number;
   createdAt: Date;
+  deletedAt: Date | null;
 };
 
 export const recomputeProjectWbsCodes = async (projectId: string) => {
@@ -14,14 +16,18 @@ export const recomputeProjectWbsCodes = async (projectId: string) => {
       id: true,
       parentId: true,
       order: true,
-      createdAt: true
+      sortOrder: true,
+      createdAt: true,
+      deletedAt: true
     }
   });
 
   if (!nodes.length) return [];
 
+  const activeNodes = nodes.filter((node) => node.deletedAt === null);
+
   const childrenMap = new Map<string | null, LightweightNode[]>();
-  for (const node of nodes) {
+  for (const node of activeNodes) {
     const key = node.parentId ?? null;
     const group = childrenMap.get(key) ?? [];
     group.push(node);
@@ -29,7 +35,12 @@ export const recomputeProjectWbsCodes = async (projectId: string) => {
   }
 
   childrenMap.forEach((items) => {
-    items.sort((a, b) => a.order - b.order || a.createdAt.getTime() - b.createdAt.getTime());
+    items.sort(
+      (a, b) =>
+        a.sortOrder - b.sortOrder ||
+        a.order - b.order ||
+        a.createdAt.getTime() - b.createdAt.getTime()
+    );
   });
 
   const updates: Array<{ id: string; code: string; level: number }> = [];

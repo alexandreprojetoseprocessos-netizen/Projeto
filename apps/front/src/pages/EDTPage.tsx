@@ -57,6 +57,7 @@ export const EDTPage = () => {
   const [trashItems, setTrashItems] = useState<any[]>([]);
   const [trashLoading, setTrashLoading] = useState(false);
   const [trashError, setTrashError] = useState<string | null>(null);
+  const [filterText, setFilterText] = useState("");
   const [form, setForm] = useState({
     name: "",
     status: "BACKLOG",
@@ -368,26 +369,16 @@ if (!selectedProjectId) {
         </div>
       </header>
 
-      <div className="edt-actions-bar">
-        <div className="edt-actions-bar-left">
-          <button type="button" className="btn-primary" onClick={() => setIsNewTaskOpen(true)}>
+      <div className="eap-toolbar2">
+        <div className="eap-actions-left">
+          <button type="button" className="eap-btn" onClick={() => setIsNewTaskOpen(true)}>
             + Nova tarefa
           </button>
-          <span className="edt-actions-hint">Ações rápidas</span>
-        </div>
-        <div className="edt-actions-bar-right">
-          {selectedIds.length > 0 && (
-            <>
-              <span className="text-sm text-slate-600">{selectedIds.length} selecionada(s)</span>
-              <button type="button" className="btn-danger" onClick={handleBulkDelete}>
-                Excluir selecionados
-              </button>
-            </>
-          )}
-          <button type="button" className="btn-secondary" onClick={handleExportWbs}>
+          <div className="eap-divider" />
+          <button type="button" className="eap-btn" onClick={handleExportWbs}>
             Exportar
           </button>
-          <button type="button" className="btn-secondary" onClick={handleImportClick}>
+          <button type="button" className="eap-btn" onClick={handleImportClick}>
             Importar
           </button>
           <input
@@ -398,21 +389,49 @@ if (!selectedProjectId) {
             style={{ display: "none" }}
             onChange={handleImportWbs}
           />
-          <button type="button" className="btn-secondary" onClick={() => setImportOpen(true)}>
-            Catalogo de Servicos
+          <button type="button" className="eap-btn" onClick={() => setImportOpen(true)}>
+            Catálogo
           </button>
           <button
             type="button"
-            className="btn-ghost"
+            className="eap-btn eap-btn-danger"
             onClick={() => {
               setTrashOpen(true);
               loadTrash();
             }}
+            title="Lixeira"
           >
-            Lixeira
+            🗑 Lixeira
           </button>
+          {selectedIds.length > 0 && (
+            <button type="button" className="eap-btn eap-btn-danger" onClick={handleBulkDelete}>
+              Excluir {selectedIds.length} selecionada(s)
+            </button>
+          )}
         </div>
-      </div>{importFeedback && <p className="muted" style={{ marginTop: 8 }}>{importFeedback}</p>}
+
+        <div className="eap-actions-right">
+          <div className="eap-search">
+            <span className="eap-search-icon">⌕</span>
+            <input
+              className="eap-search-input"
+              placeholder="Filtrar: ID, nome, responsável, status…"
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+            />
+            {!!filterText && (
+              <button className="eap-search-clear" onClick={() => setFilterText("")} aria-label="Limpar filtro">
+                ×
+              </button>
+            )}
+          </div>
+          <span className="eap-count">
+            {/** filteredRows is computed inside WbsTreeView; showing quick counts from props */}
+            {wbsNodes?.length ?? 0} itens
+          </span>
+        </div>
+      </div>
+      {importFeedback && <p className="muted" style={{ marginTop: 8 }}>{importFeedback}</p>}
 
       {wbsError && <p className="error-text">{wbsError}</p>}
       {wbsLoading ? <p className="muted">Carregando EAP...</p> : null}
@@ -446,6 +465,7 @@ if (!selectedProjectId) {
               serviceCatalog={serviceCatalog}
               onSelectionChange={setSelectedIds}
               clearSelectionKey={clearSelectionKey}
+              filterText={filterText}
             />
           </div>
         </div>
@@ -870,7 +890,7 @@ if (!selectedProjectId) {
             <div className="gp-modal-header">
               <h2 id="trash-modal-title">Lixeira</h2>
               <button type="button" className="gp-modal-close" onClick={() => setTrashOpen(false)} aria-label="Fechar">
-                ž
+                ×
               </button>
             </div>
             <div className="gp-modal-body">

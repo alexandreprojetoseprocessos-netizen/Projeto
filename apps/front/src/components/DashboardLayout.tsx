@@ -2167,7 +2167,7 @@ type WbsTreeViewProps = {
     name: string;
     email?: string;
     role?: string | null;
-  }>;
+  }>; 
   onChangeResponsible?: (nodeId: string, membershipId: string | null) => void;
   selectedNodeId: string | null;
   onSelect: (nodeId: string | null) => void;
@@ -2183,6 +2183,7 @@ type WbsTreeViewProps = {
   }>;
   onSelectionChange?: (ids: string[]) => void;
   clearSelectionKey?: number;
+  filterText?: string;
 };
 
 
@@ -2223,7 +2224,9 @@ export const WbsTreeView = ({
 
   onSelectionChange,
 
-  clearSelectionKey
+  clearSelectionKey,
+
+  filterText
 
 }: WbsTreeViewProps) => {
 
@@ -3251,7 +3254,39 @@ export const WbsTreeView = ({
 
 
 
-  const visibleIds = useMemo(() => visibleRows.map((row) => row.node.id), [visibleRows]);
+  const resolveDisplayCode = (node: any, fallback?: string) =>
+    node?.code ?? node?.wbsCode ?? node?.idNumber ?? node?.codeValue ?? fallback ?? node?.id;
+
+  const filteredRows = useMemo(() => {
+    const q = filterText?.trim().toLowerCase();
+    if (!q) return visibleRows;
+
+    return visibleRows.filter((row) => {
+      const node = row.node || {};
+      const code = String(resolveDisplayCode(node, row.displayId) ?? "").toLowerCase();
+      const title = String(node.title ?? node.name ?? "").toLowerCase();
+      const status = String(node.status ?? "").toLowerCase();
+      const owner = String(
+        node.owner?.fullName ??
+          node.owner?.email ??
+          node.responsible?.name ??
+          node.responsible?.email ??
+          node.responsible?.user?.fullName ??
+          node.responsible?.user?.email ??
+          ""
+      ).toLowerCase();
+      const service = String(node.serviceCatalog?.name ?? "").toLowerCase();
+      return (
+        code.includes(q) ||
+        title.includes(q) ||
+        status.includes(q) ||
+        owner.includes(q) ||
+        service.includes(q)
+      );
+    });
+  }, [filterText, visibleRows]);
+
+  const visibleIds = useMemo(() => filteredRows.map((row) => row.node.id), [filteredRows]);
 
 
 
@@ -3379,7 +3414,7 @@ export const WbsTreeView = ({
 
   const handleSelectAllVisible = (checked: boolean) => {
 
-    const ids = visibleRows.map((row) => row.node.id);
+    const ids = filteredRows.map((row) => row.node.id);
     if (checked) {
       const merged = Array.from(new Set([...selectedTaskIds, ...ids]));
       setSelectedTaskIds(merged);
@@ -3399,11 +3434,11 @@ export const WbsTreeView = ({
 
   const isAllVisibleSelected = useMemo(() => {
 
-    if (!visibleRows.length) return false;
+    if (!filteredRows.length) return false;
 
-    return visibleRows.every((row) => selectedTaskIds.includes(row.node.id));
+    return filteredRows.every((row) => selectedTaskIds.includes(row.node.id));
 
-  }, [visibleRows, selectedTaskIds]);
+  }, [filteredRows, selectedTaskIds]);
 
   useEffect(() => {
 
@@ -3434,10 +3469,10 @@ export const WbsTreeView = ({
   }, [clearSelectionKey]);
 
   useEffect(() => {
-    if (!visibleRows.length) return;
+    if (!filteredRows.length) return;
     if (!authToken || !currentOrganizationId) return;
 
-    const nodesWithoutCount = visibleRows.filter((row) => chatCounts[row.node.id] == null);
+    const nodesWithoutCount = filteredRows.filter((row) => chatCounts[row.node.id] == null);
     if (nodesWithoutCount.length === 0) return;
 
     const controller = new AbortController();
@@ -3719,12 +3754,6 @@ export const WbsTreeView = ({
 
   };
 
-
-
-
-
-  const resolveDisplayCode = (node: any, fallback?: string) =>
-    node?.code ?? node?.wbsCode ?? node?.idNumber ?? node?.codeValue ?? fallback ?? node?.id;
 
 
 
@@ -4111,22 +4140,153 @@ export const WbsTreeView = ({
 
 
 
-  const handleMenuAction = (event: MouseEvent<HTMLButtonElement>, label: string, node: any) => {
+  type RowAction = "MOVE_UP" | "MOVE_DOWN" | "ADD_CHILD" | "DUPLICATE" | "TRASH";
 
+  const moveRow = useCallback(
+    async (nodeId: string, direction: "UP" | "DOWN") => {
+      if (!selectedProjectId || !authToken || !currentOrganizationId) return;
+      const row = rowMap.get(nodeId);
+      if (!row) return;
 
+      const parentId = row.parentId ?? null;
+      const siblings = (parentId ? rowMap.get(parentId)?.node.children : treeNodes) ?? [];
+      const activeSiblings = siblings.filter((s: any) => !s.deletedAt);
 
+      const currentIndex = activeSiblings.findIndex((s: any) => s.id === nodeId);
+      if (currentIndex < 0) return;
+
+      const targetIndex = direction === "UP" ? currentIndex - 1 : currentIndex + 1;
+      if (targetIndex < 0 || targetIndex >= activeSiblings.length) return;
+
+      const reordered = [...activeSiblings];
+      const [moved] = reordered.splice(currentIndex, 1);
+      reordered.splice(targetIndex, 0, moved);
+      const orderedIds = reordered.map((s) => s.id);
+
+      try {
+        await fetch(`${API_BASE_URL}/wbs/reorder`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+            "X-Organization-Id": currentOrganizationId
+          },
+          body: JSON.stringify({
+            projectId: selectedProjectId,
+            parentId,
+            orderedIds
+          })
+        });
+        await onReloadWbs();
+      } catch (error) {
+        console.error("Failed to reorder", error);
+      }
+    },
+    [API_BASE_URL, authToken, currentOrganizationId, onReloadWbs, rowMap, selectedProjectId, treeNodes]
+  );
+
+  const handleMenuAction = async (event: MouseEvent<HTMLButtonElement>, action: RowAction, node: any) => {
     event.stopPropagation();
 
+    if (!selectedProjectId || !authToken || !currentOrganizationId) {
+      setOpenMenuId(null);
+      return;
+    }
 
+    const parentId = node.parentId ?? null;
 
-    window.alert(`Ação "${label}" para ${node.title} disponível em breve.`);
+    try {
+      if (action === "MOVE_UP") {
+        await moveRow(node.id, "UP");
+      } else if (action === "MOVE_DOWN") {
+        await moveRow(node.id, "DOWN");
+      } else if (action === "ADD_CHILD") {
+        await onCreateWbsItem?.(node.id, {
+          title: "Nova subtarefa",
+          status: "BACKLOG",
+          parentId: node.id
+        });
+        await onReloadWbs();
+      } else if (action === "DUPLICATE") {
+        const payload: any = {
+          title: `(Copia) ${node.title ?? node.name ?? "Tarefa"}`,
+          status: node.status ?? "BACKLOG",
+          parentId,
+          startDate: node.startDate ?? null,
+          endDate: node.endDate ?? null,
+          estimateHours: node.estimateHours ?? null,
+          ownerId: node.ownerId ?? null,
+          responsibleMembershipId: node.responsibleMembershipId ?? null,
+          serviceCatalogId: node.serviceCatalogId ?? null,
+          serviceMultiplier: node.serviceMultiplier ?? null,
+          serviceHours: node.serviceHours ?? null,
+          dependencies: node.dependencies ?? []
+        };
 
+        let newId: string | null = null;
+        try {
+          const createRes = await fetch(`${API_BASE_URL}/wbs`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authToken}`,
+              "X-Organization-Id": currentOrganizationId
+            },
+            body: JSON.stringify({ projectId: selectedProjectId, ...payload })
+          });
+          const created = await createRes.json();
+          newId = created?.id ?? created?.node?.id ?? null;
+        } catch (error) {
+          console.error("Failed to duplicate node", error);
+        }
 
+        if (newId) {
+          const siblings = (parentId ? rowMap.get(parentId)?.node.children : treeNodes) ?? [];
+          const activeSiblings = siblings.filter((s: any) => !s.deletedAt);
+          const ordered = activeSiblings.reduce<string[]>((arr, s: any) => {
+            arr.push(s.id);
+            if (s.id === node.id) arr.push(newId!);
+            return arr;
+          }, []);
+
+          await fetch(`${API_BASE_URL}/wbs/reorder`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authToken}`,
+              "X-Organization-Id": currentOrganizationId
+            },
+            body: JSON.stringify({
+              projectId: selectedProjectId,
+              parentId,
+              orderedIds: ordered
+            })
+          });
+        }
+
+        await onReloadWbs();
+      } else if (action === "TRASH") {
+        const confirmMove = window.confirm("Mover esta tarefa para a lixeira?");
+        if (!confirmMove) {
+          setOpenMenuId(null);
+          return;
+        }
+        await fetch(`${API_BASE_URL}/wbs/bulk-delete`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+            "X-Organization-Id": currentOrganizationId
+          },
+          body: JSON.stringify({ ids: [node.id] })
+        });
+        await onReloadWbs();
+      }
+    } catch (error) {
+      console.error("Menu action error", error);
+    }
 
     setOpenMenuId(null);
-
-
-
   };
 
 
@@ -4276,7 +4436,7 @@ export const WbsTreeView = ({
 
 
 
-                {visibleRows.map((row) => {
+                {filteredRows.map((row) => {
 
 
 
@@ -4911,25 +5071,6 @@ export const WbsTreeView = ({
                           <span className="details-label">Detalhes</span>
 
                         </button>
-                        <div className="wbs-actions">
-
-                          <button
-
-                            type="button"
-
-                            className="wbs-actions-trigger"
-
-                            onClick={(event) => handleMenuToggle(event, row.node)}
-
-                            aria-label="Opções da tarefa"
-
-                          >
-
-                            &#183;&#183;&#183;
-
-                          </button>
-
-                        </div>
                       </div>
 
                     </td>
@@ -14627,17 +14768,4 @@ export const TemplatesPanel = ({
 
 
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
 
