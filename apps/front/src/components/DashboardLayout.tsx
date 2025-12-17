@@ -38,6 +38,7 @@ import {
 } from "react";
 
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+import { normalizeStatus, STATUS_ORDER } from "../utils/status";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -589,29 +590,17 @@ const MenuDotsIcon: KPIIcon = (props) => (
 
 
 const sidebarNavigation = [
-
-  { id: "organizacao", label: "Organiza??es", icon: BuildingIcon, path: "/organizacao" },
-
+  { id: "organizacao", label: "Organizacoes", icon: BuildingIcon, path: "/organizacao" },
   { id: "dashboard", label: "Dashboard", icon: BriefcaseIcon, path: "/dashboard" },
-
   { id: "projects", label: "Projetos", icon: ListChecksIcon, path: "/projects" },
-
-  { id: "edt", label: "EAP", icon: UsersIcon, path: "/edt" },
-
-  { id: "board", label: "Kanban", icon: ListChecksIcon, path: "/board" },
-
+  { id: "edt", label: "EAP", icon: UsersIcon, path: "/EAP" },
+  { id: "board", label: "Kanban", icon: ListChecksIcon, path: "/kanban" },
   { id: "cronograma", label: "Cronograma", icon: ClockIcon, path: "/cronograma" },
-
   { id: "atividades", label: "Timeline", icon: CommentIcon, path: "/atividades" },
-
   { id: "documentos", label: "Documentos", icon: FileIcon, path: "/documentos" },
-
-  { id: "relatorios", label: "Relatorios", icon: BarChartIcon, path: "/relatorios" },
-
+  { id: "Relatórios", label: "RelatÃ³rios", icon: BarChartIcon, path: "/Relatórios" },
   { id: "equipe", label: "Equipes", icon: UsersIcon, path: "/equipe" },
-
   { id: "plano", label: "Meu plano", icon: BriefcaseIcon, path: "/plano" }
-
 ];
 
 
@@ -1925,12 +1914,12 @@ const statusDictionary: Record<string, { label: string; tone: StatusTone }> = {
 
 
 
-  BACKLOG: { label: "Não iniciado", tone: "neutral" },
-
-
-
-  PLANNED: { label: "Não iniciado", tone: "neutral" },
-
+  "Nao iniciado": { label: "Nao iniciado", tone: "neutral" },
+  "Em andamento": { label: "Em andamento", tone: "info" },
+  "Em atraso": { label: "Em atraso", tone: "danger" },
+  "Em risco": { label: "Em risco", tone: "warning" },
+  "Homologacao": { label: "Homologacao", tone: "info" },
+  "Finalizado": { label: "Finalizado", tone: "success" },
 
 
   NOT_STARTED: { label: "Não iniciado", tone: "neutral" },
@@ -1953,7 +1942,15 @@ const statusDictionary: Record<string, { label: string; tone: StatusTone }> = {
 
 
 
-  BLOCKED: { label: "Em risco", tone: "warning" }
+  BLOCKED: { label: "Em risco", tone: "warning" },
+
+  "Não iniciado": { label: "Não iniciado", tone: "neutral" },
+  "Em andamento": { label: "Em andamento", tone: "info" },
+  "Em atraso": { label: "Em atraso", tone: "danger" },
+  "Em risco": { label: "Em risco", tone: "warning" },
+  "Homologação": { label: "Homologação", tone: "info" },
+  "Finalizado": { label: "Finalizado", tone: "success" },
+
 
 
 
@@ -1971,6 +1968,12 @@ const STATUS_CLASS: Record<string, string> = {
   DONE: "bg-emerald-50 text-emerald-700 border-emerald-300",
   LATE: "bg-red-50 text-red-700 border-red-300",
   AT_RISK: "bg-amber-50 text-amber-800 border-amber-300",
+  "Não iniciado": "bg-slate-50 text-slate-700 border-slate-300",
+  "Em andamento": "bg-blue-50 text-blue-700 border-blue-300",
+  "Finalizado": "bg-emerald-50 text-emerald-700 border-emerald-300",
+  "Em atraso": "bg-red-50 text-red-700 border-red-300",
+  "Em risco": "bg-amber-50 text-amber-800 border-amber-300",
+  "Homologação": "bg-indigo-50 text-indigo-800 border-indigo-300",
   default: "bg-slate-50 text-slate-700 border-slate-300",
 };
 
@@ -3287,12 +3290,13 @@ export const WbsTreeView = ({
 
   const filteredRows = useMemo(() => {
     const q = filterText?.trim().toLowerCase();
+    const normalizedFilter = filterStatus && filterStatus !== "ALL" ? normalizeStatus(filterStatus) : null;
 
     return visibleRows.filter((row) => {
       const node = row.node || {};
 
       // status filter
-      if (filterStatus && filterStatus !== "ALL" && String(node.status ?? "") !== filterStatus) return false;
+      if (normalizedFilter && normalizeStatus(node.status) !== normalizedFilter) return false;
 
       // service filter
       if (filterService && filterService !== "ALL" && String(node.serviceCatalogId ?? "") !== filterService) {
@@ -3310,7 +3314,7 @@ export const WbsTreeView = ({
 
       const code = String(resolveDisplayCode(node, row.displayId) ?? "").toLowerCase();
       const title = String(node.title ?? node.name ?? "").toLowerCase();
-      const status = String(node.status ?? "").toLowerCase();
+      const status = normalizeStatus(node.status).toLowerCase();
       const owner = String(
         node.owner?.fullName ??
           node.owner?.email ??
@@ -3542,7 +3546,7 @@ export const WbsTreeView = ({
             newCounts[row.node.id] = Array.isArray(comments) ? comments.length : 0;
           } catch (error) {
             if (controller.signal.aborted) return;
-            console.error("Erro ao carregar contador de Comentários", error);
+            console.error("Erro ao carregar contador de Comentrios", error);
           }
         })
       );
@@ -3582,8 +3586,8 @@ export const WbsTreeView = ({
         });
 
         if (!response.ok) {
-          console.error("Erro na API de Comentários (GET)", response.status, await response.text());
-          if (active) setChatError("Erro ao listar Comentários");
+          console.error("Erro na API de Comentrios (GET)", response.status, await response.text());
+          if (active) setChatError("Erro ao listar Comentrios");
           return;
         }
 
@@ -3593,8 +3597,8 @@ export const WbsTreeView = ({
         setChatCounts((prev) => ({ ...prev, [openChatTaskId]: data.length }));
         setChatError(null);
       } catch (error) {
-        console.error("Erro na API de Comentários (GET)", error);
-        if (active) setChatError("Erro ao listar Comentários");
+        console.error("Erro na API de Comentrios (GET)", error);
+        if (active) setChatError("Erro ao listar Comentrios");
       } finally {
         if (active) setIsChatLoading(false);
       }
@@ -3628,8 +3632,8 @@ export const WbsTreeView = ({
       });
       
       if (!response.ok) {
-        console.error("Erro na API de Comentários (POST)", response.status, await response.text());
-        setChatError("Erro ao criar comentário");
+        console.error("Erro na API de Comentrios (POST)", response.status, await response.text());
+        setChatError("Erro ao criar comentrio");
         return;
       }
       
@@ -3639,8 +3643,8 @@ export const WbsTreeView = ({
       setChatDraft("");
       setChatError(null);
     } catch (error) {
-      console.error("Erro na API de Comentários (POST)", error);
-      setChatError("Erro ao enviar comentário");
+      console.error("Erro na API de Comentrios (POST)", error);
+      setChatError("Erro ao enviar comentrio");
     } finally {
       setIsChatLoading(false);
     }
@@ -4460,18 +4464,18 @@ export const WbsTreeView = ({
               />
             </th>
             <th className="px-1 py-2 text-center align-middle">ID</th>
-            <th className="px-1 py-2 text-center align-middle" title="Comentários da tarefa">Chat</th>
-            <th className="px-1 py-2 text-center align-middle">Nível</th>
+            <th className="px-1 py-2 text-center align-middle" title="Comentrios da tarefa">Chat</th>
+            <th className="px-1 py-2 text-center align-middle">Nvel</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Nome da tarefa</th>
-            <th className="w-[150px] px-3 py-2 text-left align-middle">Situação</th>
-            <th className="w-[140px] px-3 py-2 text-left align-middle">Duração</th>
-            <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Início</th>
-            <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Término</th>
-            <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Responsável</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Catálogo de Serviços</th>
+            <th className="w-[150px] px-3 py-2 text-left align-middle">Situao</th>
+            <th className="w-[140px] px-3 py-2 text-left align-middle">Durao</th>
+            <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Incio</th>
+            <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Trmino</th>
+            <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Responsvel</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Catlogo de Servios</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Multiplicador</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">HR</th>
-            <th className="w-[150px] px-3 py-2 text-left align-middle">Dependências</th>
+            <th className="w-[150px] px-3 py-2 text-left align-middle">Dependncias</th>
             <th className="w-[150px] px-3 py-2 text-center align-middle">Detalhes</th>
           </tr>
         </thead>
@@ -4648,7 +4652,7 @@ export const WbsTreeView = ({
                           data-dragging={isDragging || undefined}
                           aria-label="Arrastar para reordenar"
                         >
-                          ⋮⋮
+                          ::
                         </button>
                       </td>
 
@@ -4670,7 +4674,7 @@ export const WbsTreeView = ({
                       <button
                         type="button"
                         className="wbs-chat-button relative inline-flex h-7 min-w-[40px] items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-2 text-[11px] text-slate-700 hover:bg-slate-50 transition"
-                        aria-label={`Comentários da tarefa ${displayId}`}
+                        aria-label={`Comentrios da tarefa ${displayId}`}
                         onClick={(event) => {
                           event.stopPropagation();
                           setOpenChatTaskId(row.node.id);
@@ -4714,7 +4718,7 @@ export const WbsTreeView = ({
                           fontSize: "14px"
                         }}
                       >
-                        ◀
+                        {"<"}
                       </button>
                         <span
                           style={{
@@ -4741,8 +4745,8 @@ export const WbsTreeView = ({
                             fontSize: "14px"
                           }}
                         >
-                        ▶
-                      </button>
+                          {">"}
+                        </button>
                       </div>
                     </td>
 
@@ -4937,23 +4941,23 @@ export const WbsTreeView = ({
 
                     <td className="px-3 py-2 align-middle">
                       <select
-                        value={row.node.status}
+                        value={normalizeStatus(row.node.status)}
                         onClick={(event) => event.stopPropagation()}
                         onChange={(event) => {
                           event.stopPropagation();
                           onUpdate(row.node.id, { status: event.target.value });
                         }}
-                        aria-label="Alterar situAção da tarefa"
+                        aria-label="Alterar situao da tarefa"
                         className={clsx(
                           "min-w-[150px] rounded-full px-4 py-1 text-xs font-semibold cursor-pointer border shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-200 focus:ring-offset-1 appearance-none",
-                          STATUS_CLASS[row.node.status] ?? STATUS_CLASS.default
+                          STATUS_CLASS[normalizeStatus(row.node.status)] ?? STATUS_CLASS.default
                         )}
                       >
-                        <option value="NOT_STARTED">Não iniciado</option>
-                        <option value="IN_PROGRESS">Em andamento</option>
-                        <option value="DONE">Finalizado</option>
-                        <option value="LATE">Em atraso</option>
-                        <option value="AT_RISK">Em risco</option>
+                        {STATUS_ORDER.map((statusOption) => (
+                          <option key={statusOption} value={statusOption}>
+                            {statusOption}
+                          </option>
+                        ))}
                       </select>
                     </td>
 
@@ -5004,7 +5008,7 @@ export const WbsTreeView = ({
                         onClick={(event) => event.stopPropagation()}
                         onChange={(event) => onChangeResponsible?.(row.node.id, event.target.value || null)}
                       >
-                        <option value="">Sem Responsável</option>
+                        <option value="">Sem Responsvel</option>
                         {members.map((member) => (
                           <option key={member.id} value={member.id}>
                             {member.name ?? member.email ?? member.userId}
@@ -5036,7 +5040,7 @@ export const WbsTreeView = ({
                           });
                         }}
                       >
-                        <option value="">Sem serviço</option>
+                        <option value="">Sem servio</option>
                         {serviceCatalog.map((service) => {
                           const base = service.hoursBase ?? service.hours ?? null;
                           const label = base !== null && base !== undefined ? `${service.name} (${base}h)` : service.name;
@@ -5161,7 +5165,7 @@ export const WbsTreeView = ({
             <div className="wbs-actions-menu">
               {[
                 "Editar tarefa",
-                "Mover Nível",
+                "Mover Nvel",
                 "Adicionar subtarefa",
                 "Duplicar",
                 "Excluir"
@@ -5201,7 +5205,7 @@ export const WbsTreeView = ({
           </div>
           <div className="gp-modal-body wbs-chat-body">
             <div className="wbs-chat-messages">
-              {isChatLoading && <p className="muted">Carregando Comentários...</p>}
+              {isChatLoading && <p className="muted">Carregando Comentrios...</p>}
               {!isChatLoading &&
                 chatMessagesForModal.map((message: WbsComment) => (
                   <div key={message.id} className="wbs-chat-message">
@@ -5212,14 +5216,14 @@ export const WbsTreeView = ({
                     <p>{message.message}</p>
                   </div>
                 ))}
-              {!isChatLoading && chatMessagesForModal.length === 0 && <p className="muted">Nenhum comentário ainda.</p>}
+              {!isChatLoading && chatMessagesForModal.length === 0 && <p className="muted">Nenhum comentrio ainda.</p>}
               {chatError && <p className="error-text">{chatError}</p>}
             </div>
             <div className="wbs-chat-composer">
               <textarea
                 value={chatDraft}
                 onChange={(event) => setChatDraft(event.target.value)}
-                placeholder="Escreva um comentárioÃ¢â‚¬Â¦ use @ para mencionar alguém"
+                placeholder="Escreva um comentrioÃ¢Â¦ use @ para mencionar algum"
                 rows={3}
               />
               <div className="wbs-chat-actions">
@@ -5904,7 +5908,7 @@ export const ProjectDetailsTabs = ({
 
   const tabs = [
 
-    { id: "overview", label: "Visão geral" },
+    { id: "overview", label: "Viso geral" },
 
     { id: "edt", label: "EDT" },
 
@@ -5912,7 +5916,7 @@ export const ProjectDetailsTabs = ({
 
     { id: "gantt", label: "Cronograma" },
 
-    { id: "calendar", label: "Calendário" },
+    { id: "calendar", label: "Calendrio" },
 
     { id: "docs", label: "Documentos" },
 
@@ -6086,7 +6090,7 @@ export const ProjectDetailsTabs = ({
 
     if (typeof window !== "undefined") {
 
-      window.alert("IntegrAção de upload em breve.");
+      window.alert("IntegrAo de upload em breve.");
 
     }
 
@@ -6177,11 +6181,11 @@ export const ProjectDetailsTabs = ({
 
 
 
-      DONE: "Concluído",
+      DONE: "Concludo",
 
 
 
-      COMPLETED: "Concluído",
+      COMPLETED: "Concludo",
 
 
 
@@ -6241,7 +6245,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            {projectLoading ? "Buscando cards do portfÃƒÂ³lio para montar o cabeÃƒÂ§alho." : "Escolha um projeto no topo para ver os detalhes completos."}
+            {projectLoading ? "Buscando cards do portfÂ³lio para montar o cabeÂ§alho." : "Escolha um projeto no topo para ver os detalhes completos."}
 
 
 
@@ -6293,7 +6297,7 @@ export const ProjectDetailsTabs = ({
 
 
           <p className="subtext">
-            Código {projectMeta.code ?? "N/A"} Ã¢â‚¬Â¢ Cliente {projectMeta.clientName ?? "Não informado"}
+            Cdigo {projectMeta.code ?? "N/A"} Ã¢Â¢ Cliente {projectMeta.clientName ?? "No informado"}
           </p>
 
 
@@ -6314,7 +6318,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              PerÃƒÂ­odo: {formatShortDate(projectMeta.startDate)} ÃƒÂ¢ÃƒÂ¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÂ¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â {formatShortDate(projectMeta.endDate)}
+              PerÂ­odo: {formatShortDate(projectMeta.startDate)} Â¢Â¢Â¢Ã¢Â¬Â¡Â¬Â¢Â¢Ã¢Å¡Â¬Â {formatShortDate(projectMeta.endDate)}
 
 
 
@@ -6612,7 +6616,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              <span>Concluído</span>
+              <span>Concludo</span>
 
 
 
@@ -6636,7 +6640,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              {summary?.totals?.done ?? 0} Concluídas
+              {summary?.totals?.done ?? 0} Concludas
 
 
 
@@ -6704,7 +6708,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              <p className="subtext">VisÃƒÂ£o dos ÃƒÂºltimos {filters.rangeDays} dias</p>
+              <p className="subtext">VisÂ£o dos Âºltimos {filters.rangeDays} dias</p>
 
 
 
@@ -6928,7 +6932,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            <span>Concluídas</span>
+            <span>Concludas</span>
 
 
 
@@ -7128,7 +7132,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-          <p className="muted">Acompanhe o plano de mitigAção e distribua responsÃƒÂ¡veis para cada item crÃƒÂ­tico.</p>
+          <p className="muted">Acompanhe o plano de mitigAo e distribua responsÂ¡veis para cada item crÂ­tico.</p>
 
 
 
@@ -7168,7 +7172,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-          <p className="subtext">SomatÃƒÂ³rio das ÃƒÂºltimas entregas</p>
+          <p className="subtext">SomatÂ³rio das Âºltimas entregas</p>
 
 
 
@@ -7268,7 +7272,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            <p className="muted">Nenhuma tarefa atribuÃƒÂ­da.</p>
+            <p className="muted">Nenhuma tarefa atribuÂ­da.</p>
 
 
 
@@ -7617,7 +7621,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-                {doc.uploadedBy?.fullName ?? doc.uploadedBy?.email ?? "Equipe"} Ã‚Â· {formatShortDate(doc.createdAt)}
+                {doc.uploadedBy?.fullName ?? doc.uploadedBy?.email ?? "Equipe"} Â· {formatShortDate(doc.createdAt)}
 
 
 
@@ -7629,7 +7633,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-                {formatFileSize(doc.fileSize)} Ã‚Â· {doc.targetType === "WBS_NODE" ? "Vinculado ÃƒÂ  WBS" : "Projeto"}
+                {formatFileSize(doc.fileSize)} Â· {doc.targetType === "WBS_NODE" ? "Vinculado Â  WBS" : "Projeto"}
 
 
 
@@ -7649,7 +7653,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-                onClick={() => window.alert("IntegrAção de download em breve.")}
+                onClick={() => window.alert("IntegrAo de download em breve.")}
 
 
 
@@ -7771,9 +7775,9 @@ export const ProjectDetailsTabs = ({
 
             title="Nenhuma atividade registrada"
 
-            description="Compartilhe atualizaÃƒÂ§ÃƒÂµes ou registre horas para construir o histÃƒÂ³rico colaborativo do projeto."
+            description="Compartilhe atualizaÂ§Âµes ou registre horas para construir o histÂ³rico colaborativo do projeto."
 
-            actionLabel="Registrar atualizAção"
+            actionLabel="Registrar atualizAo"
 
             onAction={focusCommentComposer}
 
@@ -7799,7 +7803,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            <h3>Novo comentário</h3>
+            <h3>Novo comentrio</h3>
 
 
 
@@ -7811,7 +7815,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            <p className="muted">Selecione um item na EDT para vincular o comentário.</p>
+            <p className="muted">Selecione um item na EDT para vincular o comentrio.</p>
 
 
 
@@ -7819,7 +7823,7 @@ export const ProjectDetailsTabs = ({
 
               ref={commentTextareaRef}
 
-              placeholder="Anote atualizaÃƒÂ§ÃƒÂµes ou decisÃƒÂµes..."
+              placeholder="Anote atualizaÂ§Âµes ou decisÂµes..."
 
               value={commentBody}
 
@@ -7831,7 +7835,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              Registrar comentário
+              Registrar comentrio
 
 
 
@@ -7859,7 +7863,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            <h3>Registro rÃƒÂ¡pido de horas</h3>
+            <h3>Registro rÂ¡pido de horas</h3>
 
 
 
@@ -7935,7 +7939,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              descriÃƒÂ§ÃƒÂ£o
+              descriÂ§Â£o
 
 
 
@@ -8003,7 +8007,7 @@ export const ProjectDetailsTabs = ({
 
     <div className="tab-panel">
 
-      <p className="muted">O board deste projeto estÃƒÂ¡ em uma pÃƒÂ¡gina dedicada.</p>
+      <p className="muted">O board deste projeto estÂ¡ em uma pÂ¡gina dedicada.</p>
 
     </div>
 
@@ -8015,7 +8019,7 @@ export const ProjectDetailsTabs = ({
 
     <div className="tab-panel">
 
-      <p className="muted">O cronograma deste projeto estÃƒÂ¡ em uma pÃƒÂ¡gina dedicada.</p>
+      <p className="muted">O cronograma deste projeto estÂ¡ em uma pÂ¡gina dedicada.</p>
 
     </div>
 
@@ -8027,7 +8031,7 @@ export const ProjectDetailsTabs = ({
 
     <div className="tab-panel">
 
-      <p className="muted">Os documentos deste projeto estÃƒÂ£o em uma pÃƒÂ¡gina dedicada.</p>
+      <p className="muted">Os documentos deste projeto estÂ£o em uma pÂ¡gina dedicada.</p>
 
     </div>
 
@@ -8179,7 +8183,7 @@ const TeamPanel = ({
 
 
 
-        allocation >= 90 ? "Alta carga" : allocation <= 40 ? "disponível" : "Balanceado";
+        allocation >= 90 ? "Alta carga" : allocation <= 40 ? "disponvel" : "Balanceado";
 
 
 
@@ -8347,7 +8351,7 @@ const TeamPanel = ({
 
 
 
-          <h2>VisÃƒÂ£o da Equipe do projeto</h2>
+          <h2>VisÂ£o da Equipe do projeto</h2>
 
 
 
@@ -8455,7 +8459,7 @@ const TeamPanel = ({
 
 
 
-            <option value="disponível">disponível</option>
+            <option value="disponvel">disponvel</option>
 
 
 
@@ -8463,7 +8467,7 @@ const TeamPanel = ({
 
 
 
-            <option value="Em fÃƒÂ©rias / folga">Em fÃƒÂ©rias / folga</option>
+            <option value="Em fÂ©rias / folga">Em fÂ©rias / folga</option>
 
 
 
@@ -8611,7 +8615,7 @@ const TeamPanel = ({
 
 
 
-                <small>AlocAção: {member.allocation}%</small>
+                <small>AlocAo: {member.allocation}%</small>
 
 
 
@@ -8775,7 +8779,7 @@ const TeamPanel = ({
 
 
 
-                <strong>AlocAção</strong>
+                <strong>AlocAo</strong>
 
 
 
@@ -8987,15 +8991,15 @@ export const ReportsPanel = ({
 
 
 
-          <p className="eyebrow">RelatÃƒÂ³rios</p>
+          <p className="eyebrow">RelatÂ³rios</p>
 
 
 
-          <h2>VisÃƒÂ£o analÃƒÂ­tica</h2>
+          <h2>VisÂ£o analÂ­tica</h2>
 
 
 
-          <p className="subtext">Escolha o foco para comparar resultados do portfÃƒÂ³lio.</p>
+          <p className="subtext">Escolha o foco para comparar resultados do portfÂ³lio.</p>
 
 
 
@@ -9091,7 +9095,7 @@ export const ReportsPanel = ({
 
 
 
-        <p className="muted">Carregando RelatÃƒÂ³rios...</p>
+        <p className="muted">Carregando RelatÂ³rios...</p>
 
 
 
@@ -9227,7 +9231,7 @@ export const ReportsPanel = ({
 
                   title="Sem apontamentos de horas"
 
-                  description="Registre horas nos projetos para comparar o esforÃƒÂ§o entre Equipes."
+                  description="Registre horas nos projetos para comparar o esforÂ§o entre Equipes."
 
                 />
 
@@ -9243,7 +9247,7 @@ export const ReportsPanel = ({
 
             <article className="reports-card">
 
-              <h3>Progresso mÃƒÂ©dio</h3>
+              <h3>Progresso mÂ©dio</h3>
 
               {progressSeries.length ? (
 
@@ -9271,9 +9275,9 @@ export const ReportsPanel = ({
 
                   icon={InsightIcon}
 
-                  title="Progresso indisponível"
+                  title="Progresso indisponvel"
 
-                  description="Atualize o status das tarefas para gerar a linha de tendÃƒÂªncia do portfÃƒÂ³lio."
+                  description="Atualize o status das tarefas para gerar a linha de tendÂªncia do portfÂ³lio."
 
                 />
 
@@ -9325,19 +9329,19 @@ const SettingsPanel = () => {
 
 
 
-    { id: "notifications", label: "NotificaÃƒÂ§ÃƒÂµes" },
+    { id: "notifications", label: "NotificaÂ§Âµes" },
 
 
 
-    { id: "organization", label: "OrganizAção" },
+    { id: "organization", label: "Organização" },
 
 
 
-    { id: "permissions", label: "PermissÃƒÂµes" },
+    { id: "permissions", label: "PermissÂµes" },
 
 
 
-    { id: "integrations", label: "IntegraÃƒÂ§ÃƒÂµes" },
+    { id: "integrations", label: "IntegraÂ§Âµes" },
 
 
 
@@ -9369,7 +9373,7 @@ const SettingsPanel = () => {
 
 
 
-          <p className="eyebrow">ConfiguraÃƒÂ§ÃƒÂµes</p>
+          <p className="eyebrow">ConfiguraÂ§Âµes</p>
 
 
 
@@ -9377,7 +9381,7 @@ const SettingsPanel = () => {
 
 
 
-          <p className="subtext">Gerencie perfil, notificAÃƒÂ§ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âµes, organizAção e integrAÃƒÂ§ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âµes.</p>
+          <p className="subtext">Gerencie perfil, notificAÂ§Âµes, Organização e integrAÂ§Âµes.</p>
 
 
 
@@ -9509,11 +9513,11 @@ const SettingsPanel = () => {
 
 
 
-                  <option>PortuguÃƒÂªs (Brasil)</option>
+                  <option>PortuguÂªs (Brasil)</option>
 
 
 
-                  <option>InglÃƒÂªs</option>
+                  <option>InglÂªs</option>
 
 
 
@@ -9557,7 +9561,7 @@ const SettingsPanel = () => {
 
 
 
-              <h3>NotificaÃƒÂ§ÃƒÂµes</h3>
+              <h3>NotificaÂ§Âµes</h3>
 
 
 
@@ -9569,7 +9573,7 @@ const SettingsPanel = () => {
 
 
 
-                <span>E-mails sobre tarefas atribuÃƒÂ­das</span>
+                <span>E-mails sobre tarefas atribuÂ­das</span>
 
 
 
@@ -9629,7 +9633,7 @@ const SettingsPanel = () => {
 
 
 
-              <h3>OrganizAção</h3>
+              <h3>Organização</h3>
 
 
 
@@ -9637,11 +9641,11 @@ const SettingsPanel = () => {
 
 
 
-                Nome da organizAção
+                Nome da Organização
 
 
 
-                <input type="text" placeholder="OrganizAção Demo" />
+                <input type="text" placeholder="Organização Demo" />
 
 
 
@@ -9653,7 +9657,7 @@ const SettingsPanel = () => {
 
 
 
-                DomÃƒÂ­nio
+                DomÂ­nio
 
 
 
@@ -9697,7 +9701,7 @@ const SettingsPanel = () => {
 
 
 
-              <h3>PermissÃƒÂµes e papÃƒÂ©is</h3>
+              <h3>PermissÂµes e papÂ©is</h3>
 
 
 
@@ -9729,7 +9733,7 @@ const SettingsPanel = () => {
 
 
 
-                    <th>Ver RelatÃƒÂ³rios</th>
+                    <th>Ver RelatÂ³rios</th>
 
 
 
@@ -9829,7 +9833,7 @@ const SettingsPanel = () => {
 
 
 
-              <h3>IntegraÃƒÂ§ÃƒÂµes</h3>
+              <h3>IntegraÂ§Âµes</h3>
 
 
 
@@ -9901,7 +9905,7 @@ const SettingsPanel = () => {
 
 
 
-              <p className="muted">Plano atual: <strong>Pro ÃƒÂ¢ÃƒÂ¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÂ¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ 20/50 projetos</strong></p>
+              <p className="muted">Plano atual: <strong>Pro Â¢Â¢Â¢Ã¢Â¬Â¡Â¬Â¢Â¢Ã¢Å¡Â¬Ã¢ 20/50 projetos</strong></p>
 
 
 
@@ -10568,7 +10572,7 @@ export const DashboardLayout = ({
 
 
 
-      setProjectModalError("O nome do projeto ÃƒÂ© obrigatÃƒÂ³rio.");
+      setProjectModalError("O nome do projeto Â© obrigatÂ³rio.");
 
 
 
@@ -10584,7 +10588,7 @@ export const DashboardLayout = ({
 
 
 
-      setProjectModalError("Informe o cliente Responsável.");
+      setProjectModalError("Informe o cliente Responsvel.");
 
 
 
@@ -11106,14 +11110,14 @@ export const DashboardLayout = ({
             onClick={() => setIsCollapsed((prev) => !prev)}
             aria-label={isCollapsed ? "Expandir menu" : "Recolher menu"}
           >
-            <img src="/logo.png" alt="G&P Gestão de Projetos" className="sidebar-logo-img" />
+            <img src="/logo.png" alt="G&P Gesto de Projetos" className="sidebar-logo-img" />
             {!isCollapsed && (
               <div className="sidebar-brand-text">
                 <span className="brand-sigla">G&P</span>
-                <span className="brand-subtitle">Gestão de Projetos</span>
+                <span className="brand-subtitle">Gesto de Projetos</span>
               </div>
             )}
-            <span className="sidebar-toggle-icon">{isCollapsed ? "»" : "«"}</span>
+            <span className="sidebar-toggle-icon">{isCollapsed ? "" : ""}</span>
 </button>
         </div>
 
@@ -11123,17 +11127,16 @@ export const DashboardLayout = ({
           <div className="sidebar-title"></div>
 
           {sidebarNavigation.map((item) => {
-
             const Icon = item.icon;
+            const computedPath =
+              item.id === "edt" && selectedOrganizationId && selectedProjectId
+                ? `/EAP/organizacao/${selectedOrganizationId}/projeto/${selectedProjectId}`
+                : item.path;
 
             const link = (
-
               <NavLink
-
                 key={item.id}
-
-                to={item.path}
-
+                to={computedPath}
                 className={({ isActive }) => `sidebar-item ${isActive ? "sidebar-item--active" : ""}`}
                 title={isCollapsed ? item.label : undefined}
                 aria-label={isCollapsed ? item.label : undefined}
@@ -11145,17 +11148,11 @@ export const DashboardLayout = ({
               </NavLink>
             );
             return (
-
               <Fragment key={item.id}>
-
                 {link}
-
                 {item.id === "atividades" ? <div className="sidebar-divider" /> : null}
-
               </Fragment>
-
             );
-
           })}
 
         </nav>
@@ -11166,7 +11163,7 @@ export const DashboardLayout = ({
 
           <p>
 
-            Plano Pro Ã‚Â· <strong>20/50</strong> projetos
+            Plano Pro Â· <strong>20/50</strong> projetos
 
           </p>
 
@@ -11203,7 +11200,7 @@ export const DashboardLayout = ({
           <div className="topbar-center">
             <div className="header-context">
               <div className="context-item">
-                <span className="context-label">Organiza??o</span>
+                <span className="context-label">OrganizaÃ§Ã£o</span>
                 <span className="context-value">{currentOrganization?.name ?? "Nenhuma selecionada"}</span>
               </div>
               <div className="context-item">
@@ -11292,7 +11289,7 @@ export const DashboardLayout = ({
 
 
 
-                  <h3>{projectModalMode === "edit" ? "Atualize as informÃƒÂ§ÃƒÂµes principais" : "Planeje um novo trabalho"}</h3>
+                  <h3>{projectModalMode === "edit" ? "Atualize as informÂ§Âµes principais" : "Planeje um novo trabalho"}</h3>
 
 
 
@@ -11308,7 +11305,7 @@ export const DashboardLayout = ({
 
 
 
-                      : "Informe dados bÃƒÂ¡sicos para criarmos o projeto no portfÃƒÂ³lio."}
+                      : "Informe dados bÂ¡sicos para criarmos o projeto no portfÂ³lio."}
 
 
 
@@ -11368,7 +11365,7 @@ export const DashboardLayout = ({
 
 
 
-                    placeholder="ImplementAção ERP 2025"
+                    placeholder="ImplementAo ERP 2025"
 
 
 
@@ -11428,7 +11425,7 @@ export const DashboardLayout = ({
 
 
 
-                  OrÃƒÂ§amento aprovado (R$)
+                  OrÂ§amento aprovado (R$)
 
 
 
@@ -11472,7 +11469,7 @@ export const DashboardLayout = ({
 
 
 
-                  RepositÃƒÂ³rio GitHub
+                  RepositÂ³rio GitHub
 
 
 
@@ -11512,7 +11509,7 @@ export const DashboardLayout = ({
 
 
 
-                    Início planejado
+                    Incio planejado
 
 
 
@@ -11580,7 +11577,7 @@ export const DashboardLayout = ({
 
 
 
-                  Equipe (e-mails separados por vÃƒÂ­rgula)
+                  Equipe (e-mails separados por vÂ­rgula)
 
 
 
@@ -11612,7 +11609,7 @@ export const DashboardLayout = ({
 
 
 
-                  descriÃƒÂ§ÃƒÂ£o
+                  descriÂ§Â£o
 
 
 
@@ -11684,7 +11681,7 @@ export const DashboardLayout = ({
 
 
 
-                      ? "Salvar alteraÃƒÂ§ÃƒÂµes"
+                      ? "Salvar alteraÂ§Âµes"
 
 
 
@@ -11748,7 +11745,7 @@ export const DashboardLayout = ({
 
 
 
-                  <p className="subtext">Informe o tÃƒÂ­tulo e escolha a coluna inicial.</p>
+                  <p className="subtext">Informe o tÂ­tulo e escolha a coluna inicial.</p>
 
 
 
@@ -11788,7 +11785,7 @@ export const DashboardLayout = ({
 
 
 
-                    tÃƒÂ­tulo da tarefa
+                    tÂ­tulo da tarefa
 
 
 
@@ -11880,7 +11877,7 @@ export const DashboardLayout = ({
 
 
 
-                      Início planejado
+                      Incio planejado
 
 
 
@@ -11952,7 +11949,7 @@ export const DashboardLayout = ({
 
 
 
-                    Responsável
+                    Responsvel
 
 
 
@@ -12116,7 +12113,7 @@ export const DashboardLayout = ({
 
 
 
-                    Este projeto ainda Não possui colunas configuradas. Configure o quadro para criar tarefas.
+                    Este projeto ainda No possui colunas configuradas. Configure o quadro para criar tarefas.
 
 
 
@@ -12568,7 +12565,7 @@ export const TemplatesPanel = ({
 
 
 
-        { id: "field-risk", label: "Nível de risco", type: "select" }
+        { id: "field-risk", label: "Nvel de risco", type: "select" }
 
 
 
@@ -13556,7 +13553,7 @@ export const TemplatesPanel = ({
 
 
 
-    setWbsDraft([createTreeNode("IniciAção")]);
+    setWbsDraft([createTreeNode("IniciAo")]);
 
 
 
@@ -13744,7 +13741,7 @@ export const TemplatesPanel = ({
 
 
 
-      setTemplateModalError("O nome do template ÃƒÂ© obrigatÃƒÂ³rio.");
+      setTemplateModalError("O nome do template Â© obrigatÂ³rio.");
 
 
 
@@ -14616,7 +14613,7 @@ export const TemplatesPanel = ({
 
 
 
-                Cliente/ÃƒÂ¡rea padrÃƒÂ£o
+                Cliente/Â¡rea padrÂ£o
 
 
 
@@ -14652,7 +14649,7 @@ export const TemplatesPanel = ({
 
 
 
-                RepositÃƒÂ³rio GitHub
+                RepositÂ³rio GitHub
 
 
 
@@ -14688,7 +14685,7 @@ export const TemplatesPanel = ({
 
 
 
-                OrÃƒÂ§amento base (R$)
+                OrÂ§amento base (R$)
 
 
 
@@ -14813,3 +14810,7 @@ export const TemplatesPanel = ({
 
 
 };
+
+
+
+

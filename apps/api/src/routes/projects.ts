@@ -790,7 +790,7 @@ projectsRouter.get("/:projectId/wbs", async (req, res) => {
           select: { predecessorId: true }
         }
       },
-      orderBy: [{ level: "asc" }, { order: "asc" }, { createdAt: "asc" }]
+      orderBy: [{ level: "asc" }, { sortOrder: "asc" }, { order: "asc" }, { createdAt: "asc" }]
     });
 
   let nodes = await fetchNodes();
@@ -875,9 +875,17 @@ projectsRouter.post("/:projectId/wbs", async (req, res) => {
     parentLevel = parent.level;
   }
 
-  const siblingsCount = await prisma.wbsNode.count({
-    where: { projectId, parentId: parentId ?? null }
+  const lastSibling = await prisma.wbsNode.findFirst({
+    where: { projectId, parentId: parentId ?? null, deletedAt: null },
+    orderBy: { sortOrder: "desc" },
+    select: { sortOrder: true }
   });
+
+  const siblingsCount = await prisma.wbsNode.count({
+    where: { projectId, parentId: parentId ?? null, deletedAt: null }
+  });
+
+  const nextSortOrder = (lastSibling?.sortOrder ?? 0) + 1000;
 
   try {
     const node = await prisma.wbsNode.create({
@@ -893,7 +901,8 @@ projectsRouter.post("/:projectId/wbs", async (req, res) => {
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
         estimateHours: estimateHours ? new Prisma.Decimal(estimateHours) : undefined,
-        progress
+        progress,
+        sortOrder: nextSortOrder
       }
     });
 

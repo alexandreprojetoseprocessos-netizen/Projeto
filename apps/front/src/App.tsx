@@ -18,7 +18,8 @@ import {
 import { DashboardPage } from "./pages/DashboardPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { ProjectDetailsPage } from "./pages/ProjectDetailsPage";
-import { EDTPage } from "./pages/EDTPage";
+import EDTPage from "./pages/EDTPage.clean";
+import KanbanPage from "./pages/KanbanPage";
 import { ProjectEDTPage } from "./pages/ProjectEDTPage";
 import { ProjectBoardPage } from "./pages/ProjectBoardPage";
 import { ProjectTimelinePage } from "./pages/ProjectTimelinePage";
@@ -344,7 +345,8 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   useEffect(() => {
     if (status !== "authenticated") return;
     if (subscriptionStatus !== "active") return;
-    if (organizations.length === 0 && location.pathname !== "/organizacao") {
+    const isEapRoute = location.pathname.toLowerCase().startsWith("/eap");
+    if (organizations.length === 0 && location.pathname !== "/organizacao" && !isEapRoute) {
       navigate("/organizacao", { replace: true });
     }
   }, [status, subscriptionStatus, organizations.length, location.pathname, navigate]);
@@ -1411,6 +1413,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     return <Navigate to="/projects" replace />;
   }
 
+  const handleProjectSelection = (projectId: string) => {
+    setSelectedProjectId(projectId);
+    if (selectedOrganizationId && projectId) {
+      navigate(`/EAP/organizacao/${selectedOrganizationId}/projeto/${projectId}`, { replace: true });
+    }
+  };
+
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
@@ -1427,8 +1436,8 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
             onSignOut={signOut}
             projects={projects}
             selectedProjectId={selectedProjectId ?? ""}
-            onProjectChange={setSelectedProjectId}
-            onSelectProject={setSelectedProjectId}
+            onProjectChange={handleProjectSelection}
+            onSelectProject={handleProjectSelection}
             projectsError={projectsError}
             filters={filters}
             onRangeChange={(rangeDays) => setFilters((prev) => ({ ...prev, rangeDays }))}
@@ -1542,8 +1551,26 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         <Route path="projects/:id/cronograma" element={<ProjectTimelinePage />} />
         <Route path="projects/:id/documentos" element={<ProjectDocumentsPage />} />
         <Route path="projects/:id/atividades" element={<ProjectActivitiesPage />} />
-        <Route path="edt" element={<EDTPage />} />
+        <Route
+          path="EAP/organizacao/:organizationId/projeto/:projectId"
+          element={<EDTPage />}
+        />
+        <Route
+          path="EAP"
+          element={
+            selectedOrganizationId && selectedProjectId ? (
+              <Navigate
+                to={`/EAP/organizacao/${selectedOrganizationId}/projeto/${selectedProjectId}`}
+                replace
+              />
+            ) : (
+              <Navigate to="/organizacao" replace />
+            )
+          }
+        />
+        <Route path="edt" element={<Navigate to="/EAP" replace />} />
         <Route path="board" element={<BoardPage />} />
+        <Route path="kanban" element={<KanbanPage />} />
         <Route path="cronograma" element={<TimelinePage />} />
         <Route path="relatorios" element={<ReportsPage />} />
         <Route path="documentos" element={<DocumentsPage />} />
