@@ -18,8 +18,10 @@ import {
 import { DashboardPage } from "./pages/DashboardPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { ProjectDetailsPage } from "./pages/ProjectDetailsPage";
-import EDTPage from "./pages/EDTPage.clean";
+import EDTPage from "./pages/EDTPage";
+console.log("[EAP route] EDTPage imported from ./pages/EDTPage");
 import KanbanPage from "./pages/KanbanPage";
+import { toBackendStatus } from "./utils/status";
 import { ProjectEDTPage } from "./pages/ProjectEDTPage";
 import { ProjectBoardPage } from "./pages/ProjectBoardPage";
 import { ProjectTimelinePage } from "./pages/ProjectTimelinePage";
@@ -1068,6 +1070,9 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     if ("dependencies" in payload) {
       payload.dependencies = Array.isArray(payload.dependencies) ? payload.dependencies : [];
     }
+    if ("status" in payload && payload.status !== undefined && payload.status !== null) {
+      payload.status = toBackendStatus(payload.status);
+    }
     if ("serviceMultiplier" in payload && payload.serviceMultiplier !== undefined && payload.serviceMultiplier !== null) {
       payload.serviceMultiplier = Number(payload.serviceMultiplier);
     }
@@ -1158,7 +1163,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       title: data?.title ?? "Nova tarefa",
       type: "TASK",
       parentId,
-      status: data?.status ?? "BACKLOG",
+      status: toBackendStatus(data?.status ?? "BACKLOG"),
       priority: data?.priority ?? "MEDIUM",
       description: data?.description ?? undefined,
       estimateHours:

@@ -4,6 +4,8 @@ import { WbsTreeView, type DashboardOutletContext } from "../components/Dashboar
 import { StatusSelect } from "../components/StatusSelect";
 import { normalizeStatus, type Status } from "../utils/status";
 
+console.log("[EAP] page mounted:", "EDTPage.clean.tsx", new Date().toISOString());
+
 const EDTPage: React.FC = () => {
   const {
     wbsNodes,
@@ -71,6 +73,18 @@ const EDTPage: React.FC = () => {
           <button className="eap-btn" onClick={() => onReloadWbs?.()}>
             Recarregar
           </button>
+          <button className="eap-btn" onClick={() => onReloadWbs?.()}>
+            Exportar
+          </button>
+          <button className="eap-btn" onClick={() => onReloadWbs?.()}>
+            Importar
+          </button>
+          <button className="eap-btn" onClick={() => onReloadWbs?.()}>
+            Importar serviços
+          </button>
+          <button className="eap-btn eap-btn-danger" onClick={() => onReloadWbs?.()}>
+            Lixeira
+          </button>
         </div>
 
         <div className="eap-actions-right no-grow" style={{ gap: 12 }}>
@@ -137,27 +151,6 @@ const EDTPage: React.FC = () => {
               filterOverdue="ALL"
             />
           </div>
-
-          <table className="wbs-table">
-            <thead>
-              <tr>
-                <th>Código</th>
-                <th>Nome</th>
-                <th>Status</th>
-                <th>Responsável</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredNodes.map((node) => (
-                <tr key={node.id}>
-                  <td>{node.wbsCode ?? node.code ?? "-"}</td>
-                  <td>{node.title ?? "(sem título)"}</td>
-                  <td>{normalizeStatus(node.status)}</td>
-                  <td>{node.owner?.name ?? node.owner?.email ?? "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       )}
 

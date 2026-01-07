@@ -3575,3 +3575,28 @@ button[type="submit"]:hover {
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.15);
   padding: 8px;
 }
+
+.wbs-bulk-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border, #e5e7eb);
+  background: #fff;
+  box-shadow: 0 -6px 14px rgba(15, 23, 42, 0.06);
+  z-index: 2;
+}
+
+.wbs-bulk-info {
+  font-size: 12px;
+  color: #475569;
+}
+
+.wbs-bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

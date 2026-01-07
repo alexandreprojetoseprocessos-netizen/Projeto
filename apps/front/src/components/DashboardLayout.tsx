@@ -38,7 +38,7 @@ import {
 } from "react";
 
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
-import { normalizeStatus, STATUS_ORDER } from "../utils/status";
+import { normalizeStatus, STATUS_ORDER, type Status } from "../utils/status";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -1884,102 +1884,24 @@ const ChatIcon = () => (
 
 type StatusTone = "success" | "info" | "neutral" | "danger" | "warning";
 
-
-
-
-
-
-
-const statusDictionary: Record<string, { label: string; tone: StatusTone }> = {
-
-
-
-  DONE: { label: "Finalizado", tone: "success" },
-
-
-
-  COMPLETED: { label: "Finalizado", tone: "success" },
-
-
-
-  FINISHED: { label: "Finalizado", tone: "success" },
-
-
-
-  IN_PROGRESS: { label: "Em andamento", tone: "info" },
-
-
-
-  WORKING: { label: "Em andamento", tone: "info" },
-
-
-
-  "Nao iniciado": { label: "Nao iniciado", tone: "neutral" },
-  "Em andamento": { label: "Em andamento", tone: "info" },
-  "Em atraso": { label: "Em atraso", tone: "danger" },
-  "Em risco": { label: "Em risco", tone: "warning" },
-  "Homologacao": { label: "Homologacao", tone: "info" },
-  "Finalizado": { label: "Finalizado", tone: "success" },
-
-
-  NOT_STARTED: { label: "Não iniciado", tone: "neutral" },
-
-
-
-  WAITING: { label: "Não iniciado", tone: "neutral" },
-
-
-
-  LATE: { label: "Em atraso", tone: "danger" },
-
-
-
-  OVERDUE: { label: "Em atraso", tone: "danger" },
-
-
-
-  AT_RISK: { label: "Em risco", tone: "warning" },
-
-
-
-  BLOCKED: { label: "Em risco", tone: "warning" },
-
-  "Não iniciado": { label: "Não iniciado", tone: "neutral" },
-  "Em andamento": { label: "Em andamento", tone: "info" },
-  "Em atraso": { label: "Em atraso", tone: "danger" },
-  "Em risco": { label: "Em risco", tone: "warning" },
-  "Homologação": { label: "Homologação", tone: "info" },
-  "Finalizado": { label: "Finalizado", tone: "success" },
-
-
-
-
+const STATUS_TONE: Record<Status, StatusTone> = {
+  "Não iniciado": "neutral",
+  "Em andamento": "info",
+  "Em atraso": "danger",
+  "Em risco": "warning",
+  "Homologação": "info",
+  "Finalizado": "success",
 };
 
-
-
-
-
-
-
 const STATUS_CLASS: Record<string, string> = {
-  NOT_STARTED: "bg-slate-50 text-slate-700 border-slate-300",
-  IN_PROGRESS: "bg-blue-50 text-blue-700 border-blue-300",
-  DONE: "bg-emerald-50 text-emerald-700 border-emerald-300",
-  LATE: "bg-red-50 text-red-700 border-red-300",
-  AT_RISK: "bg-amber-50 text-amber-800 border-amber-300",
   "Não iniciado": "bg-slate-50 text-slate-700 border-slate-300",
   "Em andamento": "bg-blue-50 text-blue-700 border-blue-300",
-  "Finalizado": "bg-emerald-50 text-emerald-700 border-emerald-300",
   "Em atraso": "bg-red-50 text-red-700 border-red-300",
   "Em risco": "bg-amber-50 text-amber-800 border-amber-300",
   "Homologação": "bg-indigo-50 text-indigo-800 border-indigo-300",
+  "Finalizado": "bg-emerald-50 text-emerald-700 border-emerald-300",
   default: "bg-slate-50 text-slate-700 border-slate-300",
 };
-
-const editableStatusValues = ["BACKLOG", "IN_PROGRESS", "DONE", "LATE", "AT_RISK"];
-
-
 
 const WORKDAY_HOURS = 8;
 
@@ -3786,21 +3708,8 @@ export const WbsTreeView = ({
 
 
   const resolveStatus = (status?: string | null) => {
-
-
-
-    if (!status) return { label: "Não iniciado", tone: "neutral" as StatusTone };
-
-
-
-    const normalized = status.toUpperCase();
-
-
-
-    return statusDictionary[normalized] ?? { label: status, tone: "neutral" };
-
-
-
+    const label = normalizeStatus(status);
+    return { label, tone: STATUS_TONE[label] ?? "neutral" };
   };
 
 
@@ -4226,7 +4135,9 @@ export const WbsTreeView = ({
             orderedIds
           })
         });
-        await onReloadWbs();
+        if (typeof onReloadWbs === "function") {
+          await onReloadWbs();
+        }
       } catch (error) {
         console.error("Failed to reorder", error);
       }
@@ -4315,7 +4226,12 @@ export const WbsTreeView = ({
 
         await onReloadWbs();
       } else if (action === "TRASH") {
-        const confirmMove = window.confirm("Mover esta tarefa para a lixeira?");
+        const targetIds =
+          selectedTaskIds.length > 0 && selectedTaskIds.includes(node.id) ? selectedTaskIds : [node.id];
+        const confirmMove =
+          targetIds.length > 1
+            ? window.confirm(`Enviar ${targetIds.length} tarefas para a lixeira?`)
+            : window.confirm("Enviar esta tarefa para a lixeira?");
         if (!confirmMove) {
           setOpenMenuId(null);
           return;
@@ -4327,8 +4243,9 @@ export const WbsTreeView = ({
             Authorization: `Bearer ${authToken}`,
             "X-Organization-Id": currentOrganizationId
           },
-          body: JSON.stringify({ ids: [node.id] })
+          body: JSON.stringify({ ids: targetIds })
         });
+        console.log("[trash] soft delete", targetIds);
         await onReloadWbs();
       }
     } catch (error) {
@@ -4336,6 +4253,31 @@ export const WbsTreeView = ({
     }
 
     setOpenMenuId(null);
+  };
+
+  const handleBulkTrash = async () => {
+    if (!selectedProjectId || !authToken || !currentOrganizationId) return;
+    if (selectedTaskIds.length === 0) return;
+    const confirmMove = window.confirm(`Enviar ${selectedTaskIds.length} tarefas para a lixeira?`);
+    if (!confirmMove) return;
+    try {
+      await fetch(`${API_BASE_URL}/wbs/bulk-delete`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+          "X-Organization-Id": currentOrganizationId
+        },
+        body: JSON.stringify({ ids: selectedTaskIds })
+      });
+      console.log("[trash] soft delete", selectedTaskIds);
+      setSelectedTaskIds([]);
+      if (typeof onReloadWbs === "function") {
+        await onReloadWbs();
+      }
+    } catch (error) {
+      console.error("Bulk trash error", error);
+    }
   };
 
 
@@ -4610,7 +4552,7 @@ export const WbsTreeView = ({
 
 
 
-              const normalizedStatus = (row.node.status ?? "").toUpperCase();
+              const normalizedStatus = normalizeStatus(row.node.status);
               const statusClass = STATUS_CLASS[normalizedStatus] ?? STATUS_CLASS.default;
               const durationInDays = calcDurationInDays(row.node.startDate, row.node.endDate);
               const isStatusPickerOpen = statusPickerId === row.node.id;
@@ -5023,6 +4965,12 @@ export const WbsTreeView = ({
                       <select
                         className="wbs-service-select"
                         value={row.node.serviceCatalogId ?? ""}
+                        disabled={!serviceCatalog?.length}
+                        title={
+                          serviceCatalog?.length
+                            ? "Selecione um serviço"
+                            : "Use 'Importar serviços' para carregar o catálogo"
+                        }
                         onClick={(event) => event.stopPropagation()}
                         onChange={(event) => {
                           event.stopPropagation();
@@ -5039,17 +4987,24 @@ export const WbsTreeView = ({
                             serviceHours: hours ?? undefined
                           });
                         }}
-                      >
-                        <option value="">Sem servio</option>
-                        {serviceCatalog.map((service) => {
-                          const base = service.hoursBase ?? service.hours ?? null;
-                          const label = base !== null && base !== undefined ? `${service.name} (${base}h)` : service.name;
-                          return (
-                            <option key={service.id} value={service.id} title={label}>
-                              {label}
-                            </option>
-                          );
-                        })}
+                        >
+                        <option value="">Sem serviço</option>
+                        {serviceCatalog?.length === 0 ? (
+                          <option value="" disabled>
+                            Catálogo não configurado
+                          </option>
+                        ) : (
+                          serviceCatalog.map((service) => {
+                            const base = service.hoursBase ?? service.hours ?? null;
+                            const label =
+                              base !== null && base !== undefined ? `${service.name} (${base}h)` : service.name;
+                            return (
+                              <option key={service.id} value={service.id} title={label}>
+                                {label}
+                              </option>
+                            );
+                          })
+                        )}
                       </select>
                     </td>
 
@@ -5149,6 +5104,20 @@ export const WbsTreeView = ({
         </div>
       </DndContext>
 
+      {selectedTaskIds.length > 0 && (
+        <div className="wbs-bulk-bar">
+          <span className="wbs-bulk-info">{selectedTaskIds.length} selecionada(s)</span>
+          <div className="wbs-bulk-actions">
+            <button type="button" className="btn-secondary" onClick={() => setSelectedTaskIds([])}>
+              Limpar seleção
+            </button>
+            <button type="button" className="btn-danger-ghost" onClick={handleBulkTrash}>
+              Enviar para lixeira
+            </button>
+          </div>
+        </div>
+      )}
+
       {openMenuId && menuPosition && activeMenuNode &&
         createPortal(
           <div
@@ -5164,19 +5133,19 @@ export const WbsTreeView = ({
           >
             <div className="wbs-actions-menu">
               {[
-                "Editar tarefa",
-                "Mover Nvel",
-                "Adicionar subtarefa",
-                "Duplicar",
-                "Excluir"
-              ].map((label) => (
+                { label: "Subir tarefa", action: "MOVE_UP" },
+                { label: "Descer tarefa", action: "MOVE_DOWN" },
+                { label: "Adicionar subtarefa", action: "ADD_CHILD" },
+                { label: "Duplicar", action: "DUPLICATE" },
+                { label: "Enviar para lixeira", action: "TRASH" }
+              ].map((item) => (
                 <button
                   type="button"
-                  key={label}
+                  key={item.action}
                   className="wbs-actions-item"
-                  onClick={(event) => handleMenuAction(event, label, activeMenuNode)}
+                  onClick={(event) => handleMenuAction(event, item.action, activeMenuNode)}
                 >
-                  {label}
+                  {item.label}
                 </button>
               ))}
             </div>
