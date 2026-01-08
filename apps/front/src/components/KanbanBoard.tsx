@@ -1,4 +1,4 @@
-import React, { FormEvent, useMemo, useState } from "react";
+import React, { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   DragDropContext,
   Droppable,
@@ -90,9 +90,10 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   newTaskTitle: _newTaskTitle,
   newTaskColumn: _newTaskColumn,
 }) => {
-  const [modalColumn, setModalColumn] = useState<TaskStatus | null>(null);
-  const [modalTaskTitle, setModalTaskTitle] = useState("");
-  const [modalTaskPriority, setModalTaskPriority] =
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createStatus, setCreateStatus] = useState<TaskStatus | null>(null);
+  const [createTitle, setCreateTitle] = useState("");
+  const [createPriority, setCreatePriority] =
     useState<Priority>("MEDIUM");
 
   const standardColumns = useMemo(
@@ -110,30 +111,44 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   );
 
   const openCreateModal = (columnId: TaskStatus) => {
-    setModalColumn(columnId);
-    setModalTaskTitle("");
-    setModalTaskPriority("MEDIUM");
+    setCreateStatus(columnId);
+    setIsCreateOpen(true);
+    setCreateTitle("");
+    setCreatePriority("MEDIUM");
     onTaskColumnChange(columnId);
   };
 
   const closeCreateModal = () => {
-    setModalColumn(null);
-    setModalTaskTitle("");
-    setModalTaskPriority("MEDIUM");
+    setIsCreateOpen(false);
+    setCreateStatus(null);
+    setCreateTitle("");
+    setCreatePriority("MEDIUM");
   };
 
   const handleModalSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!modalColumn || !modalTaskTitle.trim()) return;
+    if (!createStatus || !createTitle.trim()) return;
 
-    onTaskTitleChange(modalTaskTitle);
-    onTaskColumnChange(modalColumn);
+    onTaskTitleChange(createTitle);
+    onTaskColumnChange(createStatus);
 
     const success = await onCreate(event);
     if (success) {
       closeCreateModal();
     }
   };
+
+  useEffect(() => {
+    if (!isCreateOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeCreateModal();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isCreateOpen]);
 
   const getPriorityBadge = (priority?: Priority) => {
     if (!priority) return null;
@@ -391,43 +406,58 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
         })}
       </DragDropContext>
 
-      {modalColumn && (
-        <div className="kanban-modal-overlay" onClick={closeCreateModal}>
+      {isCreateOpen && createStatus && (
+        <div
+          className="kanbanModalOverlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeCreateModal();
+            }
+          }}
+        >
           <div
-            className="kanban-modal"
-            onClick={(e) => e.stopPropagation()}
+            className="kanbanModal"
+            onMouseDown={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
+            aria-labelledby="kanban-create-title"
           >
-            <div className="kanban-modal__header">
-              <h3>Nova tarefa em {STATUS_MAP[modalColumn]}</h3>
+            <div className="kanbanModalHeader">
+              <div>
+                <div className="kanbanModalTitle" id="kanban-create-title">
+                  Nova tarefa
+                </div>
+                <div className="kanbanModalSubtitle">
+                  Em {STATUS_MAP[createStatus]}
+                </div>
+              </div>
               <button
                 type="button"
-                className="kanban-modal__close"
+                className="kanbanIconButton"
                 onClick={closeCreateModal}
                 aria-label="Fechar modal"
               >
                 ×
               </button>
             </div>
-            <form onSubmit={handleModalSubmit} className="kanban-modal__form">
-              <label>
+            <form onSubmit={handleModalSubmit} className="kanbanModalBody">
+              <label className="kanbanField">
                 <span>Título da tarefa</span>
                 <input
                   type="text"
-                  value={modalTaskTitle}
-                  onChange={(e) => setModalTaskTitle(e.target.value)}
+                  value={createTitle}
+                  onChange={(e) => setCreateTitle(e.target.value)}
                   placeholder="Digite o título..."
                   autoFocus
                   required
                 />
               </label>
-              <label>
+              <label className="kanbanField">
                 <span>Prioridade</span>
                 <select
-                  value={modalTaskPriority}
+                  value={createPriority}
                   onChange={(e) =>
-                    setModalTaskPriority(e.target.value as Priority)
+                    setCreatePriority(e.target.value as Priority)
                   }
                 >
                   <option value="LOW">Baixa</option>
@@ -435,18 +465,18 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                   <option value="HIGH">Alta</option>
                 </select>
               </label>
-              <div className="kanban-modal__actions">
+              <div className="kanbanModalFooter">
                 <button
                   type="button"
-                  className="secondary-button"
+                  className="btnGhost"
                   onClick={closeCreateModal}
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="primary-button"
-                  disabled={!modalTaskTitle.trim()}
+                  className="btnPrimary"
+                  disabled={!createTitle.trim()}
                 >
                   Criar tarefa
                 </button>
