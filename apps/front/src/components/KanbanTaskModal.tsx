@@ -51,22 +51,34 @@ const KanbanTaskModal: React.FC<TaskModalProps> = ({
     }
   };
 
+  const resolveDescription = (value: any) =>
+    value?.description ?? value?.descricao ?? value?.details ?? value?.notes ?? "";
+
+  const resolveResponsibleId = (value: any) =>
+    value?.ownerId ?? value?.responsibleMembershipId ?? value?.responsibleId ?? "";
+
+  const sliceDate = (value: any) =>
+    typeof value === "string" ? value.slice(0, 10) : "";
+
+  const resolveStartDate = (value: any) =>
+    sliceDate(value?.startDate ?? value?.startAt ?? value?.start ?? "");
+
+  const resolveEndDate = (value: any) =>
+    sliceDate(value?.endDate ?? value?.dueDate ?? value?.endAt ?? value?.end ?? "");
+
+  const initialDescription = resolveDescription(task);
+  const initialStatus = resolveStatus(normalizedStatus);
+  const initialResponsibleId = resolveResponsibleId(task);
+  const initialStartDate = resolveStartDate(task);
+  const initialEndDate = resolveEndDate(task);
+
   const [title, setTitle] = useState(task?.title ?? "");
-  const [status, setStatus] = useState<TaskStatus>(resolveStatus(normalizedStatus));
-  const [description, setDescription] = useState(task?.description ?? "");
+  const [status, setStatus] = useState<TaskStatus>(initialStatus);
+  const [description, setDescription] = useState(initialDescription);
   const [priority, setPriority] = useState(task?.priority ?? "MEDIUM");
-  const [responsibleId, setResponsibleId] = useState(
-    task?.ownerId ??
-      task?.responsibleMembershipId ??
-      task?.responsibleId ??
-      ""
-  );
-  const [startDate, setStartDate] = useState(
-    task?.startDate ? task.startDate.slice(0, 10) : ""
-  );
-  const [endDate, setEndDate] = useState(
-    task?.endDate ? task.endDate.slice(0, 10) : task?.dueDate ? task.dueDate.slice(0, 10) : ""
-  );
+  const [responsibleId, setResponsibleId] = useState(initialResponsibleId);
+  const [startDate, setStartDate] = useState(initialStartDate);
+  const [endDate, setEndDate] = useState(initialEndDate);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -75,6 +87,18 @@ const KanbanTaskModal: React.FC<TaskModalProps> = ({
   useEffect(() => {
     titleRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    setTitle(task?.title ?? "");
+    setStatus(resolveStatus(normalizeStatus(task?.status)));
+    setDescription(resolveDescription(task));
+    setPriority(task?.priority ?? "MEDIUM");
+    setResponsibleId(resolveResponsibleId(task));
+    setStartDate(resolveStartDate(task));
+    setEndDate(resolveEndDate(task));
+    setIsSaving(false);
+    setErrorMsg(null);
+  }, [task?.id]);
 
   const code = useMemo(
     () => task?.wbsCode ?? task?.code ?? task?.id ?? "",
@@ -85,19 +109,11 @@ const KanbanTaskModal: React.FC<TaskModalProps> = ({
     () => ({
       title: task?.title ?? "",
       status: resolveStatus(normalizedStatus),
-      description: task?.description ?? "",
+      description: resolveDescription(task),
       priority: task?.priority ?? "MEDIUM",
-      responsibleId:
-        task?.ownerId ??
-        task?.responsibleMembershipId ??
-        task?.responsibleId ??
-        "",
-      startDate: task?.startDate ? task.startDate.slice(0, 10) : "",
-      endDate: task?.endDate
-        ? task.endDate.slice(0, 10)
-        : task?.dueDate
-        ? task.dueDate.slice(0, 10)
-        : "",
+      responsibleId: resolveResponsibleId(task),
+      startDate: resolveStartDate(task),
+      endDate: resolveEndDate(task),
     }),
     [task, normalizedStatus, resolveStatus]
   );
@@ -136,6 +152,7 @@ const KanbanTaskModal: React.FC<TaskModalProps> = ({
     const payload: Record<string, any> = {
       title,
       description,
+      descricao: description,
       status,
     };
     if (priority) payload.priority = priority;
