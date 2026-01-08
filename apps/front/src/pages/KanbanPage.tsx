@@ -96,17 +96,31 @@ const KanbanPage: React.FC = () => {
 
     filtered.forEach((node) => {
       const status = mapToTaskStatus(node.status);
+      const assigneeSource = node.owner ?? node.responsible ?? null;
+      const assignee = assigneeSource
+        ? {
+            id: String(
+              assigneeSource.id ??
+                assigneeSource.userId ??
+                assigneeSource.membershipId ??
+                ""
+            ),
+            name: assigneeSource.name ?? assigneeSource.email ?? "Responsavel",
+            avatar: assigneeSource.avatar,
+          }
+        : undefined;
       grouped[status].push({
         id: node.id,
         title: `${node.wbsCode ?? node.code ?? ""} ${node.title ?? "Tarefa"}`.trim(),
         code: node.wbsCode ?? node.code ?? "",
         status,
-        dueDate: node.endDate ?? undefined,
-        assignee: node.owner
-          ? { id: node.owner.id, name: node.owner.name ?? node.owner.email ?? "Responsável" }
-          : undefined,
+        dueDate: node.endDate ?? node.dueDate ?? node.endAt ?? node.end ?? undefined,
+        startDate: node.startDate ?? node.startAt ?? node.start ?? undefined,
+        endDate: node.endDate ?? node.dueDate ?? node.endAt ?? node.end ?? undefined,
+        assignee,
         tags: node.wbsCode ? [node.wbsCode] : undefined,
         description: node.description ?? undefined,
+        priority: node.priority ?? undefined,
       });
     });
 

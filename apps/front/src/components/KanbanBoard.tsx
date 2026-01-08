@@ -41,7 +41,14 @@ export type KanbanTask = {
   code?: string;
   description?: string;
   dueDate?: string;
-  assignee?: { id: string; name: string; avatar?: string };
+  startDate?: string;
+  endDate?: string;
+  startAt?: string;
+  endAt?: string;
+  start?: string;
+  end?: string;
+  assignee?: { id: string; name?: string; email?: string; avatar?: string };
+  responsible?: { id: string; name?: string; email?: string; avatar?: string };
   tags?: string[];
   priority?: Priority;
 };
@@ -142,16 +149,38 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     );
   };
 
-  const formatDate = (dateString?: string | null) => {
-    if (!dateString) return null;
-    try {
-      return new Date(dateString).toLocaleDateString("pt-BR", {
-        day: "2-digit",
-        month: "short",
-      });
-    } catch {
-      return null;
+  const formatDateBR = (value?: string | null) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+    });
+  };
+
+  const getInitials = (value?: string | null) => {
+    if (!value) return "";
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    const base = trimmed.includes("@") ? trimmed.split("@")[0] : trimmed;
+    const parts = base.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) {
+      return parts[0].slice(0, 2).toUpperCase();
     }
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  };
+
+  const getShortName = (value?: string | null) => {
+    if (!value) return "";
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    if (trimmed.includes("@")) {
+      return trimmed.split("@")[0];
+    }
+    const parts = trimmed.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) return parts[0];
+    return `${parts[0]} ${parts[1][0]}.`;
   };
 
   if (!columns.length) {
@@ -230,65 +259,85 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                         index={index}
                         key={task.id}
                       >
-                        {(dragProvided, dragSnapshot) => (
-                          <article
-                            ref={dragProvided.innerRef}
-                            {...dragProvided.draggableProps}
-                            {...dragProvided.dragHandleProps}
-                            className={`kanbanCard ${
-                              dragSnapshot.isDragging ? "is-dragging" : ""
-                            }`}
-                            onClick={() => onTaskClick?.(task)}
-                            style={{
-                              ...dragProvided.draggableProps.style,
-                              transform: dragSnapshot.isDragging
-                                ? `${
-                                    dragProvided.draggableProps.style?.transform
-                                  } scale(1.05)`
-                                : dragProvided.draggableProps.style?.transform,
-                            }}
-                          >
-                            {task.code && (
-                              <span className="kanban-card__code">
-                                {task.code}
-                              </span>
-                            )}
-                            <h4 className="kanban-card__title" title={task.title}>
-                              {task.title}
-                            </h4>
-                            {task.description && (
-                              <p className="kanban-card__description">
-                                {task.description}
-                              </p>
-                            )}
-                            {(task.assignee || task.dueDate || task.priority) && (
+                        {(dragProvided, dragSnapshot) => {
+                          const assignee = task.assignee ?? task.responsible ?? null;
+                          const assigneeLabelRaw = assignee?.name ?? assignee?.email ?? "";
+                          const assigneeLabel = assigneeLabelRaw
+                            ? getShortName(assigneeLabelRaw)
+                            : "Sem responsavel";
+                          const assigneeInitials = assignee
+                            ? getInitials(assigneeLabelRaw)
+                            : "?";
+                          const startLabel = formatDateBR(
+                            task.startDate ?? task.startAt ?? task.start ?? null
+                          );
+                          const endLabel = formatDateBR(
+                            task.endDate ??
+                              task.dueDate ??
+                              task.endAt ??
+                              task.end ??
+                              null
+                          );
+                          const hasDates = Boolean(startLabel || endLabel);
+                          const priorityBadge = getPriorityBadge(task.priority);
+
+                          return (
+                            <article
+                              ref={dragProvided.innerRef}
+                              {...dragProvided.draggableProps}
+                              {...dragProvided.dragHandleProps}
+                              className={`kanbanCard ${
+                                dragSnapshot.isDragging ? "is-dragging" : ""
+                              }`}
+                              onClick={() => onTaskClick?.(task)}
+                              style={{
+                                ...dragProvided.draggableProps.style,
+                                transform: dragSnapshot.isDragging
+                                  ? `${
+                                      dragProvided.draggableProps.style?.transform
+                                    } scale(1.05)`
+                                  : dragProvided.draggableProps.style?.transform,
+                              }}
+                            >
+                              {task.code && (
+                                <span className="kanban-card__code">
+                                  {task.code}
+                                </span>
+                              )}
+                              <div className="kanban-card__header">
+                                <h4 className="kanban-card__title" title={task.title}>
+                                  {task.title}
+                                </h4>
+                              </div>
                               <div className="kanban-card__meta">
-                                {task.assignee && (
+                                <div className="kanban-card__meta-line">
                                   <div
-                                    className="kanban-card__meta-item kanban-card__assignee-chip"
-                                    title={task.assignee.name}
+                                    className="kanban-card__assignee"
+                                    title={assigneeLabelRaw || "Sem responsavel"}
                                   >
-                                    <div className="kanban-avatar">
-                                      {task.assignee.avatar ? (
+                                    <div
+                                      className={`kanban-avatar${assignee ? "" : " is-muted"}`}
+                                    >
+                                      {assignee?.avatar ? (
                                         <img
-                                          src={task.assignee.avatar}
-                                          alt={task.assignee.name}
+                                          src={assignee.avatar}
+                                          alt={assigneeLabelRaw || "Responsavel"}
                                         />
                                       ) : (
-                                        <span>
-                                          {task.assignee.name
-                                            .split(" ")
-                                            .map((n) => n[0])
-                                            .join("")
-                                            .slice(0, 2)
-                                            .toUpperCase()}
-                                        </span>
+                                        <span>{assigneeInitials || "?"}</span>
                                       )}
                                     </div>
+                                    <span
+                                      className={`kanban-card__meta-text${
+                                        assignee ? "" : " is-muted"
+                                      }`}
+                                    >
+                                      {assigneeLabel}
+                                    </span>
                                   </div>
-                                )}
-                                {task.dueDate && (
-                                  <div className="kanban-card__meta-item kanban-card__due-date">
+                                </div>
+                                <div className="kanban-card__meta-line">
+                                  <div className="kanban-card__dates">
                                     <svg
                                       width="14"
                                       height="14"
@@ -296,6 +345,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                       fill="none"
                                       stroke="currentColor"
                                       strokeWidth="2"
+                                      className="kanban-card__icon"
                                     >
                                       <rect
                                         x="3"
@@ -309,18 +359,27 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                       <line x1="8" y1="2" x2="8" y2="6" />
                                       <line x1="3" y1="10" x2="21" y2="10" />
                                     </svg>
-                                    <span>{formatDate(task.dueDate)}</span>
+                                    {hasDates ? (
+                                      <div className="kanban-card__date-group">
+                                        {startLabel && <span>Inicio: {startLabel}</span>}
+                                        {endLabel && <span>Fim: {endLabel}</span>}
+                                      </div>
+                                    ) : (
+                                      <span className="kanban-card__meta-text is-muted">
+                                        Sem datas
+                                      </span>
+                                    )}
                                   </div>
-                                )}
-                                {task.priority && (
-                                  <div className="kanban-card__meta-item">
-                                    {getPriorityBadge(task.priority)}
+                                </div>
+                                {priorityBadge && (
+                                  <div className="kanban-card__meta-line">
+                                    {priorityBadge}
                                   </div>
                                 )}
                               </div>
-                            )}
-                          </article>
-                        )}
+                            </article>
+                          );
+                        }}
                       </Draggable>
                     ))}
                     {provided.placeholder}
