@@ -539,7 +539,8 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       try {
         setCommentsError(null);
         const data = await fetchJson(`/wbs/${selectedNodeId}/comments`, token, undefined, selectedOrganizationId);
-        setComments(data.comments ?? []);
+        const nextComments = Array.isArray(data) ? data : data?.comments ?? [];
+        setComments(nextComments);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro ao carregar comentÃ¡rios";
         setCommentsError(message);
@@ -769,7 +770,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         token,
         {
           method: "POST",
-          body: JSON.stringify({ body: commentBody })
+          body: JSON.stringify({ message: commentBody, body: commentBody })
         },
         selectedOrganizationId
       );
@@ -1045,6 +1046,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       status?: string;
       startDate?: string | null;
       endDate?: string | null;
+      description?: string | null;
       estimateHours?: number | null;
       dependencies?: string[];
       ownerId?: string | null;
@@ -1671,6 +1673,7 @@ function patchWbsNode(
     status?: string;
     startDate?: string | null;
     endDate?: string | null;
+    description?: string | null;
     estimateHours?: string | null;
     dependencies?: string[];
     responsible?:

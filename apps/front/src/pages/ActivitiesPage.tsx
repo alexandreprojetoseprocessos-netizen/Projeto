@@ -20,7 +20,7 @@ export const ActivitiesPage = () => {
     id: comment.id,
     author: comment.author?.name ?? comment.authorName ?? "Colaborador",
     role: comment.author?.role ?? comment.authorRole ?? "Equipe",
-    body: comment.body,
+    body: comment.body ?? comment.message,
     createdAt: comment.createdAt ?? new Date().toISOString()
   }));
 

@@ -16,6 +16,7 @@ type FlatWbsNode = {
   parentId: string | null;
   wbsCode?: string | null;
   title: string;
+  description?: string | null;
   type: string;
   status: string;
   order: number;
@@ -456,7 +457,7 @@ projectsRouter.get("/:projectId/summary", async (req, res) => {
         acc.total += 1;
         if (task.status === "DONE") acc.done += 1;
         if (task.status === "IN_PROGRESS") acc.inProgress += 1;
-        if (task.status === "BLOCKED") acc.blocked += 1;
+        if (task.status === "BLOCKED" || task.status === "DELAYED" || task.status === "RISK") acc.blocked += 1;
         if (task.status === "BACKLOG" || task.status === "TODO") acc.backlog += 1;
         return acc;
       },
@@ -804,6 +805,7 @@ projectsRouter.get("/:projectId/wbs", async (req, res) => {
     parentId: node.parentId,
     wbsCode: node.wbsCode ?? undefined,
     title: node.title,
+    description: node.description ?? null,
     type: node.type,
     status: node.status,
     order: node.order,

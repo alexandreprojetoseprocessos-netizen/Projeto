@@ -14,6 +14,8 @@ export type BackendTaskStatus =
   | "TODO"
   | "IN_PROGRESS"
   | "REVIEW"
+  | "DELAYED"
+  | "RISK"
   | "BLOCKED"
   | "DONE";
 
@@ -35,7 +37,7 @@ export function normalizeStatus(raw?: string | null): Status {
 
 export function toBackendStatus(raw?: string | null): BackendTaskStatus {
   const upper = (raw ?? "").trim().toUpperCase();
-  if (["BACKLOG", "TODO", "IN_PROGRESS", "REVIEW", "BLOCKED", "DONE"].includes(upper)) {
+  if (["BACKLOG", "TODO", "IN_PROGRESS", "REVIEW", "DELAYED", "RISK", "BLOCKED", "DONE"].includes(upper)) {
     return upper as BackendTaskStatus;
   }
 
@@ -47,8 +49,9 @@ export function toBackendStatus(raw?: string | null): BackendTaskStatus {
   if (v.includes("andam") || v.includes("progress") || v.includes("doing")) return "IN_PROGRESS";
   if (v.includes("homolog") || v.includes("revis") || v.includes("review")) return "REVIEW";
   if (v.includes("final") || v.includes("done") || v.includes("conclu")) return "DONE";
-  if (v.includes("atras") || v.includes("delay") || v.includes("late") || v.includes("overdue")) return "BLOCKED";
-  if (v.includes("risco") || v.includes("risk") || v.includes("blocked")) return "BLOCKED";
+  if (v.includes("atras") || v.includes("delay") || v.includes("late") || v.includes("overdue")) return "DELAYED";
+  if (v.includes("risco") || v.includes("risk")) return "RISK";
+  if (v.includes("blocked")) return "BLOCKED";
 
   return "BACKLOG";
 }

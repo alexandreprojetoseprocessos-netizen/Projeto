@@ -484,6 +484,8 @@ enum TaskStatus {
   TODO
   IN_PROGRESS
   REVIEW
+  DELAYED
+  RISK
   BLOCKED
   DONE
 }

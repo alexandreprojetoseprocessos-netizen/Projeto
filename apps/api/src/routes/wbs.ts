@@ -278,7 +278,11 @@ wbsRouter.patch("/:id", async (req: RequestWithUser, res) => {
     parentId,
     dependencies,
     serviceCatalogId,
-    serviceMultiplier
+    serviceMultiplier,
+    description,
+    descricao,
+    details,
+    notes
   } = req.body as Record<string, any>;
 
   const access = await assertNodeAccess(req, res, id, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
@@ -291,6 +295,26 @@ wbsRouter.patch("/:id", async (req: RequestWithUser, res) => {
   if (endDate !== undefined) data.endDate = endDate ? new Date(endDate) : null;
   if (estimateHours !== undefined) data.estimateHours = estimateHours ? new Prisma.Decimal(estimateHours) : null;
   if (order !== undefined) data.order = order;
+  const descriptionValue =
+    description !== undefined
+      ? description
+      : descricao !== undefined
+      ? descricao
+      : details !== undefined
+      ? details
+      : notes !== undefined
+      ? notes
+      : undefined;
+  if (descriptionValue !== undefined) {
+    if (descriptionValue === null) {
+      data.description = null;
+    } else if (typeof descriptionValue === "string") {
+      const trimmed = descriptionValue.trim();
+      data.description = trimmed ? trimmed : null;
+    } else {
+      data.description = String(descriptionValue);
+    }
+  }
   if (serviceCatalogId !== undefined || serviceMultiplier !== undefined) {
     if (!serviceCatalogId) {
       data.serviceCatalogId = null;

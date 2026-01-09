@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { STATUS_MAP, KANBAN_STATUS_ORDER, type TaskStatus } from "./KanbanBoard";
+import { type TaskStatus } from "./KanbanBoard";
 import { STATUS_ORDER, normalizeStatus } from "../utils/status";
 
 type Member = {
@@ -13,6 +13,20 @@ type TaskModalProps = {
   members?: Member[];
   onSave: (payload: Record<string, any>) => Promise<boolean>;
   onClose: () => void;
+  selectedNodeId?: string | null;
+  comments?: any[];
+  commentsError?: string | null;
+  onSubmitComment?: (event: React.FormEvent<HTMLFormElement>) => void;
+  commentBody?: string;
+  onCommentBodyChange?: (value: string) => void;
+  timeEntryDate?: string;
+  timeEntryHours?: string;
+  timeEntryDescription?: string;
+  timeEntryError?: string | null;
+  onTimeEntryDateChange?: (value: string) => void;
+  onTimeEntryHoursChange?: (value: string) => void;
+  onTimeEntryDescriptionChange?: (value: string) => void;
+  onLogTime?: (event: React.FormEvent<HTMLFormElement>) => void;
 };
 
 const PRIORITY_OPTIONS = [
@@ -26,6 +40,20 @@ const KanbanTaskModal: React.FC<TaskModalProps> = ({
   members = [],
   onSave,
   onClose,
+  selectedNodeId = null,
+  comments = [],
+  commentsError = null,
+  onSubmitComment,
+  commentBody = "",
+  onCommentBodyChange,
+  timeEntryDate = "",
+  timeEntryHours = "",
+  timeEntryDescription = "",
+  timeEntryError = null,
+  onTimeEntryDateChange,
+  onTimeEntryHoursChange,
+  onTimeEntryDescriptionChange,
+  onLogTime,
 }) => {
   const [activeTab, setActiveTab] = useState<"details" | "comments" | "history">(
     "details"
@@ -85,10 +113,13 @@ const KanbanTaskModal: React.FC<TaskModalProps> = ({
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    titleRef.current?.focus();
-  }, []);
+    if (activeTab === "details") {
+      titleRef.current?.focus();
+    }
+  }, [activeTab, task?.id]);
 
   useEffect(() => {
+    setActiveTab("details");
     setTitle(task?.title ?? "");
     setStatus(resolveStatus(normalizeStatus(task?.status)));
     setDescription(resolveDescription(task));
@@ -126,6 +157,52 @@ const KanbanTaskModal: React.FC<TaskModalProps> = ({
     responsibleId !== initialSnapshot.responsibleId ||
     startDate !== initialSnapshot.startDate ||
     endDate !== initialSnapshot.endDate;
+
+  const activeNodeId = selectedNodeId ?? task?.id ?? null;
+
+  const commentItems = useMemo(() => {
+    if (Array.isArray(comments)) return comments;
+    const nested = (comments as any)?.comments;
+    return Array.isArray(nested) ? nested : [];
+  }, [comments]);
+
+  const formatCommentDate = (value?: string | null) => {
+    if (!value) return "";
+    try {
+      return new Date(value).toLocaleString("pt-BR");
+    } catch {
+      return "";
+    }
+  };
+
+  const resolveCommentAuthor = (comment: any) =>
+    comment?.author?.name ??
+    comment?.authorName ??
+    comment?.author?.email ??
+    "Colaborador";
+
+  const resolveCommentBody = (comment: any) =>
+    comment?.body ?? comment?.message ?? "";
+
+  const handleSubmitComment = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onSubmitComment?.(event);
+  };
+
+  const handleLogTime = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onLogTime?.(event);
+  };
+
+  const canSubmitComment =
+    Boolean(activeNodeId) &&
+    Boolean(onSubmitComment) &&
+    commentBody.trim().length > 0;
+  const canLogTime =
+    Boolean(activeNodeId) &&
+    Boolean(onLogTime) &&
+    Boolean(timeEntryDate) &&
+    Boolean(timeEntryHours);
 
   const handleCloseRequest = () => {
     if (isSaving) return;
@@ -182,14 +259,9 @@ const KanbanTaskModal: React.FC<TaskModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="kanban-task-modal__header">
-          <input
-            className="kanban-task-modal__title"
-            ref={titleRef}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Título da tarefa"
-            disabled={isSaving}
-          />
+          <div className="kanban-task-modal__header-left">
+            <div className="kanban-task-modal__header-title">Detalhes da tarefa</div>
+          </div>
           <div className="kanban-task-modal__header-right">
             <span className="kanban-task-modal__code">{code}</span>
             <button
@@ -199,7 +271,7 @@ const KanbanTaskModal: React.FC<TaskModalProps> = ({
               aria-label="Fechar"
               disabled={isSaving}
             >
-              ×
+              x
             </button>
           </div>
         </div>
@@ -236,9 +308,12 @@ const KanbanTaskModal: React.FC<TaskModalProps> = ({
                   <span>Nome da tarefa</span>
                   <input
                     type="text"
+                    className="kanban-task-modal__title-input"
+                    ref={titleRef}
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     required
+                    autoFocus
                     disabled={isSaving}
                   />
                 </label>
@@ -366,14 +441,124 @@ const KanbanTaskModal: React.FC<TaskModalProps> = ({
         )}
 
         {activeTab === "comments" && (
-          <div className="kanban-task-modal__body placeholder">
-            <p>Comentários em breve.</p>
+          <div className="kanban-task-modal__body">
+            <div className="wbs-chat-body">
+              <div className="wbs-chat-messages">
+                {commentItems.length > 0 ? (
+                  commentItems.map((comment, index) => (
+                    <div
+                      key={comment?.id ?? `${comment?.createdAt ?? "comment"}-${index}`}
+                      className="wbs-chat-message"
+                    >
+                      <div className="wbs-chat-message__meta">
+                        <strong>{resolveCommentAuthor(comment)}</strong>
+                        <span>
+                          {formatCommentDate(comment?.createdAt ?? comment?.created_at)}
+                        </span>
+                      </div>
+                      <p>{resolveCommentBody(comment)}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="muted">Nenhum comentário ainda.</p>
+                )}
+                {commentsError && <p className="error-text">{commentsError}</p>}
+              </div>
+
+              <form className="wbs-chat-composer" onSubmit={handleSubmitComment}>
+                {!activeNodeId && (
+                  <p className="muted">Selecione uma tarefa para comentar.</p>
+                )}
+                <textarea
+                  value={commentBody}
+                  onChange={(event) => onCommentBodyChange?.(event.target.value)}
+                  placeholder="Escreva um comentário..."
+                  rows={3}
+                  disabled={isSaving || !onSubmitComment}
+                />
+                <div className="wbs-chat-actions">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleCloseRequest}
+                    disabled={isSaving}
+                  >
+                    Fechar
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={!canSubmitComment || isSaving}
+                  >
+                    Enviar
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
 
         {activeTab === "history" && (
-          <div className="kanban-task-modal__body placeholder">
-            <p>Histórico em breve.</p>
+          <div className="kanban-task-modal__body">
+            <form className="kanban-task-modal__history-form" onSubmit={handleLogTime}>
+              {!activeNodeId && (
+                <p className="muted">Selecione uma tarefa antes de registrar.</p>
+              )}
+              <div className="kanban-task-modal__history-grid">
+                <label className="kanban-task-modal__history-field">
+                  <span>Data</span>
+                  <input
+                    type="date"
+                    value={timeEntryDate}
+                    onChange={(event) => onTimeEntryDateChange?.(event.target.value)}
+                    disabled={isSaving || !onLogTime}
+                  />
+                </label>
+                <label className="kanban-task-modal__history-field">
+                  <span>Horas</span>
+                  <input
+                    type="number"
+                    min="0.25"
+                    step="0.25"
+                    value={timeEntryHours}
+                    onChange={(event) => onTimeEntryHoursChange?.(event.target.value)}
+                    disabled={isSaving || !onLogTime}
+                  />
+                </label>
+              </div>
+              <label className="kanban-task-modal__history-field">
+                <span>Descrição</span>
+                <textarea
+                  value={timeEntryDescription}
+                  onChange={(event) =>
+                    onTimeEntryDescriptionChange?.(event.target.value)
+                  }
+                  disabled={isSaving || !onLogTime}
+                />
+              </label>
+              {timeEntryError && (
+                <div className="kanban-task-modal__error" role="status">
+                  {timeEntryError}
+                </div>
+              )}
+              <div className="kanban-task-modal__footer">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleCloseRequest}
+                  disabled={isSaving}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={!canLogTime || isSaving}
+                >
+                  Registrar horas
+                </button>
+              </div>
+            </form>
           </div>
         )}
       </div>

@@ -22,6 +22,21 @@ const KanbanPage: React.FC = () => {
     onUpdateWbsNode,
     onReloadWbs,
     onCreateWbsItem,
+    selectedNodeId,
+    onSelectNode,
+    comments,
+    commentsError,
+    onSubmitComment,
+    commentBody,
+    onCommentBodyChange,
+    timeEntryDate,
+    timeEntryHours,
+    timeEntryDescription,
+    timeEntryError,
+    onTimeEntryDateChange,
+    onTimeEntryHoursChange,
+    onTimeEntryDescriptionChange,
+    onLogTime,
   } = useOutletContext<DashboardOutletContext>();
 
   const [filterText, setFilterText] = useState("");
@@ -218,7 +233,10 @@ const KanbanPage: React.FC = () => {
         columns={kanbanColumns}
         onDragEnd={handleDragEnd}
         onCreate={handleCreate}
-        onTaskClick={(task) => setSelectedTaskId(task.id)}
+        onTaskClick={(task) => {
+          setSelectedTaskId(task.id);
+          onSelectNode?.(task.id);
+        }}
         newTaskTitle=""
         onTaskTitleChange={() => {}}
         newTaskColumn=""
@@ -230,7 +248,24 @@ const KanbanPage: React.FC = () => {
           task={selectedTask}
           members={members}
           onSave={handleSaveTask}
-          onClose={() => setSelectedTaskId(null)}
+          onClose={() => {
+            setSelectedTaskId(null);
+            onSelectNode?.(null);
+          }}
+          selectedNodeId={selectedNodeId}
+          comments={comments}
+          commentsError={commentsError}
+          onSubmitComment={onSubmitComment}
+          commentBody={commentBody}
+          onCommentBodyChange={onCommentBodyChange}
+          timeEntryDate={timeEntryDate}
+          timeEntryHours={timeEntryHours}
+          timeEntryDescription={timeEntryDescription}
+          timeEntryError={timeEntryError}
+          onTimeEntryDateChange={onTimeEntryDateChange}
+          onTimeEntryHoursChange={onTimeEntryHoursChange}
+          onTimeEntryDescriptionChange={onTimeEntryDescriptionChange}
+          onLogTime={onLogTime}
         />
       )}
     </section>

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export interface DependencyOption {
@@ -28,10 +28,11 @@ export const DependenciesDropdown: React.FC<DependenciesDropdownProps> = ({
   const handleToggle = () => {
     if (buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
+      const width = Math.max(260, rect.width);
       setMenuPosition({
-        top: rect.bottom + 4,
+        top: rect.bottom + 6,
         left: rect.left,
-        width: rect.width
+        width
       });
     }
     setIsOpen((prev) => !prev);
@@ -39,7 +40,7 @@ export const DependenciesDropdown: React.FC<DependenciesDropdownProps> = ({
 
   const handleToggleOption = (id: string) => {
     if (selectedIds.includes(id)) {
-      onChange(selectedIds.filter((value) => value !== id));
+      onChange(selectedIds.filter((value) => value != id));
     } else {
       onChange([...selectedIds, id]);
     }
@@ -91,10 +92,13 @@ export const DependenciesDropdown: React.FC<DependenciesDropdownProps> = ({
           e.stopPropagation();
           handleToggle();
         }}
-        className="dependencies-dropdown__trigger"
+        className={`dependencies-dropdown__trigger${isOpen ? " is-open" : ""}`}
+        aria-expanded={isOpen}
       >
-        <span>{label}</span>
-        <span className="dependencies-dropdown__caret">▾</span>
+        <span className="dependencies-dropdown__label-text">{label}</span>
+        <span className="dependencies-dropdown__caret" aria-hidden="true">
+          v
+        </span>
       </button>
 
       {isOpen &&
@@ -111,7 +115,7 @@ export const DependenciesDropdown: React.FC<DependenciesDropdownProps> = ({
             }}
             ref={menuRef}
           >
-            <div className="dependencies-menu-panel">
+            <div className="dependencies-dropdown__panel">
               <div className="dependencies-dropdown__header">
                 <h4>Selecione predecessoras</h4>
                 <p>Marque as tarefas das quais esta atividade depende.</p>
@@ -133,7 +137,8 @@ export const DependenciesDropdown: React.FC<DependenciesDropdownProps> = ({
                         onChange={() => handleToggleOption(opt.id)}
                       />
                       <span className="dependencies-dropdown__label">
-                        <strong>{optionCode}</strong> {opt.name}
+                        <span className="dependencies-dropdown__code">{optionCode}</span>
+                        <span className="dependencies-dropdown__name">{opt.name}</span>
                       </span>
                     </label>
                   );

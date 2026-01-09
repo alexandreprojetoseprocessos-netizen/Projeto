@@ -1500,6 +1500,8 @@ export type DashboardOutletContext = {
 
       endDate?: string | null;
 
+      description?: string | null;
+
       estimateHours?: number | null;
 
       dependencies?: string[];
@@ -3468,7 +3470,7 @@ export const WbsTreeView = ({
             newCounts[row.node.id] = Array.isArray(comments) ? comments.length : 0;
           } catch (error) {
             if (controller.signal.aborted) return;
-            console.error("Erro ao carregar contador de Comentrios", error);
+            console.error("Erro ao carregar contador de Comentários", error);
           }
         })
       );
@@ -3508,8 +3510,8 @@ export const WbsTreeView = ({
         });
 
         if (!response.ok) {
-          console.error("Erro na API de Comentrios (GET)", response.status, await response.text());
-          if (active) setChatError("Erro ao listar Comentrios");
+          console.error("Erro na API de Comentários (GET)", response.status, await response.text());
+          if (active) setChatError("Erro ao listar Comentários");
           return;
         }
 
@@ -3519,8 +3521,8 @@ export const WbsTreeView = ({
         setChatCounts((prev) => ({ ...prev, [openChatTaskId]: data.length }));
         setChatError(null);
       } catch (error) {
-        console.error("Erro na API de Comentrios (GET)", error);
-        if (active) setChatError("Erro ao listar Comentrios");
+        console.error("Erro na API de Comentários (GET)", error);
+        if (active) setChatError("Erro ao listar Comentários");
       } finally {
         if (active) setIsChatLoading(false);
       }
@@ -3554,7 +3556,7 @@ export const WbsTreeView = ({
       });
       
       if (!response.ok) {
-        console.error("Erro na API de Comentrios (POST)", response.status, await response.text());
+        console.error("Erro na API de Comentários (POST)", response.status, await response.text());
         setChatError("Erro ao criar comentrio");
         return;
       }
@@ -3565,7 +3567,7 @@ export const WbsTreeView = ({
       setChatDraft("");
       setChatError(null);
     } catch (error) {
-      console.error("Erro na API de Comentrios (POST)", error);
+      console.error("Erro na API de Comentários (POST)", error);
       setChatError("Erro ao enviar comentrio");
     } finally {
       setIsChatLoading(false);
@@ -4406,15 +4408,15 @@ export const WbsTreeView = ({
               />
             </th>
             <th className="px-1 py-2 text-center align-middle">ID</th>
-            <th className="px-1 py-2 text-center align-middle" title="Comentrios da tarefa">Chat</th>
+            <th className="px-1 py-2 text-center align-middle" title="Comentários da tarefa">Chat</th>
             <th className="px-1 py-2 text-center align-middle">Nvel</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Nome da tarefa</th>
-            <th className="w-[150px] px-3 py-2 text-left align-middle">Situao</th>
+            <th className="w-[150px] px-3 py-2 text-left align-middle">Situação</th>
             <th className="w-[140px] px-3 py-2 text-left align-middle">Durao</th>
             <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Incio</th>
             <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Trmino</th>
-            <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Responsvel</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Catlogo de Servios</th>
+            <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Responsável</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Catálogo de Serviços</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Multiplicador</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">HR</th>
             <th className="w-[150px] px-3 py-2 text-left align-middle">Dependncias</th>
@@ -4476,7 +4478,7 @@ export const WbsTreeView = ({
                   return {
                     id: dependencyId,
                     label: dependencyId,
-                    tooltip: "Tarefa N?o encontrada",
+                    tooltip: "Tarefa não encontrada",
                     row: null
                   };
                 }
@@ -4616,7 +4618,7 @@ export const WbsTreeView = ({
                       <button
                         type="button"
                         className="wbs-chat-button relative inline-flex h-7 min-w-[40px] items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-2 text-[11px] text-slate-700 hover:bg-slate-50 transition"
-                        aria-label={`Comentrios da tarefa ${displayId}`}
+                        aria-label={`Comentários da tarefa ${displayId}`}
                         onClick={(event) => {
                           event.stopPropagation();
                           setOpenChatTaskId(row.node.id);
@@ -4853,7 +4855,6 @@ export const WbsTreeView = ({
 
 
 
-                                {row.node.description && <small title={row.node.description}>{row.node.description}</small>}
 
 
 
@@ -4889,9 +4890,9 @@ export const WbsTreeView = ({
                           event.stopPropagation();
                           onUpdate(row.node.id, { status: event.target.value });
                         }}
-                        aria-label="Alterar situao da tarefa"
+                        aria-label="Alterar situação da tarefa"
                         className={clsx(
-                          "min-w-[150px] rounded-full px-4 py-1 text-xs font-semibold cursor-pointer border shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-200 focus:ring-offset-1 appearance-none",
+                          "wbs-status-select",
                           STATUS_CLASS[normalizeStatus(row.node.status)] ?? STATUS_CLASS.default
                         )}
                       >
@@ -4950,7 +4951,7 @@ export const WbsTreeView = ({
                         onClick={(event) => event.stopPropagation()}
                         onChange={(event) => onChangeResponsible?.(row.node.id, event.target.value || null)}
                       >
-                        <option value="">Sem Responsvel</option>
+                        <option value="">Sem Responsável</option>
                         {members.map((member) => (
                           <option key={member.id} value={member.id}>
                             {member.name ?? member.email ?? member.userId}
@@ -5174,7 +5175,7 @@ export const WbsTreeView = ({
           </div>
           <div className="gp-modal-body wbs-chat-body">
             <div className="wbs-chat-messages">
-              {isChatLoading && <p className="muted">Carregando Comentrios...</p>}
+              {isChatLoading && <p className="muted">Carregando Comentários...</p>}
               {!isChatLoading &&
                 chatMessagesForModal.map((message: WbsComment) => (
                   <div key={message.id} className="wbs-chat-message">
@@ -5583,6 +5584,8 @@ type ProjectDetailsTabsProps = {
       startDate?: string | null;
 
       endDate?: string | null;
+
+      description?: string | null;
 
       estimateHours?: number | null;
 
@@ -6025,7 +6028,7 @@ export const ProjectDetailsTabs = ({
 
         role: comment.author?.role ?? comment.authorRole ?? "Equipe",
 
-        body: comment.body,
+        body: comment.body ?? comment.message,
 
         createdAt: comment.createdAt ?? new Date().toISOString()
 
@@ -6266,7 +6269,7 @@ export const ProjectDetailsTabs = ({
 
 
           <p className="subtext">
-            Cdigo {projectMeta.code ?? "N/A"} Ã¢Â¢ Cliente {projectMeta.clientName ?? "No informado"}
+            Código {projectMeta.code ?? "N/A"} Ã¢Â¢ Cliente {projectMeta.clientName ?? "Não informado"}
           </p>
 
 
@@ -6279,7 +6282,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            <span>Respons?vel: {projectMeta.responsibleName ?? "N?o informado"}</span>
+            <span>Responsável: {projectMeta.responsibleName ?? "Não informado"}</span>
 
 
 
@@ -8152,7 +8155,7 @@ const TeamPanel = ({
 
 
 
-        allocation >= 90 ? "Alta carga" : allocation <= 40 ? "disponvel" : "Balanceado";
+        allocation >= 90 ? "Alta carga" : allocation <= 40 ? "disponível" : "Balanceado";
 
 
 
@@ -8428,7 +8431,7 @@ const TeamPanel = ({
 
 
 
-            <option value="disponvel">disponvel</option>
+            <option value="disponível">disponível</option>
 
 
 
@@ -9244,7 +9247,7 @@ export const ReportsPanel = ({
 
                   icon={InsightIcon}
 
-                  title="Progresso indisponvel"
+                  title="Progresso indisponível"
 
                   description="Atualize o status das tarefas para gerar a linha de tendÂªncia do portfÂ³lio."
 
@@ -10557,7 +10560,7 @@ export const DashboardLayout = ({
 
 
 
-      setProjectModalError("Informe o cliente Responsvel.");
+      setProjectModalError("Informe o cliente Responsável.");
 
 
 
@@ -11510,7 +11513,7 @@ export const DashboardLayout = ({
 
 
 
-                    Conclus?o prevista
+                    Conclusão prevista
 
 
 
@@ -11918,7 +11921,7 @@ export const DashboardLayout = ({
 
 
 
-                    Responsvel
+                    Responsável
 
 
 
@@ -14779,7 +14782,3 @@ export const TemplatesPanel = ({
 
 
 };
-
-
-
-
