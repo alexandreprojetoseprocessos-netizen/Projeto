@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { PauseCircle, Trash2 } from "lucide-react";
 import OrgActionsMenu from "./OrgActionsMenu";
 import OrgStatusModal from "./OrgStatusModal";
-import { canManageOrganizationSettings } from "./permissions";
+import { canManageOrganizationSettings, type OrgRole } from "./permissions";
 import { getColorForName, getInitials } from "../utils/color";
 
 export type OrganizationCard = {
@@ -31,7 +31,7 @@ type OrganizationSelectorProps = {
     used: number;
     remaining: number | null;
   } | null;
-  currentOrgRole?: string | null;
+  currentOrgRole?: OrgRole | null;
   onReloadOrganizations?: () => void;
 };
 
@@ -268,7 +268,9 @@ export const OrganizationSelector = ({
             const createdAt = organization.createdAt ? new Date(organization.createdAt) : null;
             const createdLabel = createdAt ? createdAt.toLocaleDateString("pt-BR") : null;
             const isActive = organization.isActive ?? true;
-            const canManageThisOrg = canManageOrganizationSettings(currentOrgRole ?? organization.role ?? null);
+            const canManageThisOrg = canManageOrganizationSettings(
+              (currentOrgRole ?? organization.role ?? null) as OrgRole | null
+            );
             const projectsCount =
               organization.projectsCount ?? organization.activeProjects ?? (organization as any).projectCount ?? 0;
 

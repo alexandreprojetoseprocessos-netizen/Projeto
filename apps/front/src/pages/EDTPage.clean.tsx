@@ -22,7 +22,6 @@ const EDTPage: React.FC = () => {
     selectedProjectId,
     onReloadWbs,
     serviceCatalog,
-    serviceCatalogError,
   } = useOutletContext<DashboardOutletContext>();
 
   const [filterText, setFilterText] = useState("");
@@ -141,7 +140,6 @@ const EDTPage: React.FC = () => {
               onSelect={onSelectNode}
               onOpenDetails={() => {}}
               serviceCatalog={serviceCatalog}
-              serviceCatalogError={serviceCatalogError}
               onSelectionChange={() => {}}
               clearSelectionKey={0}
               filterText={filterText}

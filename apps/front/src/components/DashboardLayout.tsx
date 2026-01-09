@@ -263,7 +263,7 @@ function SortableRow({
 
   className?: string;
 
-} & HTMLAttributes<HTMLTableRowElement>) {
+} & Omit<HTMLAttributes<HTMLTableRowElement>, "children">) {
 
 
 
@@ -309,7 +309,7 @@ function SortableRow({
 
     >
 
-      {children({ attributes, listeners, isDragging })}
+      {children({ attributes: attributes ?? {}, listeners: listeners ?? {}, isDragging })}
 
     </tr>
 
@@ -1005,6 +1005,13 @@ type DashboardLayoutProps = {
 
   onSelectProject: (projectId: string) => void;
 
+  projectLimits: {
+    planCode: string | null;
+    max: number | null;
+    used: number;
+    remaining: number | null;
+  } | null;
+
 
 
   projectsError: string | null;
@@ -1193,6 +1200,8 @@ type DashboardLayoutProps = {
   ) => void;
 
 
+
+  onUpdateWbsResponsible: (nodeId: string, membershipId: string | null) => void;
 
   onCreateWbsItem?: (parentId: string | null, data?: Record<string, any>) => Promise<void> | void;
 
@@ -1307,164 +1316,88 @@ type DashboardLayoutProps = {
 
 
 export type DashboardOutletContext = {
-
   organizations: Organization[];
-
   selectedOrganizationId: string;
-
   onOrganizationChange: (organizationId: string) => void;
-
   currentOrgRole?: string | null;
-
   projects: Project[];
-
   selectedProjectId: string | null;
-
   onProjectChange: (projectId: string) => void;
-
   onSelectProject: (projectId: string) => void;
-
   projectLimits: {
     planCode: string | null;
     max: number | null;
     used: number;
     remaining: number | null;
   } | null;
-
   selectedProject: PortfolioProject | null;
-
   projectMeta: PortfolioProject | null;
-
   projectLoading: boolean;
-
   projectError: string | null;
-
-  projectWbs: any[];
-
-  projectWbsError: string | null;
-
-  projectWbsLoading: boolean;
-
+  projectWbsNodes?: any[];
+  projectWbsError?: string | null;
+  projectWbsLoading?: boolean;
   onCreateProjectWbsItem?: (payload: any) => void;
-
-  onUpdateProjectWbsItem?: (id: string, changes: any) => void;
-
-  onDeleteProjectWbsItem?: (id: string) => void;
-
-  onRestoreProjectWbsItem?: (id: string) => void;
-
-  onUpdateProjectDependency?: (id: string, dependencies: string[]) => void;
-
+  onUpdateProjectWbsItem?: (nodeId: string, changes: any) => void;
+  onDeleteProjectWbsItem?: (nodeId: string) => void;
+  onRestoreProjectWbsItem?: (nodeId: string) => void;
+  projectDependencyOptions?: any[];
+  onUpdateProjectDependency?: (nodeId: string, dependencies: string[] | null) => void;
   onSignOut: () => void;
-
   handleOpenProjectModal: () => void;
-
   handleOpenEditProjectModal: () => void;
-
   handleOpenTaskModal: () => void;
-
   onCreateProject: (payload: CreateProjectPayload) => Promise<void>;
-
   onUpdateProject: (projectId: string, payload: CreateProjectPayload) => Promise<void>;
-
   portfolio: PortfolioProject[];
-
   portfolioError: string | null;
-
   portfolioLoading: boolean;
-
   onExportPortfolio?: () => void;
-
   handleViewProjectDetails: (projectId: string) => void;
-
   kanbanColumns: KanbanColumn[];
-
   summary: any | null;
-
   summaryError: string | null;
-
   filters: { rangeDays: number };
-
   onRangeChange: (rangeDays: number) => void;
-
   myTasks: any[];
-
   members: any[];
-
   membersError: string | null;
-
   attachments: any[];
-
   attachmentsError: string | null;
-
   attachmentsLoading: boolean;
-
   reportMetrics: any | null;
-
   reportMetricsError: string | null;
-
   reportMetricsLoading: boolean;
-
   reportsData?: any | null;
-
   reportsError?: string | null;
-
   reportsLoading?: boolean;
-
   boardColumns: any[];
-
   boardError: string | null;
-
   onCreateTask: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
-
   onReloadBoard?: () => Promise<void>;
-
   onDragTask: (result: DropResult) => void;
-
   newTaskTitle: string;
-
   onTaskTitleChange: (value: string) => void;
-
   newTaskColumn: string;
-
   onTaskColumnChange: (value: string) => void;
-
   projectBoardColumns?: KanbanColumn[];
-
   projectBoardError?: string | null;
-
   onMoveProjectTask?: (result: DropResult) => void;
-
   onCreateProjectTask?: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
-
   onReloadProjectBoard?: () => Promise<void>;
-
   newProjectTaskTitle?: string;
-
   onProjectTaskTitleChange?: (value: string) => void;
-
   newProjectTaskColumn?: string;
-
   onProjectTaskColumnChange?: (value: string) => void;
-
   newTaskStartDate: string;
-
   onTaskStartDateChange: (value: string) => void;
-
   newTaskEndDate: string;
-
   onTaskEndDateChange: (value: string) => void;
-
   newTaskAssignee: string;
-
   onTaskAssigneeChange: (value: string) => void;
-
   newTaskEstimateHours: string;
-
   onTaskEstimateHoursChange: (value: string) => void;
-
   wbsNodes: any[];
-
   wbsError: string | null;
   serviceCatalog: Array<{
     id: string;
@@ -1481,149 +1414,65 @@ export type DashboardOutletContext = {
     payload: { name?: string; hoursBase?: number; description?: string | null }
   ) => Promise<any>;
   onDeleteServiceCatalog?: (serviceId: string) => Promise<any>;
-
   onReloadWbs: () => void;
-
   onMoveNode: (id: string, parentId: string | null, position: number) => void;
-
   onUpdateWbsNode: (
-
     nodeId: string,
-
     changes: {
-
       title?: string;
-
       status?: string;
-
       startDate?: string | null;
-
       endDate?: string | null;
-
       description?: string | null;
-
       estimateHours?: number | null;
-
       dependencies?: string[];
       serviceCatalogId?: string | null;
       serviceMultiplier?: number | null;
       serviceHours?: number | null;
-
     }
-
   ) => void;
-
   onUpdateWbsResponsible: (nodeId: string, membershipId: string | null) => void;
-
   wbsLoading?: boolean;
-
-  onCreateWbsItem?: (parentId: string | null) => void;
-
+  onCreateWbsItem?: (parentId: string | null, data?: Record<string, any>) => void;
   onDeleteWbsItem?: (nodeId: string) => void;
-
   onRestoreWbsItem?: (nodeId: string) => void;
-
   onUpdateDependency?: (nodeId: string, dependencies: string[]) => void;
-
   dependencyOptions?: any[];
-
   projectTimelineData?: any;
-
   projectTimelineLoading?: boolean;
-
   projectTimelineError?: string | null;
-
   onUpdateProjectTimelineItem?: (id: string, changes: any) => void;
-
   onChangeProjectTimelineDate?: (id: string, startDate: Date | string, endDate: Date | string) => void;
-
-  projectWbsNodes?: any[];
-
-  projectWbsError?: string | null;
-
-  projectWbsLoading?: boolean;
-
-  onCreateProjectWbsItem?: (payload: any) => void;
-
-  onUpdateProjectWbsItem?: (nodeId: string, changes: any) => void;
-
-  onDeleteProjectWbsItem?: (nodeId: string) => void;
-
-  onRestoreProjectWbsItem?: (nodeId: string) => void;
-
-  onUpdateWbsResponsible?: (nodeId: string, membershipId: string | null) => void;
-
-  projectDependencyOptions?: any[];
-
-  onUpdateProjectDependency?: (nodeId: string, dependencies: string[] | null) => void;
-
   projectActivities?: any[];
-
   projectActivitiesLoading?: boolean;
-
   projectActivitiesError?: string | null;
-
   projectDocuments?: any[];
-
   projectDocumentsLoading?: boolean;
-
   projectDocumentsError?: string | null;
-
   onUploadProjectDocument?: (file: File | null) => void;
-
   onDeleteProjectDocument?: (id: string) => void;
-
   onDownloadProjectDocument?: (id: string) => void;
-
   selectedNodeId: string | null;
-
   onSelectNode: (nodeId: string | null) => void;
-
   comments: any[];
-
   commentsError: string | null;
-
   onSubmitComment: (event: FormEvent<HTMLFormElement>) => void;
-
   commentBody: string;
-
   onCommentBodyChange: (value: string) => void;
-
   timeEntryDate: string;
-
   timeEntryHours: string;
-
   timeEntryDescription: string;
-
   timeEntryError: string | null;
-
   onTimeEntryDateChange: (value: string) => void;
-
   onTimeEntryHoursChange: (value: string) => void;
-
   onTimeEntryDescriptionChange: (value: string) => void;
-
   onLogTime: (event: FormEvent<HTMLFormElement>) => void;
-
   ganttTasks: any[];
-
   ganttMilestones: any[];
-
   ganttError: string | null;
-
-  projectLimits: {
-    planCode: string | null;
-    max: number | null;
-    used: number;
-    remaining: number | null;
-  } | null;
-
   projectToast: string | null;
-
   orgError: string | null;
-
   projectsError: string | null;
-
 };
 
 
@@ -2070,7 +1919,7 @@ type WbsTreeViewProps = {
   nodes: any[];
   loading?: boolean;
   error?: string | null;
-  onCreate?: (parentId: string | null) => void;
+  onCreate?: (parentId: string | null, data?: Record<string, any>) => void;
   onUpdate: (
     nodeId: string,
     changes: {
@@ -2099,7 +1948,7 @@ type WbsTreeViewProps = {
   selectedNodeId: string | null;
   onSelect: (nodeId: string | null) => void;
   dependencyOptions?: Array<{ id: string; label: string; title?: string }>;
-  onUpdateDependency?: (nodeId: string, dependencyId: string | null) => void;
+  onUpdateDependency?: (nodeId: string, dependencies: string[] | null) => void;
   onOpenDetails?: (node: any) => void;
   serviceCatalog?: Array<{
     id: string;
@@ -2566,7 +2415,7 @@ export const WbsTreeView = ({
 
 
 
-  const handleTitleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const handleTitleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
 
 
 
@@ -2966,7 +2815,7 @@ export const WbsTreeView = ({
 
 
 
-    const handleDocumentMouseDown = (event: MouseEvent) => {
+    const handleDocumentMouseDown = (event: globalThis.MouseEvent) => {
 
 
 
@@ -3059,7 +2908,7 @@ export const WbsTreeView = ({
 
 
 
-    const handleDocumentMouseDown = (event: MouseEvent) => {
+    const handleDocumentMouseDown = (event: globalThis.MouseEvent) => {
       const target = event.target as HTMLElement;
       const clickedTrigger = target.closest(".wbs-actions-trigger");
       if (clickedTrigger) return;
@@ -3317,17 +3166,17 @@ export const WbsTreeView = ({
 
 
 
-      const reorderedSiblings = arrayMove(siblings, activeIndex, overIndex).map((sibling, index) => ({
+      // arrayMove pode retornar tipos genericos/unknown dependendo da lib
+      const moved = arrayMove(siblings as any[], activeIndex, overIndex) as Array<Record<string, any>>;
 
+      // FORCA o tipo para manter id e demais props
+      const reorderedSiblings: Array<Record<string, any>> = moved.map((sibling, index) => ({
         ...sibling,
-
-        sortOrder: index * 1000
-
+        sortOrder: index
       }));
 
-
-
-      const orderedIds = reorderedSiblings.map((item) => item.id);
+      // usa o moved (ou reorderedSiblings) mas com tipo garantido
+      const orderedIds = moved.map((item) => String(item.id));
 
 
 
@@ -3552,7 +3401,7 @@ export const WbsTreeView = ({
           "Content-Type": "application/json",
           "X-Organization-Id": currentOrganizationId
         },
-        body: JSON.stringify({ message: trimmed, authorName: currentUser?.name ?? null })
+        body: JSON.stringify({ message: trimmed, authorName: (currentUser as { name?: string } | null)?.name ?? null })
       });
       
       if (!response.ok) {
@@ -4163,7 +4012,7 @@ export const WbsTreeView = ({
       } else if (action === "MOVE_DOWN") {
         await moveRow(node.id, "DOWN");
       } else if (action === "ADD_CHILD") {
-        await onCreateWbsItem?.(node.id, {
+        await onCreate?.(node.id, {
           title: "Nova subtarefa",
           status: "BACKLOG",
           parentId: node.id
@@ -4205,11 +4054,11 @@ export const WbsTreeView = ({
         if (newId) {
           const siblings = (parentId ? rowMap.get(parentId)?.node.children : treeNodes) ?? [];
           const activeSiblings = siblings.filter((s: any) => !s.deletedAt);
-          const ordered = activeSiblings.reduce<string[]>((arr, s: any) => {
+          const ordered = activeSiblings.reduce((arr: string[], s: any) => {
             arr.push(s.id);
             if (s.id === node.id) arr.push(newId!);
             return arr;
-          }, []);
+          }, [] as string[]);
 
           await fetch(`${API_BASE_URL}/wbs/reorder`, {
             method: "PATCH",
@@ -5144,7 +4993,7 @@ export const WbsTreeView = ({
                   type="button"
                   key={item.action}
                   className="wbs-actions-item"
-                  onClick={(event) => handleMenuAction(event, item.action, activeMenuNode)}
+                  onClick={(event) => handleMenuAction(event, item.action as RowAction, activeMenuNode)}
                 >
                   {item.label}
                 </button>
@@ -5568,6 +5417,23 @@ type ProjectDetailsTabsProps = {
   wbsNodes: any[];
 
   wbsError: string | null;
+
+  serviceCatalog?: Array<{
+    id: string;
+    name: string;
+    description?: string | null;
+    hoursBase?: number | null;
+    hours?: number | null;
+  }>;
+  serviceCatalogError?: string | null;
+  onImportServiceCatalog?: (file: File | null) => Promise<any>;
+  onCreateServiceCatalog?: (payload: { name: string; hoursBase: number; description?: string | null }) => Promise<any>;
+  onUpdateServiceCatalog?: (
+    serviceId: string,
+    payload: { name?: string; hoursBase?: number; description?: string | null }
+  ) => Promise<any>;
+  onDeleteServiceCatalog?: (serviceId: string) => Promise<any>;
+  onReloadWbs?: () => void;
 
   onMoveNode: (nodeId: string, parentId: string | null, position: number) => void;
 
@@ -10978,6 +10844,7 @@ export const DashboardLayout = ({
   onCreateServiceCatalog,
   onUpdateServiceCatalog,
   onDeleteServiceCatalog,
+  onReloadWbs,
 
   wbsLoading: undefined,
 

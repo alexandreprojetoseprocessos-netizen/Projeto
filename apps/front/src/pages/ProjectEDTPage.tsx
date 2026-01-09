@@ -267,7 +267,7 @@ export const ProjectEDTPage = () => {
       <header className="page-header">
         <div>
           <h1>EDT do Projeto</h1>
-          <p>{selectedProject?.projectName ?? selectedProject?.name ?? "Projeto"}</p>
+          <p>{selectedProject?.projectName ?? "Projeto"}</p>
         </div>
         <div className="edt-actions">
           <button type="button" className="secondary-button">

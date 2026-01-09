@@ -38,6 +38,7 @@ export type KanbanTask = {
   id: string;
   title: string;
   status: TaskStatus;
+  order?: number;
   code?: string;
   description?: string;
   dueDate?: string;

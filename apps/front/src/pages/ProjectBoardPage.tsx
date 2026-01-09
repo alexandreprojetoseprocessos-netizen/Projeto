@@ -31,7 +31,7 @@ export const ProjectBoardPage = () => {
       <header className="page-header">
         <div>
           <h1>Board do Projeto</h1>
-          <p>{selectedProject?.projectName ?? selectedProject?.name ?? "Projeto"}</p>
+          <p>{selectedProject?.projectName ?? "Projeto"}</p>
         </div>
         {projectBoardError && <p className="error-text">{projectBoardError}</p>}
       </header>

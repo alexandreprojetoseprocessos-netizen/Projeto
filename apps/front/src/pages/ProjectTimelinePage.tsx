@@ -28,7 +28,7 @@ export const ProjectTimelinePage = () => {
       <header className="page-header">
         <div>
           <h1>Cronograma do Projeto</h1>
-          <p>{selectedProject?.projectName ?? selectedProject?.name ?? "Projeto"}</p>
+          <p>{selectedProject?.projectName ?? "Projeto"}</p>
         </div>
         {projectTimelineError && <p className="error-text">{projectTimelineError}</p>}
         {projectTimelineLoading && <p className="muted">Carregando cronograma...</p>}

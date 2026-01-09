@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import OrgActionsMenu from "./OrgActionsMenu";
-import { canManageOrganizationSettings } from "./permissions";
+import { canManageOrganizationSettings, type OrgRole } from "./permissions";
 import { getColorForName, getInitials } from "../utils/color";
 
 export type OrganizationCard = {
@@ -29,7 +29,7 @@ type OrganizationSelectorProps = {
     used: number;
     remaining: number | null;
   } | null;
-  currentOrgRole?: string | null;
+  currentOrgRole?: OrgRole | null;
 };
 
 export const OrganizationSelector = ({
@@ -182,9 +182,11 @@ export const OrganizationSelector = ({
             const createdAt = organization.createdAt ? new Date(organization.createdAt) : null;
             const createdLabel = createdAt ? createdAt.toLocaleDateString("pt-BR") : null;
             const isActive = organization.isActive ?? true;
-            const canManageThisOrg = canManageOrganizationSettings(currentOrgRole ?? organization.role ?? null);
+            const canManageThisOrg = canManageOrganizationSettings(
+              (currentOrgRole ?? organization.role ?? null) as OrgRole | null
+            );
             const projectsCount =
-              organization.projectsCount ?? organization.activeProjects ?? organization.projectCount ?? 0;
+              organization.projectsCount ?? organization.activeProjects ?? 0;
 
             return (
               <div key={organization.id} className="org-card">

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { WbsTreeView, type DashboardOutletContext } from "../components/DashboardLayout";
@@ -91,7 +91,6 @@ const EDTPage: React.FC = () => {
     selectedOrganizationId,
     onReloadWbs,
     serviceCatalog,
-    serviceCatalogError,
     onImportServiceCatalog,
     onCreateServiceCatalog,
     onUpdateServiceCatalog,
@@ -118,6 +117,15 @@ const EDTPage: React.FC = () => {
   const [trashLoading, setTrashLoading] = useState(false);
   const [trashError, setTrashError] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!trashOpen) return;
+    console.log("[trash] modal render state", {
+      loading: trashLoading,
+      error: trashError,
+      itemsCount: trashItems?.length,
+    });
+  }, [trashOpen, trashLoading, trashError, trashItems?.length]);
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
   const [detailsEditing, setDetailsEditing] = useState(false);
   const [detailsDraft, setDetailsDraft] = useState<DetailsDraft | null>(null);
@@ -701,9 +709,7 @@ const EDTPage: React.FC = () => {
               onSelect={onSelectNode}
               onOpenDetails={handleOpenDetails}
               serviceCatalog={serviceCatalogOptions}
-              serviceCatalogError={serviceCatalogError}
               onSelectionChange={(ids: string[]) => setSelectedIds(ids)}
-              selectedIds={selectedIds}
               clearSelectionKey={0}
               filterText={filterText}
               filterStatus={filterStatus === "ALL" ? undefined : filterStatus}
@@ -801,11 +807,6 @@ const EDTPage: React.FC = () => {
               </button>
             </div>
             <div className="gp-modal-body">
-              {console.log("[trash] modal render state", {
-                loading: trashLoading,
-                error: trashError,
-                itemsCount: trashItems?.length,
-              })}
               {trashError && <div className="gp-alert-error">{trashError}</div>}
               {trashLoading ? (
                 <p className="muted">Carregando lixeira...</p>

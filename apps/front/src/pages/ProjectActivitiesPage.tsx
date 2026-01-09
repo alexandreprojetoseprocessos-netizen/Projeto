@@ -24,7 +24,7 @@ export const ProjectActivitiesPage = () => {
       <header className="page-header">
         <div>
           <h1>Atividades do Projeto</h1>
-          <p>{selectedProject?.projectName ?? selectedProject?.name ?? "Projeto"}</p>
+          <p>{selectedProject?.projectName ?? "Projeto"}</p>
         </div>
       </header>
 

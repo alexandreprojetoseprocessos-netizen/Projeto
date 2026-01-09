@@ -64,7 +64,7 @@ type WbsNode = {
   wbsCode?: string | null;
   startDate?: string | null;
   endDate?: string | null;
-  owner?: { id: string; name: string; email?: string | null } | null;
+  owner?: { id: string; name?: string; email?: string | null } | null;
   responsible?:
     | {
         membershipId: string;
@@ -80,8 +80,6 @@ type WbsNode = {
   description?: string | null;
   progress?: number | null;
   dependencies?: string[] | null;
-  startDate?: string | null;
-  endDate?: string | null;
   estimateHours?: string | null;
 };
 type BoardResponse = { columns: BoardColumn[] };
@@ -315,7 +313,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         }));
         setOrganizations(normalized);
         setOrganizationLimits(data.organizationLimits ?? null);
-        setProjectLimits(data.projectLimits ?? null);
+        setProjectLimits(data.organizationLimits ?? null);
         setSelectedOrganizationId((current) => {
           if (normalized.length === 0) return null;
           if (normalized.length === 1) return normalized[0].id;
@@ -330,6 +328,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         setOrganizations([]);
         setSelectedOrganizationId((current) => current ?? null);
         setOrganizationLimits(null);
+        setProjectLimits(null);
       }
     };
 
@@ -1436,9 +1435,9 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
           <DashboardLayout
             userEmail={user?.email ?? null}
             organizations={organizations}
-            selectedOrganizationId={selectedOrganizationId}
+            selectedOrganizationId={selectedOrganizationId ?? ""}
             onOrganizationChange={setSelectedOrganizationId}
-            currentOrgRole={currentOrgRole}
+            currentOrgRole={(currentOrgRole as any) ?? null}
             orgError={orgError}
             onSignOut={signOut}
             projects={projects}
@@ -1544,7 +1543,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
               }}
               onCreateOrganization={handleCreateOrganization}
               userEmail={user?.email ?? null}
-              currentOrgRole={currentOrgRole}
+              currentOrgRole={(currentOrgRole as any) ?? null}
               organizationLimits={organizationLimits}
               onReloadOrganizations={() => setOrganizationsRefresh((value) => value + 1)}
             />
@@ -1676,6 +1675,7 @@ function patchWbsNode(
     description?: string | null;
     estimateHours?: string | null;
     dependencies?: string[];
+    owner?: { id: string; name?: string; email?: string | null } | null;
     responsible?:
       | {
           membershipId: string;

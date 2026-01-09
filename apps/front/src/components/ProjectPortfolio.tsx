@@ -1,5 +1,7 @@
 ﻿import { useMemo, useState } from "react";
 
+import type { CreateProjectPayload } from "./DashboardLayout";
+
 export type PortfolioProject = {
   projectId: string;
   projectName: string;
@@ -68,7 +70,7 @@ export type ProjectPortfolioProps = {
   onExport?: () => void;
   selectedProjectId?: string | null;
   onSelectProject?: (projectId: string) => void;
-  onCreateProject?: () => void;
+  onCreateProject?: (payload: CreateProjectPayload) => void | Promise<void>;
   onViewProjectDetails?: (projectId: string) => void;
 };
 

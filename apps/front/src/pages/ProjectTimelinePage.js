@@ -12,5 +12,5 @@ export const ProjectTimelinePage = () => {
     }, [id, selectedProjectId, onProjectChange]);
     const tasks = projectTimelineData?.tasks ?? [];
     const milestones = projectTimelineData?.milestones ?? [];
-    return (_jsxs("section", { className: "project-timeline-page", children: [_jsxs("header", { className: "page-header", children: [_jsxs("div", { children: [_jsx("h1", { children: "Cronograma do Projeto" }), _jsx("p", { children: selectedProject?.projectName ?? selectedProject?.name ?? "Projeto" })] }), projectTimelineError && _jsx("p", { className: "error-text", children: projectTimelineError }), projectTimelineLoading && _jsx("p", { className: "muted", children: "Carregando cronograma..." })] }), _jsx(GanttTimeline, { tasks: tasks, milestones: milestones })] }));
+    return (_jsxs("section", { className: "project-timeline-page", children: [_jsxs("header", { className: "page-header", children: [_jsxs("div", { children: [_jsx("h1", { children: "Cronograma do Projeto" }), _jsx("p", { children: selectedProject?.projectName ?? "Projeto" })] }), projectTimelineError && _jsx("p", { className: "error-text", children: projectTimelineError }), projectTimelineLoading && _jsx("p", { className: "muted", children: "Carregando cronograma..." })] }), _jsx(GanttTimeline, { tasks: tasks, milestones: milestones })] }));
 };

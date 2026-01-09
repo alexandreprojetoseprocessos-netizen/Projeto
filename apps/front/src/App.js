@@ -10,7 +10,10 @@ import { STATUS_MAP, KANBAN_STATUS_ORDER } from "./components/KanbanBoard";
 import { DashboardPage } from "./pages/DashboardPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { ProjectDetailsPage } from "./pages/ProjectDetailsPage";
-import { EDTPage } from "./pages/EDTPage";
+import EDTPage from "./pages/EDTPage";
+console.log("[EAP route] EDTPage imported from ./pages/EDTPage");
+import KanbanPage from "./pages/KanbanPage";
+import { toBackendStatus } from "./utils/status";
 import { ProjectEDTPage } from "./pages/ProjectEDTPage";
 import { ProjectBoardPage } from "./pages/ProjectBoardPage";
 import { ProjectTimelinePage } from "./pages/ProjectTimelinePage";
@@ -75,6 +78,8 @@ export const App = () => {
     const [membersError, setMembersError] = useState(null);
     const [wbsNodes, setWbsNodes] = useState([]);
     const [wbsError, setWbsError] = useState(null);
+    const [serviceCatalog, setServiceCatalog] = useState([]);
+    const [serviceCatalogError, setServiceCatalogError] = useState(null);
     const [selectedNodeId, setSelectedNodeId] = useState(null);
     const [comments, setComments] = useState([]);
     const [commentsError, setCommentsError] = useState(null);
@@ -94,6 +99,8 @@ export const App = () => {
     const [reportMetrics, setReportMetrics] = useState(null);
     const [reportMetricsError, setReportMetricsError] = useState(null);
     const [reportMetricsLoading, setReportMetricsLoading] = useState(false);
+    const [wbsRefresh, setWbsRefresh] = useState(0);
+    const [serviceCatalogRefresh, setServiceCatalogRefresh] = useState(0);
     const fetchSubscription = useCallback(async () => {
         if (status !== "authenticated" || !token) {
             setSubscription(null);
@@ -123,7 +130,6 @@ export const App = () => {
     }, [fetchSubscription]);
     const [filters, setFilters] = useState({ rangeDays: 7 });
     const [boardRefresh, setBoardRefresh] = useState(0);
-    const [wbsRefresh, setWbsRefresh] = useState(0);
     const [commentsRefresh, setCommentsRefresh] = useState(0);
     const [summaryRefresh, setSummaryRefresh] = useState(0);
     const [organizationsRefresh, setOrganizationsRefresh] = useState(0);
@@ -212,7 +218,7 @@ export const App = () => {
                 }));
                 setOrganizations(normalized);
                 setOrganizationLimits(data.organizationLimits ?? null);
-                setProjectLimits(data.projectLimits ?? null);
+                setProjectLimits(data.organizationLimits ?? null);
                 setSelectedOrganizationId((current) => {
                     if (normalized.length === 0)
                         return null;
@@ -225,11 +231,12 @@ export const App = () => {
                 });
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Falha ao carregar organizações";
+                const message = error instanceof Error ? error.message : "Falha ao carregar organizaÃ§Ãµes";
                 setOrgError(message);
                 setOrganizations([]);
                 setSelectedOrganizationId((current) => current ?? null);
                 setOrganizationLimits(null);
+                setProjectLimits(null);
             }
         };
         loadOrganizations();
@@ -248,7 +255,8 @@ export const App = () => {
             return;
         if (subscriptionStatus !== "active")
             return;
-        if (organizations.length === 0 && location.pathname !== "/organizacao") {
+        const isEapRoute = location.pathname.toLowerCase().startsWith("/eap");
+        if (organizations.length === 0 && location.pathname !== "/organizacao" && !isEapRoute) {
             navigate("/organizacao", { replace: true });
         }
     }, [status, subscriptionStatus, organizations.length, location.pathname, navigate]);
@@ -377,6 +385,24 @@ export const App = () => {
     }, [status, token, selectedProjectId, selectedOrganizationId]);
     useEffect(() => {
         if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+            setServiceCatalog([]);
+            return;
+        }
+        const loadServiceCatalog = async () => {
+            try {
+                setServiceCatalogError(null);
+                const data = await fetchJson(`/service-catalog?projectId=${selectedProjectId}`, token, undefined, selectedOrganizationId);
+                setServiceCatalog(data ?? []);
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : "Erro ao carregar catÃ¡logo de serviÃ§os";
+                setServiceCatalogError(message);
+            }
+        };
+        loadServiceCatalog();
+    }, [status, token, selectedProjectId, selectedOrganizationId, serviceCatalogRefresh]);
+    useEffect(() => {
+        if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
             setWbsNodes([]);
             setSelectedNodeId(null);
             return;
@@ -409,10 +435,11 @@ export const App = () => {
             try {
                 setCommentsError(null);
                 const data = await fetchJson(`/wbs/${selectedNodeId}/comments`, token, undefined, selectedOrganizationId);
-                setComments(data.comments ?? []);
+                const nextComments = Array.isArray(data) ? data : data?.comments ?? [];
+                setComments(nextComments);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar comentários";
+                const message = error instanceof Error ? error.message : "Erro ao carregar comentÃ¡rios";
                 setCommentsError(message);
             }
         };
@@ -451,6 +478,28 @@ export const App = () => {
         }
         loadBoardColumns();
     }, [status, token, selectedProjectId, selectedOrganizationId, boardRefresh, loadBoardColumns]);
+    const handleImportServiceCatalog = useCallback(async (file) => {
+        if (!file || !token || !selectedProjectId || !selectedOrganizationId) {
+            throw new Error("Arquivo e projeto sÃ£o obrigatÃ³rios.");
+        }
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch(`${apiBaseUrl}/service-catalog/import?projectId=${selectedProjectId}`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${token}`,
+                "X-Organization-Id": selectedOrganizationId
+            },
+            body: formData
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const message = body?.message ?? "Erro ao importar catÃ¡logo";
+            throw new Error(message);
+        }
+        setServiceCatalogRefresh((value) => value + 1);
+        return body;
+    }, [token, selectedProjectId, selectedOrganizationId]);
     useEffect(() => {
         if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
             setGanttTasks([]);
@@ -510,7 +559,7 @@ export const App = () => {
                 setPortfolio(data.projects ?? []);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar portfólio";
+                const message = error instanceof Error ? error.message : "Erro ao carregar portfÃ³lio";
                 setPortfolioError(message);
                 setPortfolio([]);
             }
@@ -534,7 +583,7 @@ export const App = () => {
                 setReportMetrics(data);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar relatórios";
+                const message = error instanceof Error ? error.message : "Erro ao carregar relatÃ³rios";
                 setReportMetricsError(message);
                 setReportMetrics(null);
             }
@@ -584,14 +633,14 @@ export const App = () => {
         try {
             await fetchJson(`/wbs/${selectedNodeId}/comments`, token, {
                 method: "POST",
-                body: JSON.stringify({ body: commentBody })
+                body: JSON.stringify({ message: commentBody, body: commentBody })
             }, selectedOrganizationId);
             setCommentBody("");
             setCommentsRefresh((value) => value + 1);
             setCommentsError(null);
         }
         catch (error) {
-            const message = error instanceof Error ? error.message : "Erro ao criar comentário";
+            const message = error instanceof Error ? error.message : "Erro ao criar comentÃ¡rio";
             setCommentsError(message);
         }
     };
@@ -621,7 +670,7 @@ export const App = () => {
     };
     const handleCreateProject = async (payload) => {
         if (!token || !selectedOrganizationId) {
-            throw new Error("Selecione uma organização para criar projetos.");
+            throw new Error("Selecione uma organizaÃ§Ã£o para criar projetos.");
         }
         try {
             const response = await fetchJson("/projects", token, {
@@ -671,7 +720,7 @@ export const App = () => {
                 error?.response?.data?.message ??
                 (error instanceof Error ? error.message : "Erro ao criar projeto");
             if (status === 409 && code === "PROJECT_LIMIT_REACHED") {
-                setProjectsError("Você atingiu o limite de projetos do seu plano. Exclua/arquive um projeto ou faça upgrade para continuar.");
+                setProjectsError("VocÃª atingiu o limite de projetos do seu plano. Exclua/arquive um projeto ou faÃ§a upgrade para continuar.");
             }
             else {
                 setProjectsError(message);
@@ -681,7 +730,7 @@ export const App = () => {
     };
     const handleUpdateProject = async (projectId, payload) => {
         if (!token || !selectedOrganizationId) {
-            throw new Error("Selecione uma organização antes de editar projeto.");
+            throw new Error("Selecione uma organizaÃ§Ã£o antes de editar projeto.");
         }
         const response = await fetchJson(`/projects/${projectId}`, token, {
             method: "PUT",
@@ -736,7 +785,7 @@ export const App = () => {
             navigate("/projects", { replace: true });
         }
         catch (error) {
-            const message = error instanceof Error ? error.message : "Erro ao criar organização";
+            const message = error instanceof Error ? error.message : "Erro ao criar organizaÃ§Ã£o";
             setOrgError(message);
         }
     };
@@ -762,7 +811,7 @@ export const App = () => {
         }
         // Normaliza o status alvo
         const newStatus = resolveStatus(destination.droppableId) ?? "BACKLOG";
-        // Atualização otimista do estado local
+        // AtualizaÃ§Ã£o otimista do estado local
         setBoardColumns((prev) => reorderBoard(prev, source, destination, draggableId, newStatus));
         try {
             // Persiste no backend com o novo status
@@ -774,7 +823,7 @@ export const App = () => {
                     order: destination.index
                 })
             }, selectedOrganizationId);
-            // Recarrega para garantir sincronização
+            // Recarrega para garantir sincronizaÃ§Ã£o
             setBoardRefresh((value) => value + 1);
             setWbsRefresh((value) => value + 1);
         }
@@ -805,15 +854,11 @@ export const App = () => {
     const handleWbsUpdate = async (nodeId, changes) => {
         if (!token || !selectedOrganizationId)
             return;
-        if (changes.title === undefined &&
-            changes.status === undefined &&
-            changes.startDate === undefined &&
-            changes.endDate === undefined &&
-            changes.estimateHours === undefined &&
-            changes.dependencies === undefined) {
+        const { owner, ...rest } = changes;
+        const payload = { ...rest };
+        if (Object.keys(payload).length === 0 && owner === undefined) {
             return;
         }
-        const payload = { ...changes };
         if ("estimateHours" in payload && payload.estimateHours !== undefined) {
             payload.estimateHours =
                 payload.estimateHours === null
@@ -823,7 +868,33 @@ export const App = () => {
         if ("dependencies" in payload) {
             payload.dependencies = Array.isArray(payload.dependencies) ? payload.dependencies : [];
         }
-        setWbsNodes((prev) => patchWbsNode(prev, nodeId, payload));
+        if ("status" in payload && payload.status !== undefined && payload.status !== null) {
+            payload.status = toBackendStatus(payload.status);
+        }
+        if ("serviceMultiplier" in payload && payload.serviceMultiplier !== undefined && payload.serviceMultiplier !== null) {
+            payload.serviceMultiplier = Number(payload.serviceMultiplier);
+        }
+        // Recalcula serviceHours = hoursBase Ã— multiplier
+        const currentNode = findWbsNode(wbsNodes, nodeId);
+        if ("serviceMultiplier" in payload && !("serviceCatalogId" in payload) && currentNode?.serviceCatalogId) {
+            payload.serviceCatalogId = currentNode.serviceCatalogId;
+        }
+        const selectedServiceCatalogId = payload.serviceCatalogId ?? currentNode?.serviceCatalogId ?? null;
+        const normalizedMultiplier = payload.serviceMultiplier ?? currentNode?.serviceMultiplier ?? (selectedServiceCatalogId ? 1 : undefined);
+        if (selectedServiceCatalogId) {
+            const catalogItem = serviceCatalog.find((service) => service.id === selectedServiceCatalogId);
+            const hoursBaseRaw = catalogItem?.hoursBase ?? catalogItem?.hours ?? null;
+            if (hoursBaseRaw !== null && hoursBaseRaw !== undefined) {
+                const hoursBase = Number(hoursBaseRaw);
+                const multiplierValue = Number(normalizedMultiplier ?? 1);
+                if (!Number.isNaN(hoursBase) && !Number.isNaN(multiplierValue)) {
+                    payload.serviceMultiplier = payload.serviceMultiplier ?? multiplierValue;
+                    payload.serviceHours = hoursBase * multiplierValue;
+                }
+            }
+        }
+        const payloadForState = { ...payload, ...(owner !== undefined ? { owner } : {}) };
+        setWbsNodes((prev) => patchWbsNode(prev, nodeId, payloadForState));
         try {
             await fetchJson(`/wbs/${nodeId}`, token, {
                 method: "PATCH",
@@ -837,15 +908,47 @@ export const App = () => {
             setWbsRefresh((value) => value + 1);
         }
     };
-    const handleCreateWbsItem = async (parentId) => {
+    const handleWbsResponsibleChange = async (nodeId, membershipId) => {
+        if (!token || !selectedOrganizationId)
+            return;
+        const optimisticResponsible = membershipId && members.length
+            ? members
+                .filter((member) => member.id === membershipId)
+                .map((member) => ({
+                membershipId: member.id,
+                userId: member.userId,
+                name: member.name ?? member.email ?? "ResponsÃ¡vel"
+            }))[0] ?? null
+            : null;
+        setWbsNodes((prev) => patchWbsNode(prev, nodeId, { responsible: optimisticResponsible }));
+        try {
+            const response = await fetchJson(`/wbs/${nodeId}/responsible`, token, {
+                method: "PATCH",
+                body: JSON.stringify({ membershipId: membershipId ?? null })
+            }, selectedOrganizationId);
+            setWbsNodes((prev) => patchWbsNode(prev, nodeId, { responsible: response.responsible ?? null }));
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : "Erro ao atualizar responsÃ¡vel";
+            setWbsError(message);
+            setWbsRefresh((value) => value + 1);
+        }
+    };
+    const handleCreateWbsItem = async (parentId, data) => {
         if (!token || !selectedOrganizationId || !selectedProjectId)
             return;
         const payload = {
-            title: "Nova tarefa",
+            title: data?.title ?? "Nova tarefa",
             type: "TASK",
             parentId,
-            status: "BACKLOG",
-            priority: "MEDIUM"
+            status: toBackendStatus(data?.status ?? "BACKLOG"),
+            priority: data?.priority ?? "MEDIUM",
+            description: data?.description ?? undefined,
+            estimateHours: data?.durationDays !== undefined && data?.durationDays !== null
+                ? String(Number(data.durationDays) * 8)
+                : undefined,
+            startDate: data?.startDate ?? undefined,
+            endDate: data?.endDate ?? undefined
         };
         try {
             setWbsError(null);
@@ -906,6 +1009,41 @@ export const App = () => {
         deletedAt: organization.deletedAt
     }));
     const currentOrgRole = organizationCards.find((org) => org.id === selectedOrganizationId)?.role ?? null;
+    const handleCreateServiceCatalog = useCallback(async (payload) => {
+        if (!token || !selectedProjectId || !selectedOrganizationId) {
+            throw new Error("Projeto selecionado é obrigatório.");
+        }
+        const body = {
+            projectId: selectedProjectId,
+            name: payload.name,
+            description: payload.description ?? null,
+            hoursBase: Number(payload.hoursBase)
+        };
+        await fetchJson("/service-catalog", token, {
+            method: "POST",
+            body: JSON.stringify(body)
+        }, selectedOrganizationId);
+        setServiceCatalogRefresh((value) => value + 1);
+    }, [token, selectedProjectId, selectedOrganizationId]);
+    const handleUpdateServiceCatalog = useCallback(async (serviceId, payload) => {
+        if (!token || !selectedOrganizationId) {
+            throw new Error("Organização é obrigatória.");
+        }
+        await fetchJson(`/service-catalog/${serviceId}`, token, {
+            method: "PATCH",
+            body: JSON.stringify(payload)
+        }, selectedOrganizationId);
+        setServiceCatalogRefresh((value) => value + 1);
+    }, [token, selectedOrganizationId]);
+    const handleDeleteServiceCatalog = useCallback(async (serviceId) => {
+        if (!token || !selectedOrganizationId) {
+            throw new Error("Organização é obrigatória.");
+        }
+        await fetchJson(`/service-catalog/${serviceId}`, token, {
+            method: "DELETE"
+        }, selectedOrganizationId);
+        setServiceCatalogRefresh((value) => value + 1);
+    }, [token, selectedOrganizationId]);
     useEffect(() => {
         try {
             const storedOrgId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
@@ -916,7 +1054,7 @@ export const App = () => {
                 setSelectedProjectId(storedProjId);
         }
         catch (error) {
-            console.error("Falha ao ler organização/projeto salvos", error);
+            console.error("Falha ao ler organizaÃ§Ã£o/projeto salvos", error);
         }
     }, []);
     useEffect(() => {
@@ -973,7 +1111,7 @@ export const App = () => {
         }
     }, [location.pathname, navigate, status]);
     if (status === "loading") {
-        return _jsx("p", { style: { padding: "2rem" }, children: "Carregando autentica\u00E7\u00E3o..." });
+        return _jsx("p", { style: { padding: "2rem" }, children: "Carregando autentica\u00C3\u00A7\u00C3\u00A3o..." });
     }
     if (status === "unauthenticated" || !token) {
         if (location.pathname === "/") {
@@ -984,7 +1122,7 @@ export const App = () => {
                 navigate("/dashboard", { replace: true });
             }, onSignUp: async ({ email, password }) => {
                 await signUp({ email, password });
-                // Novo usuário deve concluir o checkout antes de criar organização
+                // Novo usuÃ¡rio deve concluir o checkout antes de criar organizaÃ§Ã£o
                 navigate("/checkout", { replace: true });
             }, error: authError }));
     }
@@ -993,7 +1131,7 @@ export const App = () => {
     const isOnCheckoutRoute = location.pathname === "/checkout";
     if (subscriptionStatus === "loading" || subscriptionStatus === "idle") {
         if (isOnCheckoutRoute) {
-            // Permite abrir o checkout enquanto o status é carregado
+            // Permite abrir o checkout enquanto o status Ã© carregado
         }
         else {
             return _jsx("p", { style: { padding: "2rem" }, children: "Carregando assinatura..." });
@@ -1010,7 +1148,13 @@ export const App = () => {
         location.pathname === "/dashboard") {
         return _jsx(Navigate, { to: "/projects", replace: true });
     }
-    return (_jsxs(Routes, { children: [_jsx(Route, { path: "/", element: _jsx(LandingPage, {}) }), _jsxs(Route, { path: "/*", element: _jsx(DashboardLayout, { userEmail: user?.email ?? null, organizations: organizations, selectedOrganizationId: selectedOrganizationId, onOrganizationChange: setSelectedOrganizationId, currentOrgRole: currentOrgRole, orgError: orgError, onSignOut: signOut, projects: projects, selectedProjectId: selectedProjectId ?? "", onProjectChange: setSelectedProjectId, onSelectProject: setSelectedProjectId, projectsError: projectsError, filters: filters, onRangeChange: (rangeDays) => setFilters((prev) => ({ ...prev, rangeDays })), summary: projectSummary, summaryError: summaryError, members: members, membersError: membersError, attachments: attachments, attachmentsError: attachmentsError, attachmentsLoading: attachmentsLoading, boardColumns: boardColumns, boardError: boardError, onCreateTask: handleCreateTask, onReloadBoard: loadBoardColumns, onDragTask: handleDragEnd, newTaskTitle: newTaskTitle, onTaskTitleChange: setNewTaskTitle, newTaskColumn: newTaskColumn, onTaskColumnChange: setNewTaskColumn, newTaskStartDate: newTaskStartDate, onTaskStartDateChange: setNewTaskStartDate, newTaskEndDate: newTaskEndDate, onTaskEndDateChange: setNewTaskEndDate, newTaskAssignee: newTaskAssignee, onTaskAssigneeChange: setNewTaskAssignee, newTaskEstimateHours: newTaskEstimateHours, onTaskEstimateHoursChange: setNewTaskEstimateHours, wbsNodes: wbsNodes, wbsError: wbsError, onMoveNode: handleWbsMove, onUpdateWbsNode: handleWbsUpdate, onCreateWbsItem: handleCreateWbsItem, selectedNodeId: selectedNodeId, onSelectNode: setSelectedNodeId, comments: comments, commentsError: commentsError, onSubmitComment: handleCreateComment, commentBody: commentBody, onCommentBodyChange: setCommentBody, timeEntryDate: timeEntryDate, timeEntryHours: timeEntryHours, timeEntryDescription: timeEntryDescription, onTimeEntryDateChange: setTimeEntryDate, onTimeEntryHoursChange: setTimeEntryHours, onTimeEntryDescriptionChange: setTimeEntryDescription, onLogTime: handleCreateTimeEntry, timeEntryError: timeEntryError, ganttTasks: ganttTasks, ganttMilestones: ganttMilestones, ganttError: ganttError, portfolio: portfolio, portfolioError: portfolioError, portfolioLoading: portfolioLoading, reportMetrics: reportMetrics, reportMetricsError: reportMetricsError, reportMetricsLoading: reportMetricsLoading, kanbanColumns: kanbanColumns, onExportPortfolio: handleDownloadPortfolio, onCreateProject: handleCreateProject, onUpdateProject: handleUpdateProject, projectLimits: projectLimits }), children: [_jsx(Route, { index: true, element: _jsx(Navigate, { to: "/dashboard", replace: true }) }), _jsx(Route, { path: "checkout", element: _jsx(CheckoutPage, { subscription: subscription, subscriptionError: subscriptionError, onSubscriptionActivated: fetchSubscription }) }), _jsx(Route, { path: "organizacao", element: _jsx(OrganizationSelector, { organizations: organizationCards, onSelect: (organizationId) => {
+    const handleProjectSelection = (projectId) => {
+        setSelectedProjectId(projectId);
+        if (selectedOrganizationId && projectId) {
+            navigate(`/EAP/organizacao/${selectedOrganizationId}/projeto/${projectId}`, { replace: true });
+        }
+    };
+    return (_jsxs(Routes, { children: [_jsx(Route, { path: "/", element: _jsx(LandingPage, {}) }), _jsxs(Route, { path: "/*", element: _jsx(DashboardLayout, { userEmail: user?.email ?? null, organizations: organizations, selectedOrganizationId: selectedOrganizationId ?? "", onOrganizationChange: setSelectedOrganizationId, currentOrgRole: currentOrgRole ?? null, orgError: orgError, onSignOut: signOut, projects: projects, selectedProjectId: selectedProjectId ?? "", onProjectChange: handleProjectSelection, onSelectProject: handleProjectSelection, projectsError: projectsError, filters: filters, onRangeChange: (rangeDays) => setFilters((prev) => ({ ...prev, rangeDays })), summary: projectSummary, summaryError: summaryError, members: members, membersError: membersError, attachments: attachments, attachmentsError: attachmentsError, attachmentsLoading: attachmentsLoading, boardColumns: boardColumns, boardError: boardError, onCreateTask: handleCreateTask, onReloadBoard: loadBoardColumns, onDragTask: handleDragEnd, newTaskTitle: newTaskTitle, onTaskTitleChange: setNewTaskTitle, newTaskColumn: newTaskColumn, onTaskColumnChange: setNewTaskColumn, newTaskStartDate: newTaskStartDate, onTaskStartDateChange: setNewTaskStartDate, newTaskEndDate: newTaskEndDate, onTaskEndDateChange: setNewTaskEndDate, newTaskAssignee: newTaskAssignee, onTaskAssigneeChange: setNewTaskAssignee, newTaskEstimateHours: newTaskEstimateHours, onTaskEstimateHoursChange: setNewTaskEstimateHours, wbsNodes: wbsNodes, wbsError: wbsError, onMoveNode: handleWbsMove, onUpdateWbsNode: handleWbsUpdate, onUpdateWbsResponsible: handleWbsResponsibleChange, onCreateWbsItem: handleCreateWbsItem, selectedNodeId: selectedNodeId, onSelectNode: setSelectedNodeId, comments: comments, commentsError: commentsError, onSubmitComment: handleCreateComment, commentBody: commentBody, onCommentBodyChange: setCommentBody, timeEntryDate: timeEntryDate, timeEntryHours: timeEntryHours, timeEntryDescription: timeEntryDescription, onTimeEntryDateChange: setTimeEntryDate, onTimeEntryHoursChange: setTimeEntryHours, onTimeEntryDescriptionChange: setTimeEntryDescription, onLogTime: handleCreateTimeEntry, timeEntryError: timeEntryError, ganttTasks: ganttTasks, ganttMilestones: ganttMilestones, ganttError: ganttError, portfolio: portfolio, portfolioError: portfolioError, portfolioLoading: portfolioLoading, reportMetrics: reportMetrics, reportMetricsError: reportMetricsError, reportMetricsLoading: reportMetricsLoading, kanbanColumns: kanbanColumns, onExportPortfolio: handleDownloadPortfolio, onCreateProject: handleCreateProject, onUpdateProject: handleUpdateProject, projectLimits: projectLimits, serviceCatalog: serviceCatalog, serviceCatalogError: serviceCatalogError, onImportServiceCatalog: handleImportServiceCatalog, onCreateServiceCatalog: handleCreateServiceCatalog, onUpdateServiceCatalog: handleUpdateServiceCatalog, onDeleteServiceCatalog: handleDeleteServiceCatalog, onReloadWbs: () => setWbsRefresh((value) => value + 1) }), children: [_jsx(Route, { index: true, element: _jsx(Navigate, { to: "/dashboard", replace: true }) }), _jsx(Route, { path: "checkout", element: _jsx(CheckoutPage, { subscription: subscription, subscriptionError: subscriptionError, onSubscriptionActivated: fetchSubscription }) }), _jsx(Route, { path: "organizacao", element: _jsx(OrganizationSelector, { organizations: organizationCards, onSelect: (organizationId) => {
                                 setSelectedOrganizationId(organizationId);
                                 setSelectedProjectId(null);
                                 if (typeof window !== "undefined") {
@@ -1018,7 +1162,7 @@ export const App = () => {
                                     window.localStorage.removeItem(SELECTED_PROJECT_KEY);
                                 }
                                 navigate("/projects", { replace: true });
-                            }, onCreateOrganization: handleCreateOrganization, userEmail: user?.email ?? null, currentOrgRole: currentOrgRole, organizationLimits: organizationLimits, onReloadOrganizations: () => setOrganizationsRefresh((value) => value + 1) }) }), _jsx(Route, { path: "dashboard", element: _jsx(DashboardPage, {}) }), _jsx(Route, { path: "projects", element: _jsx(ProjectsPage, {}) }), _jsx(Route, { path: "projects/:id", element: _jsx(ProjectDetailsPage, {}) }), _jsx(Route, { path: "projects/:id/edt", element: _jsx(ProjectEDTPage, {}) }), _jsx(Route, { path: "projects/:id/board", element: _jsx(ProjectBoardPage, {}) }), _jsx(Route, { path: "projects/:id/cronograma", element: _jsx(ProjectTimelinePage, {}) }), _jsx(Route, { path: "projects/:id/documentos", element: _jsx(ProjectDocumentsPage, {}) }), _jsx(Route, { path: "projects/:id/atividades", element: _jsx(ProjectActivitiesPage, {}) }), _jsx(Route, { path: "edt", element: _jsx(EDTPage, {}) }), _jsx(Route, { path: "board", element: _jsx(BoardPage, {}) }), _jsx(Route, { path: "cronograma", element: _jsx(TimelinePage, {}) }), _jsx(Route, { path: "relatorios", element: _jsx(ReportsPage, {}) }), _jsx(Route, { path: "documentos", element: _jsx(DocumentsPage, {}) }), _jsx(Route, { path: "atividades", element: _jsx(ActivitiesPage, {}) }), _jsx(Route, { path: "plano", element: _jsx(PlanPage, {}) }), _jsx(Route, { path: "equipe", element: _jsx(TeamPage, {}) })] }), _jsx(Route, { path: "*", element: _jsx(NotFoundPage, {}) })] }));
+                            }, onCreateOrganization: handleCreateOrganization, userEmail: user?.email ?? null, currentOrgRole: currentOrgRole ?? null, organizationLimits: organizationLimits, onReloadOrganizations: () => setOrganizationsRefresh((value) => value + 1) }) }), _jsx(Route, { path: "dashboard", element: _jsx(DashboardPage, {}) }), _jsx(Route, { path: "projects", element: _jsx(ProjectsPage, {}) }), _jsx(Route, { path: "projects/:id", element: _jsx(ProjectDetailsPage, {}) }), _jsx(Route, { path: "projects/:id/edt", element: _jsx(ProjectEDTPage, {}) }), _jsx(Route, { path: "projects/:id/board", element: _jsx(ProjectBoardPage, {}) }), _jsx(Route, { path: "projects/:id/cronograma", element: _jsx(ProjectTimelinePage, {}) }), _jsx(Route, { path: "projects/:id/documentos", element: _jsx(ProjectDocumentsPage, {}) }), _jsx(Route, { path: "projects/:id/atividades", element: _jsx(ProjectActivitiesPage, {}) }), _jsx(Route, { path: "EAP/organizacao/:organizationId/projeto/:projectId", element: _jsx(EDTPage, {}) }), _jsx(Route, { path: "EAP", element: selectedOrganizationId && selectedProjectId ? (_jsx(Navigate, { to: `/EAP/organizacao/${selectedOrganizationId}/projeto/${selectedProjectId}`, replace: true })) : (_jsx(Navigate, { to: "/organizacao", replace: true })) }), _jsx(Route, { path: "edt", element: _jsx(Navigate, { to: "/EAP", replace: true }) }), _jsx(Route, { path: "board", element: _jsx(BoardPage, {}) }), _jsx(Route, { path: "kanban", element: _jsx(KanbanPage, {}) }), _jsx(Route, { path: "cronograma", element: _jsx(TimelinePage, {}) }), _jsx(Route, { path: "relatorios", element: _jsx(ReportsPage, {}) }), _jsx(Route, { path: "documentos", element: _jsx(DocumentsPage, {}) }), _jsx(Route, { path: "atividades", element: _jsx(ActivitiesPage, {}) }), _jsx(Route, { path: "plano", element: _jsx(PlanPage, {}) }), _jsx(Route, { path: "equipe", element: _jsx(TeamPage, {}) })] }), _jsx(Route, { path: "*", element: _jsx(NotFoundPage, {}) })] }));
 };
 function reorderBoard(columns, source, destination, taskId, newStatus) {
     const nextColumns = columns.map((column) => ({
@@ -1096,4 +1240,16 @@ function treeContainsNode(nodes, nodeId) {
         }
     }
     return false;
+}
+function findWbsNode(nodes, nodeId) {
+    for (const node of nodes) {
+        if (node.id === nodeId)
+            return node;
+        if (node.children?.length) {
+            const found = findWbsNode(node.children, nodeId);
+            if (found)
+                return found;
+        }
+    }
+    return null;
 }
