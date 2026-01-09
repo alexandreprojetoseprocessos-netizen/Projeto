@@ -5,12 +5,21 @@ export type AuthenticatedUser = {
   id: string;
   email: string;
   name?: string | null;
+  fullName?: string | null;
+};
+
+export type UploadedFile = {
+  buffer: Buffer;
+  originalname?: string;
+  mimetype?: string;
+  size?: number;
 };
 
 export type RequestWithUser = Request & {
   user?: AuthenticatedUser;
   organization?: Organization;
   organizationMembership?: OrganizationMembership;
+  file?: UploadedFile;
 };
 
 declare module "express-serve-static-core" {
@@ -18,6 +27,7 @@ declare module "express-serve-static-core" {
     user?: AuthenticatedUser;
     organization?: Organization;
     organizationMembership?: OrganizationMembership;
+    file?: UploadedFile;
   }
 }
 

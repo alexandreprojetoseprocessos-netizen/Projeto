@@ -360,7 +360,7 @@ projectsRouter.put("/:projectId", async (req, res) => {
 
     await prisma.auditLog.create({
       data: {
-        organizationId: membership.organizationId,
+        organizationId: req.organization!.id,
         actorId: membership.userId,
         projectId: project.id,
         action: "PROJECT_UPDATED",

@@ -215,7 +215,11 @@ organizationsRouter.patch(
         return res.status(404).json({ message: "Organizacao nao encontrada." });
       }
 
-      if (![OrganizationStatus.DEACTIVATED, OrganizationStatus.SOFT_DELETED].includes(organization.status)) {
+      const restorableStatuses: OrganizationStatus[] = [
+        OrganizationStatus.DEACTIVATED,
+        OrganizationStatus.SOFT_DELETED
+      ];
+      if (!restorableStatuses.includes(organization.status)) {
         return res.status(400).json({ message: "Esta organizacao nao pode ser restaurada." });
       }
 
