@@ -7,7 +7,10 @@
     "dev:front": "npm --workspace apps/front run dev",
     "db:migrate": "npm --workspace apps/database run migrate",
     "db:seed": "npm --workspace apps/database run seed",
-    "deploy:api": "prisma generate --schema apps/database/prisma/schema.prisma && npm --workspace apps/database run build && npm --workspace apps/api run build",
+    "prisma:generate": "npx prisma generate --schema apps/database/prisma/schema.prisma",
+    "build:database": "npm --workspace apps/database run build",
+    "build:api": "npm --workspace apps/api run build",
+    "deploy:api": "npm run prisma:generate && npm run build:database && npm run build:api",
     "lint": "npm --workspaces run lint"
   },
   "devDependencies": {
