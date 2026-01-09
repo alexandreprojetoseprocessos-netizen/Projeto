@@ -41,9 +41,14 @@ if (!parsed.success) {
   throw new Error("Invalid environment variables");
 }
 
+const port =
+  Number(process.env.PORT) ||
+  Number(process.env.API_PORT) ||
+  4000;
+
 export const config = {
   env: parsed.data.NODE_ENV,
-  port: Number(parsed.data.API_PORT),
+  port,
   frontendUrl: parsed.data.FRONTEND_URL,
   supabase: {
     url: parsed.data.SUPABASE_URL,

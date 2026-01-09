@@ -4,6 +4,6 @@ import { logger } from "./config/logger";
 
 const app = createApp();
 
-app.listen(config.port, () => {
+app.listen(config.port, "0.0.0.0", () => {
   logger.info(`API running on port ${config.port}`);
 });
