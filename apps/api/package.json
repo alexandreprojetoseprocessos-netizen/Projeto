@@ -11,7 +11,7 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
-    "@gestao/database": "^0.1.0",
+    "@gestao/database": "workspace:*",
     "@prisma/client": "^5.19.0",
     "@supabase/supabase-js": "^2.45.0",
     "axios": "^1.7.7",

@@ -1,16 +1,13 @@
 {
   "name": "gestao-projetos",
   "private": true,
-  "workspaces": [
-    "apps/api",
-    "apps/front",
-    "apps/database"
-  ],
+  "workspaces": ["apps/*"],
   "scripts": {
     "dev:api": "npm --workspace apps/api run dev",
     "dev:front": "npm --workspace apps/front run dev",
     "db:migrate": "npm --workspace apps/database run migrate",
     "db:seed": "npm --workspace apps/database run seed",
+    "deploy:api": "prisma generate --schema apps/database/prisma/schema.prisma && npm --workspace apps/database run build && npm --workspace apps/api run build",
     "lint": "npm --workspaces run lint"
   },
   "devDependencies": {
@@ -22,6 +19,6 @@
     "typescript": "^5.4.0"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": "20.x"
   }
 }
