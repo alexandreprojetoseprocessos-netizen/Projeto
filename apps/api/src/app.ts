@@ -1,4 +1,4 @@
-import cors from "cors";
+import cors, { type CorsOptions } from "cors";
 import express from "express";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -20,19 +20,24 @@ export const createApp = () => {
   const app = express();
 
   app.use(helmet());
-  app.use(
-    cors({
-      origin: (origin, callback) => {
-        if (!origin) return callback(null, true);
-        const allowed = config.frontendUrl
-          ? origin === config.frontendUrl
-          : /localhost:5173$|127\.0\.0\.1:5173$/.test(origin);
-        if (allowed) return callback(null, true);
-        return callback(new Error("Not allowed by CORS"));
-      },
-      credentials: true
-    })
-  );
+  const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    config.frontendUrl,
+    "http://localhost:5173",
+    "http://localhost:3000"
+  ].filter((origin): origin is string => Boolean(origin));
+
+  const corsOptions: CorsOptions = {
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true
+  };
+
+  app.use(cors(corsOptions));
+  app.options("*", cors(corsOptions));
   app.use(
     express.json({
       limit: "1mb",
