@@ -1,8 +1,8 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { apiUrl } from "../config/api";
 import { X } from "lucide-react";
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 const getDaysLeft = (deletedAt) => {
     if (!deletedAt)
         return null;
@@ -25,7 +25,7 @@ const OrgStatusModal = ({ type, open, onClose, onReload }) => {
         setLoading(true);
         setError(null);
         try {
-            const response = await fetch(`${apiBaseUrl}/organizations?status=${type}`, {
+            const response = await fetch(apiUrl(`/organizations?status=${type}`), {
                 headers: {
                     Authorization: `Bearer ${token}`,
                     "Content-Type": "application/json"
@@ -56,7 +56,7 @@ const OrgStatusModal = ({ type, open, onClose, onReload }) => {
         setActionLoadingId(id);
         setActionError(null);
         try {
-            const response = await fetch(`${apiBaseUrl}/organizations/${id}/restore`, {
+            const response = await fetch(apiUrl(`/organizations/${id}/restore`), {
                 method: "PATCH",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -87,7 +87,7 @@ const OrgStatusModal = ({ type, open, onClose, onReload }) => {
         setActionLoadingId(id);
         setActionError(null);
         try {
-            const response = await fetch(`${apiBaseUrl}/organizations/${id}/trash`, {
+            const response = await fetch(apiUrl(`/organizations/${id}/trash`), {
                 method: "PATCH",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -116,7 +116,7 @@ const OrgStatusModal = ({ type, open, onClose, onReload }) => {
         setActionLoadingId(id);
         setActionError(null);
         try {
-            const response = await fetch(`${apiBaseUrl}/organizations/${id}`, {
+            const response = await fetch(apiUrl(`/organizations/${id}`), {
                 method: "DELETE",
                 headers: {
                     Authorization: `Bearer ${token}`

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { apiUrl } from "../config/api";
 
 type PaymentMethod = "card" | "pix" | "boleto";
 
@@ -9,8 +10,6 @@ type CheckoutPageProps = {
   subscriptionError?: string | null;
   onSubscriptionActivated?: () => Promise<void> | void;
 };
-
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 const plans = {
   START: { name: "Plano Start", price: "R$ 49/mês" },
@@ -61,7 +60,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
     setError(null);
 
     try {
-      const response = await fetch(`${apiBaseUrl}/subscriptions/checkout`, {
+      const response = await fetch(apiUrl("/subscriptions/checkout"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

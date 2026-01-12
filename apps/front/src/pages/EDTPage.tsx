@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { apiUrl } from "../config/api";
 import { WbsTreeView, type DashboardOutletContext } from "../components/DashboardLayout";
 import { DependenciesDropdown, type DependencyOption } from "../components/DependenciesDropdown";
 import ServiceCatalogModal from "../components/ServiceCatalogModal";
@@ -133,11 +134,6 @@ const EDTPage: React.FC = () => {
   const currentProject =
     projects?.find((project: any) => project.id === selectedProjectId) ?? null;
 
-  const apiBaseUrl =
-    import.meta.env.VITE_API_URL ??
-    (import.meta as any)?.env?.VITE_API_BASE_URL ??
-    "http://localhost:4000";
-
   const serviceCatalogOptions = useMemo(() => {
     const list = Array.isArray(serviceCatalog) ? serviceCatalog : [];
     return list;
@@ -250,7 +246,7 @@ const EDTPage: React.FC = () => {
       const headers: Record<string, string> = {};
       if (token) headers.Authorization = `Bearer ${token}`;
       if (selectedOrganizationId) headers["x-organization-id"] = selectedOrganizationId;
-      const response = await fetch(`${apiBaseUrl}/wbs/export?${params.toString()}`, {
+      const response = await fetch(apiUrl(`/wbs/export?${params.toString()}`), {
         method: "GET",
         headers,
         credentials: "include",
@@ -296,7 +292,7 @@ const EDTPage: React.FC = () => {
       const headers: Record<string, string> = {};
       if (token) headers.Authorization = `Bearer ${token}`;
       if (selectedOrganizationId) headers["x-organization-id"] = selectedOrganizationId;
-      const response = await fetch(`${apiBaseUrl}/wbs/import?projectId=${selectedProjectId}`, {
+      const response = await fetch(apiUrl(`/wbs/import?projectId=${selectedProjectId}`), {
         method: "POST",
         headers,
         credentials: "include",
@@ -324,7 +320,7 @@ const EDTPage: React.FC = () => {
     const headers: Record<string, string> = init?.headers ? { ...(init.headers as any) } : {};
     if (token) headers.Authorization = `Bearer ${token}`;
     if (selectedOrganizationId) headers["x-organization-id"] = selectedOrganizationId;
-    const response = await fetch(`${apiBaseUrl}${path}`, {
+    const response = await fetch(apiUrl(path), {
       credentials: "include",
       ...init,
       headers,

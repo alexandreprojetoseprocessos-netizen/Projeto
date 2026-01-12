@@ -29,7 +29,7 @@ import { TeamPage } from "./pages/TeamPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import LandingPage from "./pages/LandingPage";
 import { CheckoutPage } from "./pages/CheckoutPage";
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+import { apiUrl } from "./config/api";
 const SELECTED_ORG_KEY = "gp:selectedOrganizationId";
 const SELECTED_PROJECT_KEY = "gp:selectedProjectId";
 async function fetchJson(path, token, options, organizationId) {
@@ -39,7 +39,7 @@ async function fetchJson(path, token, options, organizationId) {
     headers.set("Authorization", `Bearer ${token}`);
     if (organizationId)
         headers.set("X-Organization-Id", organizationId);
-    const response = await fetch(`${apiBaseUrl}${path}`, {
+    const response = await fetch(apiUrl(path), {
         ...options,
         headers
     });
@@ -231,7 +231,7 @@ export const App = () => {
                 });
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Falha ao carregar organizaÃ§Ãµes";
+                const message = error instanceof Error ? error.message : "Falha ao carregar organizações";
                 setOrgError(message);
                 setOrganizations([]);
                 setSelectedOrganizationId((current) => current ?? null);
@@ -395,7 +395,7 @@ export const App = () => {
                 setServiceCatalog(data ?? []);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar catÃ¡logo de serviÃ§os";
+                const message = error instanceof Error ? error.message : "Erro ao carregar catálogo de serviços";
                 setServiceCatalogError(message);
             }
         };
@@ -439,7 +439,7 @@ export const App = () => {
                 setComments(nextComments);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar comentÃ¡rios";
+                const message = error instanceof Error ? error.message : "Erro ao carregar comentários";
                 setCommentsError(message);
             }
         };
@@ -480,11 +480,11 @@ export const App = () => {
     }, [status, token, selectedProjectId, selectedOrganizationId, boardRefresh, loadBoardColumns]);
     const handleImportServiceCatalog = useCallback(async (file) => {
         if (!file || !token || !selectedProjectId || !selectedOrganizationId) {
-            throw new Error("Arquivo e projeto sÃ£o obrigatÃ³rios.");
+            throw new Error("Arquivo e projeto são obrigatórios.");
         }
         const formData = new FormData();
         formData.append("file", file);
-        const response = await fetch(`${apiBaseUrl}/service-catalog/import?projectId=${selectedProjectId}`, {
+        const response = await fetch(apiUrl(`/service-catalog/import?projectId=${selectedProjectId}`), {
             method: "POST",
             headers: {
                 Authorization: `Bearer ${token}`,
@@ -494,7 +494,7 @@ export const App = () => {
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
-            const message = body?.message ?? "Erro ao importar catÃ¡logo";
+            const message = body?.message ?? "Erro ao importar catálogo";
             throw new Error(message);
         }
         setServiceCatalogRefresh((value) => value + 1);
@@ -559,7 +559,7 @@ export const App = () => {
                 setPortfolio(data.projects ?? []);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar portfÃ³lio";
+                const message = error instanceof Error ? error.message : "Erro ao carregar portfólio";
                 setPortfolioError(message);
                 setPortfolio([]);
             }
@@ -583,7 +583,7 @@ export const App = () => {
                 setReportMetrics(data);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar relatÃ³rios";
+                const message = error instanceof Error ? error.message : "Erro ao carregar relatórios";
                 setReportMetricsError(message);
                 setReportMetrics(null);
             }
@@ -640,7 +640,7 @@ export const App = () => {
             setCommentsError(null);
         }
         catch (error) {
-            const message = error instanceof Error ? error.message : "Erro ao criar comentÃ¡rio";
+            const message = error instanceof Error ? error.message : "Erro ao criar comentário";
             setCommentsError(message);
         }
     };
@@ -670,7 +670,7 @@ export const App = () => {
     };
     const handleCreateProject = async (payload) => {
         if (!token || !selectedOrganizationId) {
-            throw new Error("Selecione uma organizaÃ§Ã£o para criar projetos.");
+            throw new Error("Selecione uma organização para criar projetos.");
         }
         try {
             const response = await fetchJson("/projects", token, {
@@ -720,7 +720,7 @@ export const App = () => {
                 error?.response?.data?.message ??
                 (error instanceof Error ? error.message : "Erro ao criar projeto");
             if (status === 409 && code === "PROJECT_LIMIT_REACHED") {
-                setProjectsError("VocÃª atingiu o limite de projetos do seu plano. Exclua/arquive um projeto ou faÃ§a upgrade para continuar.");
+                setProjectsError("Você atingiu o limite de projetos do seu plano. Exclua/arquive um projeto ou faça upgrade para continuar.");
             }
             else {
                 setProjectsError(message);
@@ -730,7 +730,7 @@ export const App = () => {
     };
     const handleUpdateProject = async (projectId, payload) => {
         if (!token || !selectedOrganizationId) {
-            throw new Error("Selecione uma organizaÃ§Ã£o antes de editar projeto.");
+            throw new Error("Selecione uma organização antes de editar projeto.");
         }
         const response = await fetchJson(`/projects/${projectId}`, token, {
             method: "PUT",
@@ -785,7 +785,7 @@ export const App = () => {
             navigate("/projects", { replace: true });
         }
         catch (error) {
-            const message = error instanceof Error ? error.message : "Erro ao criar organizaÃ§Ã£o";
+            const message = error instanceof Error ? error.message : "Erro ao criar organização";
             setOrgError(message);
         }
     };
@@ -811,7 +811,7 @@ export const App = () => {
         }
         // Normaliza o status alvo
         const newStatus = resolveStatus(destination.droppableId) ?? "BACKLOG";
-        // AtualizaÃ§Ã£o otimista do estado local
+        // Atualização otimista do estado local
         setBoardColumns((prev) => reorderBoard(prev, source, destination, draggableId, newStatus));
         try {
             // Persiste no backend com o novo status
@@ -823,7 +823,7 @@ export const App = () => {
                     order: destination.index
                 })
             }, selectedOrganizationId);
-            // Recarrega para garantir sincronizaÃ§Ã£o
+            // Recarrega para garantir sincronização
             setBoardRefresh((value) => value + 1);
             setWbsRefresh((value) => value + 1);
         }
@@ -874,7 +874,7 @@ export const App = () => {
         if ("serviceMultiplier" in payload && payload.serviceMultiplier !== undefined && payload.serviceMultiplier !== null) {
             payload.serviceMultiplier = Number(payload.serviceMultiplier);
         }
-        // Recalcula serviceHours = hoursBase Ã— multiplier
+        // Recalcula serviceHours = hoursBase × multiplier
         const currentNode = findWbsNode(wbsNodes, nodeId);
         if ("serviceMultiplier" in payload && !("serviceCatalogId" in payload) && currentNode?.serviceCatalogId) {
             payload.serviceCatalogId = currentNode.serviceCatalogId;
@@ -917,7 +917,7 @@ export const App = () => {
                 .map((member) => ({
                 membershipId: member.id,
                 userId: member.userId,
-                name: member.name ?? member.email ?? "ResponsÃ¡vel"
+                name: member.name ?? member.email ?? "Responsável"
             }))[0] ?? null
             : null;
         setWbsNodes((prev) => patchWbsNode(prev, nodeId, { responsible: optimisticResponsible }));
@@ -929,7 +929,7 @@ export const App = () => {
             setWbsNodes((prev) => patchWbsNode(prev, nodeId, { responsible: response.responsible ?? null }));
         }
         catch (error) {
-            const message = error instanceof Error ? error.message : "Erro ao atualizar responsÃ¡vel";
+            const message = error instanceof Error ? error.message : "Erro ao atualizar responsável";
             setWbsError(message);
             setWbsRefresh((value) => value + 1);
         }
@@ -972,7 +972,7 @@ export const App = () => {
         if (!token || !selectedOrganizationId)
             return;
         try {
-            const response = await fetch(`${apiBaseUrl}/reports/portfolio?format=csv`, {
+            const response = await fetch(apiUrl("/reports/portfolio?format=csv"), {
                 headers: {
                     Authorization: `Bearer ${token}`,
                     "X-Organization-Id": selectedOrganizationId
@@ -1054,7 +1054,7 @@ export const App = () => {
                 setSelectedProjectId(storedProjId);
         }
         catch (error) {
-            console.error("Falha ao ler organizaÃ§Ã£o/projeto salvos", error);
+            console.error("Falha ao ler organização/projeto salvos", error);
         }
     }, []);
     useEffect(() => {
@@ -1111,7 +1111,7 @@ export const App = () => {
         }
     }, [location.pathname, navigate, status]);
     if (status === "loading") {
-        return _jsx("p", { style: { padding: "2rem" }, children: "Carregando autentica\u00C3\u00A7\u00C3\u00A3o..." });
+        return _jsx("p", { style: { padding: "2rem" }, children: "Carregando autentica\u00E7\u00E3o..." });
     }
     if (status === "unauthenticated" || !token) {
         if (location.pathname === "/") {
@@ -1122,7 +1122,7 @@ export const App = () => {
                 navigate("/dashboard", { replace: true });
             }, onSignUp: async ({ email, password }) => {
                 await signUp({ email, password });
-                // Novo usuÃ¡rio deve concluir o checkout antes de criar organizaÃ§Ã£o
+                // Novo usuário deve concluir o checkout antes de criar organização
                 navigate("/checkout", { replace: true });
             }, error: authError }));
     }
@@ -1131,7 +1131,7 @@ export const App = () => {
     const isOnCheckoutRoute = location.pathname === "/checkout";
     if (subscriptionStatus === "loading" || subscriptionStatus === "idle") {
         if (isOnCheckoutRoute) {
-            // Permite abrir o checkout enquanto o status Ã© carregado
+            // Permite abrir o checkout enquanto o status é carregado
         }
         else {
             return _jsx("p", { style: { padding: "2rem" }, children: "Carregando assinatura..." });

@@ -2,7 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+import { apiUrl } from "../config/api";
 const plans = {
     START: { name: "Plano Start", price: "R$ 49/mês" },
     BUSINESS: { name: "Plano Business", price: "R$ 97/mês" },
@@ -44,7 +44,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
         setIsLoading(true);
         setError(null);
         try {
-            const response = await fetch(`${apiBaseUrl}/subscriptions/checkout`, {
+            const response = await fetch(apiUrl("/subscriptions/checkout"), {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

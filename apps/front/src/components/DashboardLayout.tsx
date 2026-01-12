@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate, useOutletContext } from "rea
 import { createPortal } from "react-dom";
 
 import { useAuth } from "../contexts/AuthContext";
+import { apiUrl } from "../config/api";
 
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, BarChart, Bar } from "recharts";
 
@@ -598,7 +599,7 @@ const sidebarNavigation = [
   { id: "cronograma", label: "Cronograma", icon: ClockIcon, path: "/cronograma" },
   { id: "atividades", label: "Timeline", icon: CommentIcon, path: "/atividades" },
   { id: "documentos", label: "Documentos", icon: FileIcon, path: "/documentos" },
-  { id: "Relatórios", label: "RelatÃ³rios", icon: BarChartIcon, path: "/Relatórios" },
+  { id: "Relatórios", label: "Relatórios", icon: BarChartIcon, path: "/Relatórios" },
   { id: "equipe", label: "Equipes", icon: UsersIcon, path: "/equipe" },
   { id: "plano", label: "Meu plano", icon: BriefcaseIcon, path: "/plano" }
 ];
@@ -1760,15 +1761,7 @@ const WORKDAY_HOURS = 8;
 
 const MS_IN_DAY = 1000 * 60 * 60 * 24;
 
-const API_BASE_URL =
-  (import.meta as any)?.env?.VITE_API_URL ??
-  (import.meta as any)?.env?.VITE_API_BASE_URL ??
-  "http://localhost:4000";
-
-
-
-
-
+ 
 
 
 const formatDateInputValue = (value?: string | null) => {
@@ -3193,7 +3186,7 @@ export const WbsTreeView = ({
 
       try {
 
-        await fetch(`${API_BASE_URL}/wbs/reorder`, {
+        await fetch(apiUrl("/wbs/reorder"), {
 
           method: "PATCH",
 
@@ -3308,7 +3301,7 @@ export const WbsTreeView = ({
       await Promise.all(
         nodesWithoutCount.map(async (row) => {
           try {
-            const res = await fetch(`${API_BASE_URL}/wbs/${row.node.id}/comments`, {
+            const res = await fetch(apiUrl(`/wbs/${row.node.id}/comments`), {
               headers: {
                 Authorization: `Bearer ${authToken ?? ""}`,
                 "X-Organization-Id": currentOrganizationId
@@ -3354,7 +3347,7 @@ export const WbsTreeView = ({
 
     const loadComments = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/wbs/${openChatTaskId}/comments`, {
+        const response = await fetch(apiUrl(`/wbs/${openChatTaskId}/comments`), {
           headers: {
             Authorization: `Bearer ${authToken ?? ""}`,
             "X-Organization-Id": currentOrganizationId
@@ -3397,7 +3390,7 @@ export const WbsTreeView = ({
     setChatError(null);
     
     try {
-      const response = await fetch(`${API_BASE_URL}/wbs/${openChatTaskId}/comments`, {
+      const response = await fetch(apiUrl(`/wbs/${openChatTaskId}/comments`), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${authToken ?? ""}`,
@@ -3409,7 +3402,7 @@ export const WbsTreeView = ({
       
       if (!response.ok) {
         console.error("Erro na API de Comentários (POST)", response.status, await response.text());
-        setChatError("Erro ao criar comentrio");
+        setChatError("Erro ao criar comentário");
         return;
       }
       
@@ -3420,7 +3413,7 @@ export const WbsTreeView = ({
       setChatError(null);
     } catch (error) {
       console.error("Erro na API de Comentários (POST)", error);
-      setChatError("Erro ao enviar comentrio");
+      setChatError("Erro ao enviar comentário");
     } finally {
       setIsChatLoading(false);
     }
@@ -3976,7 +3969,7 @@ export const WbsTreeView = ({
       const orderedIds = reordered.map((s) => s.id);
 
       try {
-        await fetch(`${API_BASE_URL}/wbs/reorder`, {
+        await fetch(apiUrl("/wbs/reorder"), {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -3996,7 +3989,7 @@ export const WbsTreeView = ({
         console.error("Failed to reorder", error);
       }
     },
-    [API_BASE_URL, authToken, currentOrganizationId, onReloadWbs, rowMap, selectedProjectId, treeNodes]
+    [authToken, currentOrganizationId, onReloadWbs, rowMap, selectedProjectId, treeNodes]
   );
 
   const handleMenuAction = async (event: MouseEvent<HTMLButtonElement>, action: RowAction, node: any) => {
@@ -4039,7 +4032,7 @@ export const WbsTreeView = ({
 
         let newId: string | null = null;
         try {
-          const createRes = await fetch(`${API_BASE_URL}/wbs`, {
+          const createRes = await fetch(apiUrl("/wbs"), {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -4063,7 +4056,7 @@ export const WbsTreeView = ({
             return arr;
           }, [] as string[]);
 
-          await fetch(`${API_BASE_URL}/wbs/reorder`, {
+          await fetch(apiUrl("/wbs/reorder"), {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
@@ -4090,7 +4083,7 @@ export const WbsTreeView = ({
           setOpenMenuId(null);
           return;
         }
-        await fetch(`${API_BASE_URL}/wbs/bulk-delete`, {
+        await fetch(apiUrl("/wbs/bulk-delete"), {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -4115,7 +4108,7 @@ export const WbsTreeView = ({
     const confirmMove = window.confirm(`Enviar ${selectedTaskIds.length} tarefas para a lixeira?`);
     if (!confirmMove) return;
     try {
-      await fetch(`${API_BASE_URL}/wbs/bulk-delete`, {
+      await fetch(apiUrl("/wbs/bulk-delete"), {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -4297,7 +4290,9 @@ export const WbsTreeView = ({
 
 
 
-              const isExpanded = row.hasChildren ? expandedNodes[row.node.id] ?? visualLevel < 1 : false;
+              const isExpanded = row.hasChildren
+                ? (expandedNodes[row.node.id] ?? visualLevel < 1)
+                : false;
 
 
 
@@ -4829,7 +4824,9 @@ export const WbsTreeView = ({
                           event.stopPropagation();
                           const newServiceId = event.target.value || null;
                           const catalogItem = serviceCatalog.find((service) => service.id === newServiceId);
-                          const baseHours = catalogItem ? Number(catalogItem.hoursBase ?? catalogItem.hours ?? 0) : null;
+                          const baseHours = catalogItem
+                            ? Number(catalogItem.hoursBase ?? catalogItem.hours ?? 0)
+                            : null;
                           const hours =
                             baseHours !== null && baseHours !== undefined
                               ? baseHours * (Number(serviceMultiplierValue) || 1)
@@ -4877,7 +4874,9 @@ export const WbsTreeView = ({
                           const catalogItem = row.node.serviceCatalogId
                             ? serviceCatalog.find((service) => service.id === row.node.serviceCatalogId)
                             : null;
-                          const baseHours = catalogItem ? Number(catalogItem.hoursBase ?? catalogItem.hours ?? 0) : null;
+                          const baseHours = catalogItem
+                            ? Number(catalogItem.hoursBase ?? catalogItem.hours ?? 0)
+                            : null;
                           const hours = baseHours !== null && baseHours !== undefined ? baseHours * value : null;
                           onUpdate(row.node.id, {
                             serviceCatalogId: row.node.serviceCatalogId ?? null,
@@ -5038,14 +5037,14 @@ export const WbsTreeView = ({
                     <p>{message.message}</p>
                   </div>
                 ))}
-              {!isChatLoading && chatMessagesForModal.length === 0 && <p className="muted">Nenhum comentrio ainda.</p>}
+              {!isChatLoading && chatMessagesForModal.length === 0 && <p className="muted">Nenhum comentário ainda.</p>}
               {chatError && <p className="error-text">{chatError}</p>}
             </div>
             <div className="wbs-chat-composer">
               <textarea
                 value={chatDraft}
                 onChange={(event) => setChatDraft(event.target.value)}
-                placeholder="Escreva um comentrioÃ¢Â¦ use @ para mencionar algum"
+                placeholder="Escreva um comentário… use @ para mencionar alguém"
                 rows={3}
               />
               <div className="wbs-chat-actions">
@@ -5931,7 +5930,7 @@ export const ProjectDetailsTabs = ({
 
     if (typeof window !== "undefined") {
 
-      window.alert("IntegrAo de upload em breve.");
+      window.alert("Integração de upload em breve.");
 
     }
 
@@ -6086,7 +6085,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            {projectLoading ? "Buscando cards do portfÂ³lio para montar o cabeÂ§alho." : "Escolha um projeto no topo para ver os detalhes completos."}
+            {projectLoading ? "Buscando cards do portfólio para montar o cabeçalho." : "Escolha um projeto no topo para ver os detalhes completos."}
 
 
 
@@ -6138,7 +6137,7 @@ export const ProjectDetailsTabs = ({
 
 
           <p className="subtext">
-            Código {projectMeta.code ?? "N/A"} Ã¢Â¢ Cliente {projectMeta.clientName ?? "Não informado"}
+            Código {projectMeta.code ?? "N/A"} · Cliente {projectMeta.clientName ?? "Não informado"}
           </p>
 
 
@@ -6159,7 +6158,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              PerÂ­odo: {formatShortDate(projectMeta.startDate)} Â¢Â¢Â¢Ã¢Â¬Â¡Â¬Â¢Â¢Ã¢Å¡Â¬Â {formatShortDate(projectMeta.endDate)}
+              Período: {formatShortDate(projectMeta.startDate)} — {formatShortDate(projectMeta.endDate)}
 
 
 
@@ -6549,7 +6548,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              <p className="subtext">VisÂ£o dos Âºltimos {filters.rangeDays} dias</p>
+              <p className="subtext">Visão dos últimos {filters.rangeDays} dias</p>
 
 
 
@@ -6973,7 +6972,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-          <p className="muted">Acompanhe o plano de mitigAo e distribua responsÂ¡veis para cada item crÂ­tico.</p>
+          <p className="muted">Acompanhe o plano de mitigação e distribua responsáveis para cada item crítico.</p>
 
 
 
@@ -7013,7 +7012,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-          <p className="subtext">SomatÂ³rio das Âºltimas entregas</p>
+          <p className="subtext">Somatório das últimas entregas</p>
 
 
 
@@ -7113,7 +7112,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            <p className="muted">Nenhuma tarefa atribuÂ­da.</p>
+            <p className="muted">Nenhuma tarefa atribuída.</p>
 
 
 
@@ -7462,7 +7461,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-                {doc.uploadedBy?.fullName ?? doc.uploadedBy?.email ?? "Equipe"} Â· {formatShortDate(doc.createdAt)}
+                {doc.uploadedBy?.fullName ?? doc.uploadedBy?.email ?? "Equipe"} · {formatShortDate(doc.createdAt)}
 
 
 
@@ -7474,7 +7473,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-                {formatFileSize(doc.fileSize)} Â· {doc.targetType === "WBS_NODE" ? "Vinculado Â  WBS" : "Projeto"}
+                {formatFileSize(doc.fileSize)} · {doc.targetType === "WBS_NODE" ? "Vinculado à WBS" : "Projeto"}
 
 
 
@@ -7494,7 +7493,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-                onClick={() => window.alert("IntegrAo de download em breve.")}
+                onClick={() => window.alert("Integração de download em breve.")}
 
 
 
@@ -7616,7 +7615,7 @@ export const ProjectDetailsTabs = ({
 
             title="Nenhuma atividade registrada"
 
-            description="Compartilhe atualizaÂ§Âµes ou registre horas para construir o histÂ³rico colaborativo do projeto."
+            description="Compartilhe atualizações ou registre horas para construir o histórico colaborativo do projeto."
 
             actionLabel="Registrar atualizAo"
 
@@ -7644,7 +7643,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            <h3>Novo comentrio</h3>
+            <h3>Novo comentário</h3>
 
 
 
@@ -7656,7 +7655,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            <p className="muted">Selecione um item na EDT para vincular o comentrio.</p>
+            <p className="muted">Selecione um item na EDT para vincular o comentário.</p>
 
 
 
@@ -7664,7 +7663,7 @@ export const ProjectDetailsTabs = ({
 
               ref={commentTextareaRef}
 
-              placeholder="Anote atualizaÂ§Âµes ou decisÂµes..."
+              placeholder="Anote atualizações ou decisões..."
 
               value={commentBody}
 
@@ -7676,7 +7675,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              Registrar comentrio
+              Registrar comentário
 
 
 
@@ -7704,7 +7703,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-            <h3>Registro rÂ¡pido de horas</h3>
+            <h3>Registro rápido de horas</h3>
 
 
 
@@ -7780,7 +7779,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              descriÂ§Â£o
+              descrição
 
 
 
@@ -7848,7 +7847,7 @@ export const ProjectDetailsTabs = ({
 
     <div className="tab-panel">
 
-      <p className="muted">O board deste projeto estÂ¡ em uma pÂ¡gina dedicada.</p>
+      <p className="muted">O board deste projeto está em uma página dedicada.</p>
 
     </div>
 
@@ -7860,7 +7859,7 @@ export const ProjectDetailsTabs = ({
 
     <div className="tab-panel">
 
-      <p className="muted">O cronograma deste projeto estÂ¡ em uma pÂ¡gina dedicada.</p>
+      <p className="muted">O cronograma deste projeto está em uma página dedicada.</p>
 
     </div>
 
@@ -7872,7 +7871,7 @@ export const ProjectDetailsTabs = ({
 
     <div className="tab-panel">
 
-      <p className="muted">Os documentos deste projeto estÂ£o em uma pÂ¡gina dedicada.</p>
+      <p className="muted">Os documentos deste projeto estão em uma página dedicada.</p>
 
     </div>
 
@@ -8192,7 +8191,7 @@ const TeamPanel = ({
 
 
 
-          <h2>VisÂ£o da Equipe do projeto</h2>
+          <h2>Visão da Equipe do projeto</h2>
 
 
 
@@ -8308,7 +8307,7 @@ const TeamPanel = ({
 
 
 
-            <option value="Em fÂ©rias / folga">Em fÂ©rias / folga</option>
+            <option value="Em férias / folga">Em férias / folga</option>
 
 
 
@@ -8832,15 +8831,15 @@ export const ReportsPanel = ({
 
 
 
-          <p className="eyebrow">RelatÂ³rios</p>
+          <p className="eyebrow">Relatórios</p>
 
 
 
-          <h2>VisÂ£o analÂ­tica</h2>
+          <h2>Visão analítica</h2>
 
 
 
-          <p className="subtext">Escolha o foco para comparar resultados do portfÂ³lio.</p>
+          <p className="subtext">Escolha o foco para comparar resultados do portfólio.</p>
 
 
 
@@ -8936,7 +8935,7 @@ export const ReportsPanel = ({
 
 
 
-        <p className="muted">Carregando RelatÂ³rios...</p>
+        <p className="muted">Carregando Relatórios...</p>
 
 
 
@@ -9072,7 +9071,7 @@ export const ReportsPanel = ({
 
                   title="Sem apontamentos de horas"
 
-                  description="Registre horas nos projetos para comparar o esforÂ§o entre Equipes."
+                  description="Registre horas nos projetos para comparar o esforço entre Equipes."
 
                 />
 
@@ -9088,7 +9087,7 @@ export const ReportsPanel = ({
 
             <article className="reports-card">
 
-              <h3>Progresso mÂ©dio</h3>
+              <h3>Progresso médio</h3>
 
               {progressSeries.length ? (
 
@@ -9118,7 +9117,7 @@ export const ReportsPanel = ({
 
                   title="Progresso indisponível"
 
-                  description="Atualize o status das tarefas para gerar a linha de tendÂªncia do portfÂ³lio."
+                  description="Atualize o status das tarefas para gerar a linha de tendência do portfólio."
 
                 />
 
@@ -9170,7 +9169,7 @@ const SettingsPanel = () => {
 
 
 
-    { id: "notifications", label: "NotificaÂ§Âµes" },
+    { id: "notifications", label: "Notificações" },
 
 
 
@@ -9178,11 +9177,11 @@ const SettingsPanel = () => {
 
 
 
-    { id: "permissions", label: "PermissÂµes" },
+    { id: "permissions", label: "Permissões" },
 
 
 
-    { id: "integrations", label: "IntegraÂ§Âµes" },
+    { id: "integrations", label: "Integrações" },
 
 
 
@@ -9214,7 +9213,7 @@ const SettingsPanel = () => {
 
 
 
-          <p className="eyebrow">ConfiguraÂ§Âµes</p>
+          <p className="eyebrow">Configurações</p>
 
 
 
@@ -9222,7 +9221,7 @@ const SettingsPanel = () => {
 
 
 
-          <p className="subtext">Gerencie perfil, notificAÂ§Âµes, Organização e integrAÂ§Âµes.</p>
+          <p className="subtext">Gerencie perfil, notificações, Organização e integrações.</p>
 
 
 
@@ -9354,11 +9353,11 @@ const SettingsPanel = () => {
 
 
 
-                  <option>PortuguÂªs (Brasil)</option>
+                  <option>Português (Brasil)</option>
 
 
 
-                  <option>InglÂªs</option>
+                  <option>Inglês</option>
 
 
 
@@ -9402,7 +9401,7 @@ const SettingsPanel = () => {
 
 
 
-              <h3>NotificaÂ§Âµes</h3>
+              <h3>Notificações</h3>
 
 
 
@@ -9414,7 +9413,7 @@ const SettingsPanel = () => {
 
 
 
-                <span>E-mails sobre tarefas atribuÂ­das</span>
+                <span>E-mails sobre tarefas atribuídas</span>
 
 
 
@@ -9498,7 +9497,7 @@ const SettingsPanel = () => {
 
 
 
-                DomÂ­nio
+                Domínio
 
 
 
@@ -9542,7 +9541,7 @@ const SettingsPanel = () => {
 
 
 
-              <h3>PermissÂµes e papÂ©is</h3>
+              <h3>Permissões e papéis</h3>
 
 
 
@@ -9574,7 +9573,7 @@ const SettingsPanel = () => {
 
 
 
-                    <th>Ver RelatÂ³rios</th>
+                    <th>Ver Relatórios</th>
 
 
 
@@ -9674,7 +9673,7 @@ const SettingsPanel = () => {
 
 
 
-              <h3>IntegraÂ§Âµes</h3>
+              <h3>Integrações</h3>
 
 
 
@@ -9746,7 +9745,7 @@ const SettingsPanel = () => {
 
 
 
-              <p className="muted">Plano atual: <strong>Pro Â¢Â¢Â¢Ã¢Â¬Â¡Â¬Â¢Â¢Ã¢Å¡Â¬Ã¢ 20/50 projetos</strong></p>
+              <p className="muted">Plano atual: <strong>Pro · 20/50 projetos</strong></p>
 
 
 
@@ -10413,7 +10412,7 @@ export const DashboardLayout = ({
 
 
 
-      setProjectModalError("O nome do projeto Â© obrigatÂ³rio.");
+      setProjectModalError("O nome do projeto é obrigatório.");
 
 
 
@@ -11005,7 +11004,7 @@ export const DashboardLayout = ({
 
           <p>
 
-            Plano Pro Â· <strong>20/50</strong> projetos
+            Plano Pro · <strong>20/50</strong> projetos
 
           </p>
 
@@ -11042,7 +11041,7 @@ export const DashboardLayout = ({
           <div className="topbar-center">
             <div className="header-context">
               <div className="context-item">
-                <span className="context-label">OrganizaÃ§Ã£o</span>
+                <span className="context-label">Organização</span>
                 <span className="context-value">{currentOrganization?.name ?? "Nenhuma selecionada"}</span>
               </div>
               <div className="context-item">
@@ -11131,7 +11130,7 @@ export const DashboardLayout = ({
 
 
 
-                  <h3>{projectModalMode === "edit" ? "Atualize as informÂ§Âµes principais" : "Planeje um novo trabalho"}</h3>
+                  <h3>{projectModalMode === "edit" ? "Atualize as informções principais" : "Planeje um novo trabalho"}</h3>
 
 
 
@@ -11147,7 +11146,7 @@ export const DashboardLayout = ({
 
 
 
-                      : "Informe dados bÂ¡sicos para criarmos o projeto no portfÂ³lio."}
+                      : "Informe dados básicos para criarmos o projeto no portfólio."}
 
 
 
@@ -11267,7 +11266,7 @@ export const DashboardLayout = ({
 
 
 
-                  OrÂ§amento aprovado (R$)
+                  Orçamento aprovado (R$)
 
 
 
@@ -11311,7 +11310,7 @@ export const DashboardLayout = ({
 
 
 
-                  RepositÂ³rio GitHub
+                  Repositório GitHub
 
 
 
@@ -11419,7 +11418,7 @@ export const DashboardLayout = ({
 
 
 
-                  Equipe (e-mails separados por vÂ­rgula)
+                  Equipe (e-mails separados por vírgula)
 
 
 
@@ -11451,7 +11450,7 @@ export const DashboardLayout = ({
 
 
 
-                  descriÂ§Â£o
+                  descrição
 
 
 
@@ -11523,7 +11522,7 @@ export const DashboardLayout = ({
 
 
 
-                      ? "Salvar alteraÂ§Âµes"
+                      ? "Salvar alterações"
 
 
 
@@ -11587,7 +11586,7 @@ export const DashboardLayout = ({
 
 
 
-                  <p className="subtext">Informe o tÂ­tulo e escolha a coluna inicial.</p>
+                  <p className="subtext">Informe o título e escolha a coluna inicial.</p>
 
 
 
@@ -11627,7 +11626,7 @@ export const DashboardLayout = ({
 
 
 
-                    tÂ­tulo da tarefa
+                    título da tarefa
 
 
 
@@ -13583,7 +13582,7 @@ export const TemplatesPanel = ({
 
 
 
-      setTemplateModalError("O nome do template Â© obrigatÂ³rio.");
+      setTemplateModalError("O nome do template é obrigatório.");
 
 
 
@@ -14455,7 +14454,7 @@ export const TemplatesPanel = ({
 
 
 
-                Cliente/Â¡rea padrÂ£o
+                Cliente/área padrão
 
 
 
@@ -14491,7 +14490,7 @@ export const TemplatesPanel = ({
 
 
 
-                RepositÂ³rio GitHub
+                Repositório GitHub
 
 
 
@@ -14527,7 +14526,7 @@ export const TemplatesPanel = ({
 
 
 
-                OrÂ§amento base (R$)
+                Orçamento base (R$)
 
 
 

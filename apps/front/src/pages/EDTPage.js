@@ -2,6 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { apiUrl } from "../config/api";
 import { WbsTreeView } from "../components/DashboardLayout";
 import { DependenciesDropdown } from "../components/DependenciesDropdown";
 import ServiceCatalogModal from "../components/ServiceCatalogModal";
@@ -86,9 +87,6 @@ const EDTPage = () => {
     const [detailsEditing, setDetailsEditing] = useState(false);
     const [detailsDraft, setDetailsDraft] = useState(null);
     const currentProject = projects?.find((project) => project.id === selectedProjectId) ?? null;
-    const apiBaseUrl = import.meta.env.VITE_API_URL ??
-        import.meta?.env?.VITE_API_BASE_URL ??
-        "http://localhost:4000";
     const serviceCatalogOptions = useMemo(() => {
         const list = Array.isArray(serviceCatalog) ? serviceCatalog : [];
         return list;
@@ -203,7 +201,7 @@ const EDTPage = () => {
                 headers.Authorization = `Bearer ${token}`;
             if (selectedOrganizationId)
                 headers["x-organization-id"] = selectedOrganizationId;
-            const response = await fetch(`${apiBaseUrl}/wbs/export?${params.toString()}`, {
+            const response = await fetch(apiUrl(`/wbs/export?${params.toString()}`), {
                 method: "GET",
                 headers,
                 credentials: "include",
@@ -251,7 +249,7 @@ const EDTPage = () => {
                 headers.Authorization = `Bearer ${token}`;
             if (selectedOrganizationId)
                 headers["x-organization-id"] = selectedOrganizationId;
-            const response = await fetch(`${apiBaseUrl}/wbs/import?projectId=${selectedProjectId}`, {
+            const response = await fetch(apiUrl(`/wbs/import?projectId=${selectedProjectId}`), {
                 method: "POST",
                 headers,
                 credentials: "include",
@@ -282,7 +280,7 @@ const EDTPage = () => {
             headers.Authorization = `Bearer ${token}`;
         if (selectedOrganizationId)
             headers["x-organization-id"] = selectedOrganizationId;
-        const response = await fetch(`${apiBaseUrl}${path}`, {
+        const response = await fetch(apiUrl(path), {
             credentials: "include",
             ...init,
             headers,

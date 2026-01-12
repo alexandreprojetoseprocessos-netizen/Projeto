@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
 import { canManageTeam, type OrgRole } from "../components/permissions";
+import { apiUrl } from "../config/api";
 
 type MemberRole = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
 
@@ -15,8 +16,6 @@ type Member = {
     fullName: string;
   };
 };
-
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 export const TeamPage = () => {
   const { token, user } = useAuth();
@@ -37,7 +36,7 @@ export const TeamPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${apiBaseUrl}/organizations/${selectedOrganizationId}/members`, {
+      const response = await fetch(apiUrl(`/organizations/${selectedOrganizationId}/members`), {
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -58,7 +57,6 @@ export const TeamPage = () => {
 
   useEffect(() => {
     fetchMembers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOrganizationId, token]);
 
   const handleInvite = async (event: FormEvent<HTMLFormElement>) => {
@@ -72,7 +70,7 @@ export const TeamPage = () => {
     setInviteSubmitting(true);
     setInviteError(null);
     try {
-      const response = await fetch(`${apiBaseUrl}/organizations/${selectedOrganizationId}/members`, {
+      const response = await fetch(apiUrl(`/organizations/${selectedOrganizationId}/members`), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

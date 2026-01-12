@@ -3,6 +3,7 @@ import { useOutletContext, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
 import { canManageBilling, type OrgRole } from "../components/permissions";
+import { apiUrl } from "../config/api";
 
 type Subscription = {
   id: string;
@@ -17,8 +18,6 @@ type Subscription = {
     billingPeriod: string;
   } | null;
 };
-
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 const formatPrice = (priceCents?: number | null, period?: string | null) => {
   if (!priceCents && priceCents !== 0) return "-";
@@ -52,7 +51,7 @@ const PlanPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${apiBaseUrl}/subscriptions/me`, {
+      const response = await fetch(apiUrl("/subscriptions/me"), {
         headers: { Authorization: `Bearer ${token}` }
       });
       const body = await response.json().catch(() => ({}));
@@ -70,7 +69,6 @@ const PlanPage = () => {
 
   useEffect(() => {
     loadSubscription();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const handleChangePlan = async (planCode: string) => {
@@ -78,7 +76,7 @@ const PlanPage = () => {
     setActionError(null);
     setChangingPlan(true);
     try {
-      const response = await fetch(`${apiBaseUrl}/subscriptions/change-plan`, {
+      const response = await fetch(apiUrl("/subscriptions/change-plan"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -103,7 +101,7 @@ const PlanPage = () => {
     setActionError(null);
     setCanceling(true);
     try {
-      const response = await fetch(`${apiBaseUrl}/subscriptions/cancel`, {
+      const response = await fetch(apiUrl("/subscriptions/cancel"), {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       });

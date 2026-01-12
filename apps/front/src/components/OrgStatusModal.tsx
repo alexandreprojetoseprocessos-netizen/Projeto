@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { apiUrl } from "../config/api";
 import { PauseCircle, Trash2, X } from "lucide-react";
 
 type OrgStatus = "DEACTIVATED" | "SOFT_DELETED";
@@ -16,8 +17,6 @@ type OrgItem = {
   name: string;
   deletedAt?: string | null;
 };
-
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 const getDaysLeft = (deletedAt?: string | null) => {
   if (!deletedAt) return null;
@@ -42,7 +41,7 @@ const OrgStatusModal = ({ type, open, onClose, onReload }: OrgStatusModalProps) 
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${apiBaseUrl}/organizations?status=${type}`, {
+      const response = await fetch(apiUrl(`/organizations?status=${type}`), {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
@@ -64,7 +63,6 @@ const OrgStatusModal = ({ type, open, onClose, onReload }: OrgStatusModalProps) 
     if (open) {
       fetchItems();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, type]);
 
   const handleRestore = async (id: string) => {
@@ -72,7 +70,7 @@ const OrgStatusModal = ({ type, open, onClose, onReload }: OrgStatusModalProps) 
     setActionLoadingId(id);
     setActionError(null);
     try {
-      const response = await fetch(`${apiBaseUrl}/organizations/${id}/restore`, {
+      const response = await fetch(apiUrl(`/organizations/${id}/restore`), {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -101,7 +99,7 @@ const OrgStatusModal = ({ type, open, onClose, onReload }: OrgStatusModalProps) 
     setActionLoadingId(id);
     setActionError(null);
     try {
-      const response = await fetch(`${apiBaseUrl}/organizations/${id}/trash`, {
+      const response = await fetch(apiUrl(`/organizations/${id}/trash`), {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -127,7 +125,7 @@ const OrgStatusModal = ({ type, open, onClose, onReload }: OrgStatusModalProps) 
     setActionLoadingId(id);
     setActionError(null);
     try {
-      const response = await fetch(`${apiBaseUrl}/organizations/${id}`, {
+      const response = await fetch(apiUrl(`/organizations/${id}`), {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`

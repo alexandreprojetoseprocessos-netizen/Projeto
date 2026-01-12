@@ -1,7 +1,7 @@
 import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
 import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+import { apiUrl } from "../config/api";
 const OrgActionsMenu = ({ organization, onRenamed, onToggledActive, onDeleted, onStatusChange, mode = "menu" }) => {
     const { token } = useAuth();
     const [open, setOpen] = useState(false);
@@ -16,7 +16,7 @@ const OrgActionsMenu = ({ organization, onRenamed, onToggledActive, onDeleted, o
             return;
         const trimmed = newName.trim();
         try {
-            const response = await fetch(`${apiBaseUrl}/organizations/${organization.id}`, {
+            const response = await fetch(apiUrl(`/organizations/${organization.id}`), {
                 method: "PATCH",
                 headers: {
                     "Content-Type": "application/json",
@@ -38,7 +38,7 @@ const OrgActionsMenu = ({ organization, onRenamed, onToggledActive, onDeleted, o
         if (!token)
             return;
         try {
-            const response = await fetch(`${apiBaseUrl}/organizations/${organization.id}/deactivate`, {
+            const response = await fetch(apiUrl(`/organizations/${organization.id}/deactivate`), {
                 method: "PATCH",
                 headers: {
                     "Content-Type": "application/json",
@@ -64,7 +64,7 @@ const OrgActionsMenu = ({ organization, onRenamed, onToggledActive, onDeleted, o
             return;
         setDeleting(true);
         try {
-            const response = await fetch(`${apiBaseUrl}/organizations/${organization.id}/trash`, {
+            const response = await fetch(apiUrl(`/organizations/${organization.id}/trash`), {
                 method: "PATCH",
                 headers: {
                     "Content-Type": "application/json",

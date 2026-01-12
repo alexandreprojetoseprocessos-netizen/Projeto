@@ -37,6 +37,7 @@ import { TeamPage } from "./pages/TeamPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import LandingPage from "./pages/LandingPage";
 import { CheckoutPage } from "./pages/CheckoutPage";
+import { apiUrl } from "./config/api";
 
 type Organization = {
   id: string;
@@ -83,7 +84,6 @@ type WbsNode = {
   estimateHours?: string | null;
 };
 type BoardResponse = { columns: BoardColumn[] };
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 const SELECTED_ORG_KEY = "gp:selectedOrganizationId";
 const SELECTED_PROJECT_KEY = "gp:selectedProjectId";
 
@@ -98,7 +98,7 @@ async function fetchJson<TResponse = any>(
   headers.set("Authorization", `Bearer ${token}`);
   if (organizationId) headers.set("X-Organization-Id", organizationId);
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await fetch(apiUrl(path), {
     ...options,
     headers
   });
@@ -323,7 +323,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
           return exists ? candidate : null;
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Falha ao carregar organizaÃ§Ãµes";
+        const message = error instanceof Error ? error.message : "Falha ao carregar organizações";
         setOrgError(message);
         setOrganizations([]);
         setSelectedOrganizationId((current) => current ?? null);
@@ -494,7 +494,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         const data = await fetchJson(`/service-catalog?projectId=${selectedProjectId}`, token, undefined, selectedOrganizationId);
         setServiceCatalog(data ?? []);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Erro ao carregar catÃ¡logo de serviÃ§os";
+        const message = error instanceof Error ? error.message : "Erro ao carregar catálogo de serviços";
         setServiceCatalogError(message);
       }
     };
@@ -541,7 +541,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         const nextComments = Array.isArray(data) ? data : data?.comments ?? [];
         setComments(nextComments);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Erro ao carregar comentÃ¡rios";
+        const message = error instanceof Error ? error.message : "Erro ao carregar comentários";
         setCommentsError(message);
       }
     };
@@ -593,21 +593,24 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   const handleImportServiceCatalog = useCallback(
     async (file: File | null) => {
       if (!file || !token || !selectedProjectId || !selectedOrganizationId) {
-        throw new Error("Arquivo e projeto sÃ£o obrigatÃ³rios.");
+        throw new Error("Arquivo e projeto são obrigatórios.");
       }
       const formData = new FormData();
       formData.append("file", file);
-      const response = await fetch(`${apiBaseUrl}/service-catalog/import?projectId=${selectedProjectId}`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "X-Organization-Id": selectedOrganizationId
-        },
-        body: formData
-      });
+      const response = await fetch(
+        apiUrl(`/service-catalog/import?projectId=${selectedProjectId}`),
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "X-Organization-Id": selectedOrganizationId
+          },
+          body: formData
+        }
+      );
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const message = (body as any)?.message ?? "Erro ao importar catÃ¡logo";
+        const message = (body as any)?.message ?? "Erro ao importar catálogo";
         throw new Error(message);
       }
       setServiceCatalogRefresh((value) => value + 1);
@@ -684,7 +687,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         const data = await fetchJson<{ projects: PortfolioProject[] }>("/reports/portfolio", token, undefined, selectedOrganizationId);
         setPortfolio(data.projects ?? []);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Erro ao carregar portfÃ³lio";
+        const message = error instanceof Error ? error.message : "Erro ao carregar portfólio";
         setPortfolioError(message);
         setPortfolio([]);
       } finally {
@@ -709,7 +712,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         const data = await fetchJson("/reports/metrics", token, undefined, selectedOrganizationId);
         setReportMetrics(data);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Erro ao carregar relatÃ³rios";
+        const message = error instanceof Error ? error.message : "Erro ao carregar relatórios";
         setReportMetricsError(message);
         setReportMetrics(null);
       } finally {
@@ -777,7 +780,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       setCommentsRefresh((value) => value + 1);
       setCommentsError(null);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao criar comentÃ¡rio";
+      const message = error instanceof Error ? error.message : "Erro ao criar comentário";
       setCommentsError(message);
     }
   };
@@ -813,7 +816,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   const handleCreateProject = async (payload: CreateProjectPayload) => {
     if (!token || !selectedOrganizationId) {
-      throw new Error("Selecione uma organizaÃ§Ã£o para criar projetos.");
+      throw new Error("Selecione uma organização para criar projetos.");
     }
 
     try {
@@ -872,7 +875,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
       if (status === 409 && code === "PROJECT_LIMIT_REACHED") {
         setProjectsError(
-          "VocÃª atingiu o limite de projetos do seu plano. Exclua/arquive um projeto ou faÃ§a upgrade para continuar."
+          "Você atingiu o limite de projetos do seu plano. Exclua/arquive um projeto ou faça upgrade para continuar."
         );
       } else {
         setProjectsError(message);
@@ -884,7 +887,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   const handleUpdateProject = async (projectId: string, payload: CreateProjectPayload) => {
     if (!token || !selectedOrganizationId) {
-      throw new Error("Selecione uma organizaÃ§Ã£o antes de editar projeto.");
+      throw new Error("Selecione uma organização antes de editar projeto.");
     }
 
     const response = await fetchJson(
@@ -957,7 +960,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       setSelectedOrganizationId(newOrg.id);
       navigate("/projects", { replace: true });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao criar organizaÃ§Ã£o";
+      const message = error instanceof Error ? error.message : "Erro ao criar organização";
       setOrgError(message);
     }
   };
@@ -986,7 +989,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     // Normaliza o status alvo
     const newStatus = resolveStatus(destination.droppableId) ?? "BACKLOG";
 
-    // AtualizaÃ§Ã£o otimista do estado local
+    // Atualização otimista do estado local
     setBoardColumns((prev) => reorderBoard(prev, source, destination, draggableId, newStatus));
     
     try {
@@ -1005,7 +1008,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         selectedOrganizationId
       );
       
-      // Recarrega para garantir sincronizaÃ§Ã£o
+      // Recarrega para garantir sincronização
       setBoardRefresh((value) => value + 1);
       setWbsRefresh((value) => value + 1);
     } catch (error) {
@@ -1078,7 +1081,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       payload.serviceMultiplier = Number(payload.serviceMultiplier);
     }
 
-    // Recalcula serviceHours = hoursBase Ã— multiplier
+    // Recalcula serviceHours = hoursBase × multiplier
     const currentNode = findWbsNode(wbsNodes, nodeId);
     if ("serviceMultiplier" in payload && !("serviceCatalogId" in payload) && currentNode?.serviceCatalogId) {
       payload.serviceCatalogId = currentNode.serviceCatalogId;
@@ -1132,7 +1135,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
             .map((member: any) => ({
               membershipId: member.id,
               userId: member.userId,
-              name: member.name ?? member.email ?? "ResponsÃ¡vel"
+              name: member.name ?? member.email ?? "Responsável"
             }))[0] ?? null
         : null;
 
@@ -1151,7 +1154,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
       setWbsNodes((prev) => patchWbsNode(prev, nodeId, { responsible: response.responsible ?? null }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao atualizar responsÃ¡vel";
+      const message = error instanceof Error ? error.message : "Erro ao atualizar responsável";
       setWbsError(message);
       setWbsRefresh((value) => value + 1);
     }
@@ -1202,7 +1205,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     if (!token || !selectedOrganizationId) return;
 
     try {
-      const response = await fetch(`${apiBaseUrl}/reports/portfolio?format=csv`, {
+      const response = await fetch(apiUrl("/reports/portfolio?format=csv"), {
         headers: {
           Authorization: `Bearer ${token}`,
           "X-Organization-Id": selectedOrganizationId
@@ -1315,7 +1318,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       if (storedOrgId) setSelectedOrganizationId(storedOrgId);
       if (storedProjId) setSelectedProjectId(storedProjId);
     } catch (error) {
-      console.error("Falha ao ler organizaÃ§Ã£o/projeto salvos", error);
+      console.error("Falha ao ler organização/projeto salvos", error);
     }
   }, []);
 
@@ -1369,7 +1372,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   }, [location.pathname, navigate, status]);
 
   if (status === "loading") {
-    return <p style={{ padding: "2rem" }}>Carregando autenticaÃ§Ã£o...</p>;
+    return <p style={{ padding: "2rem" }}>Carregando autenticação...</p>;
   }
 
   if (status === "unauthenticated" || !token) {
@@ -1384,7 +1387,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         }}
         onSignUp={async ({ email, password }: { email: string; password: string }) => {
           await signUp({ email, password });
-          // Novo usuÃ¡rio deve concluir o checkout antes de criar organizaÃ§Ã£o
+          // Novo usuário deve concluir o checkout antes de criar organização
           navigate("/checkout", { replace: true });
         }}
         error={authError}
@@ -1398,7 +1401,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   if (subscriptionStatus === "loading" || subscriptionStatus === "idle") {
     if (isOnCheckoutRoute) {
-      // Permite abrir o checkout enquanto o status Ã© carregado
+      // Permite abrir o checkout enquanto o status é carregado
     } else {
       return <p style={{ padding: "2rem" }}>Carregando assinatura...</p>;
     }

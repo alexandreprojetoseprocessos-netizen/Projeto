@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { canManageBilling } from "../components/permissions";
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+import { apiUrl } from "../config/api";
 const formatPrice = (priceCents, period) => {
     if (!priceCents && priceCents !== 0)
         return "-";
@@ -34,7 +34,7 @@ const PlanPage = () => {
         setLoading(true);
         setError(null);
         try {
-            const response = await fetch(`${apiBaseUrl}/subscriptions/me`, {
+            const response = await fetch(apiUrl("/subscriptions/me"), {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const body = await response.json().catch(() => ({}));
@@ -61,7 +61,7 @@ const PlanPage = () => {
         setActionError(null);
         setChangingPlan(true);
         try {
-            const response = await fetch(`${apiBaseUrl}/subscriptions/change-plan`, {
+            const response = await fetch(apiUrl("/subscriptions/change-plan"), {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -88,7 +88,7 @@ const PlanPage = () => {
         setActionError(null);
         setCanceling(true);
         try {
-            const response = await fetch(`${apiBaseUrl}/subscriptions/cancel`, {
+            const response = await fetch(apiUrl("/subscriptions/cancel"), {
                 method: "POST",
                 headers: { Authorization: `Bearer ${token}` }
             });
