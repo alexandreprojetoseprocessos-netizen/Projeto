@@ -86,8 +86,8 @@ const EDTPage = () => {
     const [detailsEditing, setDetailsEditing] = useState(false);
     const [detailsDraft, setDetailsDraft] = useState(null);
     const currentProject = projects?.find((project) => project.id === selectedProjectId) ?? null;
-    const apiBaseUrl = import.meta.env?.VITE_API_BASE_URL ??
-        import.meta.env?.VITE_API_URL ??
+    const apiBaseUrl = import.meta.env.VITE_API_URL ??
+        import.meta?.env?.VITE_API_BASE_URL ??
         "http://localhost:4000";
     const serviceCatalogOptions = useMemo(() => {
         const list = Array.isArray(serviceCatalog) ? serviceCatalog : [];

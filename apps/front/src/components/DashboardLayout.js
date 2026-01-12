@@ -98,7 +98,9 @@ const STATUS_CLASS = {
 };
 const WORKDAY_HOURS = 8;
 const MS_IN_DAY = 1000 * 60 * 60 * 24;
-const API_BASE_URL = import.meta?.env?.VITE_API_BASE_URL ?? "http://localhost:4000";
+const API_BASE_URL = import.meta?.env?.VITE_API_URL ??
+    import.meta?.env?.VITE_API_BASE_URL ??
+    "http://localhost:4000";
 const formatDateInputValue = (value) => {
     if (!value)
         return "";
