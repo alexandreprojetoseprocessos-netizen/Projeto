@@ -61,32 +61,20 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
 
   return (
     <div className="auth-page">
-      <section className="auth-hero">
-        <div className="auth-hero__logo">G&P</div>
-        <div className="auth-hero__content">
-          <p className="eyebrow">Gestão visual, colaborativa e em tempo real</p>
-          <h1>Organize seus projetos, equipe e resultados em um só lugar.</h1>
-          <p className="subtext">
-            Dashboards inteligentes, kanban em tempo real e integrações profundas com Supabase e GitHub.
-          </p>
-        </div>
-        <div className="auth-hero__highlights">
-          <div>
-            <strong>+120</strong>
-            <span>Projetos ativos</span>
-          </div>
-          <div>
-            <strong>98%</strong>
-            <span>Equipes engajadas</span>
-          </div>
-        </div>
-      </section>
-
       <section className="auth-panel">
         <div className="auth-card">
           <header className="auth-card__header">
-            <p>{mode === "login" ? "Bem-vindo de volta" : "Comece em minutos"}</p>
-            <h2>{mode === "login" ? "Entrar no G&P" : "Crie sua conta"}</h2>
+            <div className="auth-brand">
+              <img className="auth-logo" src="/logo-gp.svg" alt="G&P" width={44} height={44} />
+              <div className="auth-brand__text">
+                <span className="auth-brand__name">G&P — Gestão de Projetos</span>
+                <span className="auth-brand__subtitle">Gestão visual, colaborativa e em tempo real</span>
+              </div>
+            </div>
+            <div className="auth-card__intro">
+              <p>{mode === "login" ? "Bem-vindo de volta" : "Comece em minutos"}</p>
+              <h2>{mode === "login" ? "Entrar no G&P" : "Crie sua conta"}</h2>
+            </div>
           </header>
 
           {mode === "register" && selectedPlanName && (
@@ -120,7 +108,7 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
               <span>E-mail corporativo</span>
               <input
                 type="email"
-                placeholder="voce@empresa.com"
+                placeholder="nome@empresa.com"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 required
@@ -131,7 +119,7 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
               <span>Senha</span>
               <input
                 type="password"
-                placeholder="••••••••"
+                placeholder="Digite sua senha"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 required
@@ -187,7 +175,7 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
               </div>
             )}
 
-            <button className="primary-button" type="submit" disabled={submitting}>
+            <button className="primary-button" type="submit" disabled={submitting} data-loading={submitting}>
               {submitLabel}
             </button>
 
@@ -199,10 +187,26 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
               <span>ou</span>
             </div>
             <button type="button" className="social-button google">
-              Continuar com Google
+              <span className="social-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M21.805 10.023h-9.18v3.96h5.253c-.226 1.216-1.356 3.56-5.253 3.56-3.159 0-5.737-2.616-5.737-5.833 0-3.217 2.578-5.833 5.737-5.833 1.8 0 3 .76 3.69 1.416l2.52-2.43C17.19 2.44 15.18 1.5 12.625 1.5 7.807 1.5 3.875 5.435 3.875 10.25c0 4.816 3.932 8.75 8.75 8.75 5.04 0 8.38-3.54 8.38-8.537 0-.575-.063-1.013-.142-1.44z"
+                  />
+                </svg>
+              </span>
+              <span>Continuar com Google</span>
             </button>
             <button type="button" className="social-button microsoft">
-              Continuar com Microsoft
+              <span className="social-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                  <rect x="2" y="2" width="9" height="9" fill="#f25022" />
+                  <rect x="13" y="2" width="9" height="9" fill="#7fba00" />
+                  <rect x="2" y="13" width="9" height="9" fill="#00a4ef" />
+                  <rect x="13" y="13" width="9" height="9" fill="#ffb900" />
+                </svg>
+              </span>
+              <span>Continuar com Microsoft</span>
             </button>
           </div>
 
