@@ -11,13 +11,21 @@ const getDaysLeft = (deletedAt) => {
     const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24));
     return Math.max(0, 90 - diffDays);
 };
-const OrgStatusModal = ({ type, open, onClose, onReload }) => {
+const OrgLimitModal = ({ isOpen, onClose, maxOrganizations }) => {
+    if (!isOpen)
+        return null;
+    return (_jsx("div", { className: "gp-modal-backdrop", onClick: onClose, children: _jsxs("div", { className: "gp-modal", onClick: (event) => event.stopPropagation(), role: "dialog", "aria-modal": "true", children: [_jsxs("div", { className: "gp-modal-header", children: [_jsx("h2", { children: "Limite do plano" }), _jsx("button", { type: "button", className: "gp-modal-close", onClick: onClose, "aria-label": "Fechar", children: "\u00D7" })] }), _jsx("p", { className: "gp-modal-subtitle", children: maxOrganizations === null
+                        ? "Seu plano atual não possui limite de organizações."
+                        : `Seu plano permite até ${maxOrganizations} organizações. Exclua uma organização para continuar.` }), _jsx("p", { className: "muted", children: "Organiza\u00E7\u00F5es desativadas contam para o limite do plano." }), _jsx("div", { className: "gp-modal-footer", children: _jsx("button", { type: "button", className: "btn-primary", onClick: onClose, children: "Entendi" }) })] }) }));
+};
+const OrgStatusModal = ({ type, open, onClose, onReload, limitMax }) => {
     const { token } = useAuth();
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [actionError, setActionError] = useState(null);
     const [actionLoadingId, setActionLoadingId] = useState(null);
+    const [limitModalOpen, setLimitModalOpen] = useState(false);
     const title = type === "DEACTIVATED" ? "Organizações desativadas" : "Lixeira (90 dias)";
     const fetchItems = async () => {
         if (!token)
@@ -48,7 +56,6 @@ const OrgStatusModal = ({ type, open, onClose, onReload }) => {
         if (open) {
             fetchItems();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, type]);
     const handleRestore = async (id) => {
         if (!token)
@@ -66,7 +73,8 @@ const OrgStatusModal = ({ type, open, onClose, onReload }) => {
             const body = await response.json().catch(() => ({}));
             if (!response.ok) {
                 if (response.status === 409 && body?.code === "ORG_LIMIT_REACHED") {
-                    setActionError(body?.message || "Limite de organizações atingido.");
+                    setActionError(null);
+                    setLimitModalOpen(true);
                     return;
                 }
                 throw new Error(body?.message || "Erro ao restaurar organização");
@@ -152,6 +160,6 @@ const OrgStatusModal = ({ type, open, onClose, onReload }) => {
     }, [actionLoadingId, error, items, loading, type]);
     if (!open)
         return null;
-    return (_jsx("div", { className: "org-modal-overlay", role: "dialog", "aria-modal": "true", children: _jsxs("div", { className: "org-modal", children: [_jsxs("header", { className: "org-modal__header", children: [_jsx("h3", { children: title }), _jsx("button", { type: "button", className: "org-modal__close", onClick: onClose, "aria-label": "Fechar", children: _jsx(X, { size: 18 }) })] }), actionError && _jsx("div", { className: "org-modal-error", children: actionError }), _jsx("div", { className: "org-modal__content", children: content })] }) }));
+    return (_jsxs("div", { className: "org-modal-overlay", role: "dialog", "aria-modal": "true", children: [_jsxs("div", { className: "org-modal", children: [_jsxs("header", { className: "org-modal__header", children: [_jsx("h3", { children: title }), _jsx("button", { type: "button", className: "org-modal__close", onClick: onClose, "aria-label": "Fechar", children: _jsx(X, { size: 18 }) })] }), actionError && _jsx("div", { className: "org-modal-error", children: actionError }), _jsx("div", { className: "org-modal__content", children: content })] }), _jsx(OrgLimitModal, { isOpen: limitModalOpen, onClose: () => setLimitModalOpen(false), maxOrganizations: limitMax ?? null })] }));
 };
 export default OrgStatusModal;

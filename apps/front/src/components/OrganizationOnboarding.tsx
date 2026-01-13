@@ -65,7 +65,7 @@ export const OrganizationSelector = ({
       ? "Business"
       : planCode === "ENTERPRISE"
       ? "Enterprise"
-      : "Nao informado";
+      : "Não informado";
   const max = organizationLimits?.max ?? null;
   const remaining = organizationLimits?.remaining ?? null;
   const used = organizationLimits?.used ?? orgList.length;
@@ -75,6 +75,7 @@ export const OrganizationSelector = ({
   const totalSlotsLabel = max === null ? "ilimitadas" : `${used} de ${max}`;
   const organizationsPercent =
     max === null || max === 0 ? 100 : Math.min(100, Math.round((used / max) * 100));
+  const limitReachedTitle = !canCreateMore ? "Limite de organizações do seu plano atingido." : undefined;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -133,9 +134,9 @@ export const OrganizationSelector = ({
         <div className="org-limit-banner">
           <div className="org-limit-stripe" />
           <div className="org-limit-content">
-            <strong>Voce atingiu o limite de organizacoes do seu plano.</strong>
+            <strong>Você atingiu o limite de organizações do seu plano.</strong>
             <span>
-              Para criar novas organizacoes, atualize seu plano em {" "}
+              Para criar novas organizações, atualize seu plano em{" "}
               <button type="button" className="link-button" onClick={() => navigate("/plano")}>
                 Meu plano
               </button>
@@ -147,9 +148,9 @@ export const OrganizationSelector = ({
 
       <div className="page-header">
         <div className="page-header-kicker">BEM-VINDO(A)</div>
-        <h1 className="page-header-title">Criar nova organizacao</h1>
+        <h1 className="page-header-title">Criar nova organização</h1>
         <p className="page-header-subtitle">
-          A organizacao representa sua empresa, clinica ou negocio. E aqui que voce concentra projetos, pessoas e
+          A organização representa sua empresa, clínica ou negócio. É aqui que você concentra projetos, pessoas e
           documentos.
         </p>
       </div>
@@ -157,11 +158,11 @@ export const OrganizationSelector = ({
       <div className="org-grid">
         <div className="org-left-column">
           <section id="org-create-section" className="form-card org-form-card">
-            <h3>Nova organizacao</h3>
+            <h3>Nova organização</h3>
             <form className="org-form" onSubmit={handleSubmit} ref={formRef}>
               <div className="form-group">
                 <label>
-                  Nome da organizacao
+                  Nome da organização
                   <input
                     type="text"
                     placeholder="Ex.: Minha empresa LTDA"
@@ -184,9 +185,16 @@ export const OrganizationSelector = ({
                 </label>
               </div>
 
-              <button type="submit" className="primary-button org-create-button" disabled={isCreateDisabled}>
-                {creating ? "Criando..." : "Criar nova organizacao"}
-              </button>
+              <span title={limitReachedTitle}>
+                <button
+                  type="submit"
+                  className="primary-button org-create-button"
+                  disabled={isCreateDisabled}
+                  aria-disabled={isCreateDisabled}
+                >
+                  {creating ? "Criando..." : "Criar nova organização"}
+                </button>
+              </span>
             </form>
           </section>
 
@@ -220,13 +228,13 @@ export const OrganizationSelector = ({
 
           {userEmail && (
             <div className="email-box">
-              <div className="org-responsible-label">Responsavel pelas organizacoes</div>
+              <div className="org-responsible-label">Responsável pelas organizações</div>
               <div className="org-responsible-email">{userEmail}</div>
             </div>
           )}
 
           <div className="org-plan-body">
-            <p className="org-plan-label">Organizacoes incluidas</p>
+            <p className="org-plan-label">Organizações incluídas</p>
             <p className="org-plan-value">{totalSlotsLabel}</p>
 
             <div className="org-plan-progress">
@@ -234,7 +242,7 @@ export const OrganizationSelector = ({
             </div>
 
             <p className="org-plan-helper">
-              Use esta conta para centralizar suas empresas, clinicas ou unidades.
+              Use esta conta para centralizar suas empresas, clínicas ou unidades.
             </p>
           </div>
 
@@ -245,19 +253,19 @@ export const OrganizationSelector = ({
       </div>
 
       <section className="org-list-section">
-        <h2 className="org-section-title">Suas organizacoes</h2>
+        <h2 className="org-section-title">Suas organizações</h2>
         <p className="org-section-subtitle">
-          Escolha onde voce quer trabalhar hoje.
+          Escolha onde você quer trabalhar hoje.
         </p>
         {orgList.length === 0 ? (
           <div className="org-empty">
-            <h3>Nenhuma organizacao cadastrada ainda</h3>
+            <h3>Nenhuma organização cadastrada ainda</h3>
             <p>
-              Crie a sua primeira organizacao para comecar a estruturar seus projetos. Voce pode adicionar quantas
+              Crie a sua primeira organização para começar a estruturar seus projetos. Você pode adicionar quantas
               precisar dentro do seu plano.
             </p>
             <button type="button" className="primary-button" onClick={scrollToCreate}>
-              Criar primeira organizacao
+              Criar primeira organização
             </button>
           </div>
         ) : (
@@ -327,6 +335,7 @@ export const OrganizationSelector = ({
         open={showDeactivatedModal}
         onClose={() => setShowDeactivatedModal(false)}
         onReload={onReloadOrganizations}
+        limitMax={organizationLimits?.max ?? null}
       />
 
       <OrgStatusModal
@@ -334,6 +343,7 @@ export const OrganizationSelector = ({
         open={showTrashModal}
         onClose={() => setShowTrashModal(false)}
         onReload={onReloadOrganizations}
+        limitMax={organizationLimits?.max ?? null}
       />
     </div>
   );

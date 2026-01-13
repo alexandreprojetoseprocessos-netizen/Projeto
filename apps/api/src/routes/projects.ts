@@ -1,5 +1,5 @@
 ﻿import { Router } from "express";
-import { Prisma, ProjectRole, AttachmentTargetType, TaskStatus, ProjectStatus } from "@prisma/client";
+import { Prisma, ProjectRole, AttachmentTargetType, TaskStatus } from "@prisma/client";
 import { prisma } from "@gestao/database";
 import { authMiddleware } from "../middleware/auth";
 import { organizationMiddleware } from "../middleware/organization";
@@ -9,6 +9,7 @@ import { uploadAttachment, getPublicUrl } from "../services/storage";
 import { recomputeProjectWbsCodes } from "../services/wbsCode";
 import { canManageProjects } from "../services/permissions";
 import { getActiveSubscriptionForUser } from "../services/subscriptions";
+import { countProjectsForLimit } from "../services/planLimitCounts";
 import { getProjectLimitForPlan } from "../services/subscriptionLimits";
 
 type FlatWbsNode = {
@@ -216,21 +217,12 @@ projectsRouter.post("/", async (req, res) => {
   try {
     const subscription = await getActiveSubscriptionForUser(req.user.id);
     const maxProjects = getProjectLimitForPlan(subscription?.product?.code ?? null);
-    const currentProjectsCount = await prisma.project.count({
-      where: {
-        organizationId: req.organization.id,
-        archivedAt: null,
-        status: {
-          not: ProjectStatus.CANCELED
-        }
-      }
-    });
+    const currentProjectsCount = await countProjectsForLimit(req.organization.id);
 
     if (maxProjects !== null && currentProjectsCount >= maxProjects) {
       return res.status(409).json({
-        code: "PROJECT_LIMIT_REACHED",
-        message:
-          "Você atingiu o limite de projetos do seu plano. Para criar novos projetos, arquive/exclua algum existente ou faça upgrade de plano."
+        code: "PLAN_LIMIT_REACHED",
+        message: "Limite de projetos do seu plano atingido."
       });
     }
 
@@ -319,6 +311,62 @@ projectsRouter.post("/", async (req, res) => {
   } catch (error) {
     logger.error({ err: error }, "Failed to create project");
     return res.status(500).json({ message: "Failed to create project" });
+  }
+});
+
+projectsRouter.patch("/:projectId/restore", async (req, res) => {
+  if (!req.organization || !req.user) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+
+  const role = req.organizationMembership?.role as any;
+  if (!canManageProjects(role)) {
+    return res.status(403).json({ message: "Você não tem permissão para restaurar projetos nesta organização." });
+  }
+
+  const { projectId } = req.params;
+
+  try {
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organizationId: req.organization.id }
+    });
+
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    if (project.archivedAt) {
+      const subscription = await getActiveSubscriptionForUser(req.user.id);
+      const maxProjects = getProjectLimitForPlan(subscription?.product?.code ?? null);
+      const currentProjectsCount = await countProjectsForLimit(req.organization.id);
+
+      if (maxProjects !== null && currentProjectsCount >= maxProjects) {
+        return res.status(409).json({
+          code: "PLAN_LIMIT_REACHED",
+          message: "Limite de projetos do seu plano atingido."
+        });
+      }
+    }
+
+    const updated = await prisma.project.update({
+      where: { id: projectId },
+      data: { archivedAt: null }
+    });
+
+    return res.json({
+      project: {
+        id: updated.id,
+        name: updated.name,
+        clientName: updated.clientName,
+        repositoryUrl: updated.repositoryUrl,
+        status: updated.status,
+        startDate: updated.startDate,
+        endDate: updated.endDate
+      }
+    });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to restore project");
+    return res.status(500).json({ message: "Failed to restore project" });
   }
 });
 

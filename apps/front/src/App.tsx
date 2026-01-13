@@ -38,6 +38,7 @@ import NotFoundPage from "./pages/NotFoundPage";
 import LandingPage from "./pages/LandingPage";
 import { CheckoutPage } from "./pages/CheckoutPage";
 import { apiUrl } from "./config/api";
+import { getPlanDefinition } from "./config/plans";
 
 type Organization = {
   id: string;
@@ -313,7 +314,6 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         }));
         setOrganizations(normalized);
         setOrganizationLimits(data.organizationLimits ?? null);
-        setProjectLimits(data.organizationLimits ?? null);
         setSelectedOrganizationId((current) => {
           if (normalized.length === 0) return null;
           if (normalized.length === 1) return normalized[0].id;
@@ -334,6 +334,27 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     loadOrganizations();
   }, [status, token, organizationsRefresh]);
+
+  useEffect(() => {
+    if (!organizationLimits || !selectedOrganizationId) {
+      setProjectLimits(null);
+      return;
+    }
+
+    const plan = getPlanDefinition(organizationLimits.planCode);
+    const maxProjects = plan.limits.projectsPerOrganization;
+    const selectedOrg = organizations.find((org) => org.id === selectedOrganizationId) ?? null;
+    const usedProjects = selectedOrg?.projectsCount ?? 0;
+    const remainingProjects =
+      maxProjects === null ? null : Math.max(maxProjects - usedProjects, 0);
+
+    setProjectLimits({
+      planCode: plan.code,
+      max: maxProjects,
+      used: usedProjects,
+      remaining: remainingProjects
+    });
+  }, [organizationLimits, organizations, selectedOrganizationId]);
 
   useEffect(() => {
     setSelectedProjectId((current) => {
@@ -854,14 +875,16 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
           }
         ];
       });
-      setProjectLimits((current) =>
-        current
-          ? {
-              ...current,
-              used: current.used + 1,
-              remaining: current.max === null ? null : Math.max(current.max - (current.used + 1), 0)
-            }
-          : current
+      setOrganizations((current) =>
+        current.map((organization) =>
+          organization.id === selectedOrganizationId
+            ? {
+                ...organization,
+                activeProjects: (organization.activeProjects ?? 0) + 1,
+                projectsCount: (organization.projectsCount ?? 0) + 1
+              }
+            : organization
+        )
       );
       setSelectedProjectId(createdProject.id);
       setProjectsError(null);
@@ -873,10 +896,8 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         error?.response?.data?.message ??
         (error instanceof Error ? error.message : "Erro ao criar projeto");
 
-      if (status === 409 && code === "PROJECT_LIMIT_REACHED") {
-        setProjectsError(
-          "Você atingiu o limite de projetos do seu plano. Exclua/arquive um projeto ou faça upgrade para continuar."
-        );
+      if (status === 409 && (code === "PLAN_LIMIT_REACHED" || code === "PROJECT_LIMIT_REACHED")) {
+        setProjectsError("Limite de projetos do seu plano atingido.");
       } else {
         setProjectsError(message);
       }
@@ -928,7 +949,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       organizationLimits?.remaining === null ||
       (organizationLimits?.remaining ?? 0) > 0;
     if (organizationLimits && !canCreate) {
-      setOrgError("Limite de organizacoes do plano atingido. Atualize o plano para criar mais.");
+      setOrgError("Limite de organizações do plano atingido. Atualize o plano para criar mais.");
       return;
     }
 
@@ -952,16 +973,26 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
             id: newOrg.id,
             name: newOrg.name,
             role: "OWNER",
-            activeProjects: 0
+            activeProjects: 0,
+            projectsCount: 0
           }
         ];
       });
       setOrganizationsRefresh((value) => value + 1);
       setSelectedOrganizationId(newOrg.id);
       navigate("/projects", { replace: true });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao criar organização";
-      setOrgError(message);
+    } catch (error: any) {
+      const status = error?.status ?? error?.response?.status;
+      const code = error?.body?.code ?? error?.response?.data?.code;
+      const message =
+        error?.body?.message ??
+        error?.response?.data?.message ??
+        (error instanceof Error ? error.message : "Erro ao criar organização");
+      if (status === 409 && code === "ORG_LIMIT_REACHED") {
+        setOrgError("Limite de organizações do seu plano atingido.");
+      } else {
+        setOrgError(message);
+      }
     }
   };
 

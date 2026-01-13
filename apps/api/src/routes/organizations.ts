@@ -8,6 +8,8 @@ import {
   requireCanManageOrgSettings
 } from "../middleware/organization";
 import { getActiveSubscriptionForUser } from "../services/subscriptions";
+import { countOrganizationsForLimit } from "../services/planLimitCounts";
+import { getOrgLimitForPlan } from "../services/subscriptionLimits";
 
 export const organizationsRouter = Router();
 
@@ -25,39 +27,14 @@ const slugify = (value: string) =>
 const ensureUniqueSlug = async (baseSlug: string) => {
   let suffix = 0;
   let candidate = baseSlug;
+  let exists = await prisma.organization.findUnique({ where: { slug: candidate } });
 
-  while (true) {
-    const exists = await prisma.organization.findUnique({ where: { slug: candidate } });
-    if (!exists) {
-      return candidate;
-    }
+  while (exists) {
     suffix += 1;
     candidate = `${baseSlug}-${suffix}`;
+    exists = await prisma.organization.findUnique({ where: { slug: candidate } });
   }
-};
-
-const getOrgLimitForPlan = (code?: string | null): number | null => {
-  switch (code) {
-    case "START":
-      return 1;
-    case "BUSINESS":
-      return 3;
-    case "ENTERPRISE":
-      return null;
-    default:
-      return 1;
-  }
-};
-
-const countOrganizationsForUser = async (userId: string) => {
-  const memberships = await prisma.organizationMembership.findMany({
-    where: {
-      userId,
-      organization: { status: { in: [OrganizationStatus.ACTIVE, OrganizationStatus.DEACTIVATED] } }
-    },
-    select: { id: true }
-  });
-  return memberships.length;
+  return candidate;
 };
 
 organizationsRouter.post("/", async (req, res) => {
@@ -67,7 +44,19 @@ organizationsRouter.post("/", async (req, res) => {
 
   const { name, domain } = req.body ?? {};
   if (!name || typeof name !== "string") {
-    return res.status(400).json({ message: "Nome da organizacao e obrigatorio" });
+    return res.status(400).json({ message: "Nome da organização é obrigatório." });
+  }
+
+  const subscription = await getActiveSubscriptionForUser(req.user.id);
+  const limit = getOrgLimitForPlan(subscription?.product?.code ?? null);
+  if (limit !== null) {
+    const currentCount = await countOrganizationsForLimit(req.user.id);
+    if (currentCount >= limit) {
+      return res.status(409).json({
+        code: "ORG_LIMIT_REACHED",
+        message: "Limite de organizações do seu plano atingido."
+      });
+    }
   }
 
   const slug = await ensureUniqueSlug(slugify(name));
@@ -136,7 +125,7 @@ organizationsRouter.patch(
     };
 
     if (!name && typeof domain === "undefined") {
-      return res.status(400).json({ message: "Nenhuma alteracao informada." });
+      return res.status(400).json({ message: "Nenhuma alteração informada." });
     }
 
     try {
@@ -151,7 +140,7 @@ organizationsRouter.patch(
       return res.json({ organization: updated });
     } catch (error) {
       console.error("Error updating organization", error);
-      return res.status(500).json({ message: "Erro ao atualizar organizacao." });
+      return res.status(500).json({ message: "Erro ao atualizar organização." });
     }
   }
 );
@@ -172,7 +161,7 @@ organizationsRouter.patch(
       return res.json({ organization: updated });
     } catch (error) {
       console.error("Error deactivating organization", error);
-      return res.status(500).json({ message: "Erro ao desativar organizacao." });
+      return res.status(500).json({ message: "Erro ao desativar organização." });
     }
   }
 );
@@ -193,7 +182,7 @@ organizationsRouter.patch(
       return res.json({ organization: updated });
     } catch (error) {
       console.error("Error sending organization to trash", error);
-      return res.status(500).json({ message: "Erro ao excluir organizacao." });
+      return res.status(500).json({ message: "Erro ao excluir organização." });
     }
   }
 );
@@ -212,7 +201,7 @@ organizationsRouter.patch(
     try {
       const organization = await prisma.organization.findUnique({ where: { id: organizationId } });
       if (!organization) {
-        return res.status(404).json({ message: "Organizacao nao encontrada." });
+        return res.status(404).json({ message: "Organização não encontrada." });
       }
 
       const restorableStatuses: OrganizationStatus[] = [
@@ -220,7 +209,7 @@ organizationsRouter.patch(
         OrganizationStatus.SOFT_DELETED
       ];
       if (!restorableStatuses.includes(organization.status)) {
-        return res.status(400).json({ message: "Esta organizacao nao pode ser restaurada." });
+        return res.status(400).json({ message: "Esta organização não pode ser restaurada." });
       }
 
       const subscription = await getActiveSubscriptionForUser(req.user.id);
@@ -228,12 +217,11 @@ organizationsRouter.patch(
       const limit = getOrgLimitForPlan(planCode);
 
       if (limit !== null) {
-        const currentCount = await countOrganizationsForUser(req.user.id);
+        const currentCount = await countOrganizationsForLimit(req.user.id);
         if (currentCount >= limit) {
           return res.status(409).json({
             code: "ORG_LIMIT_REACHED",
-            message:
-              "Voce ja atingiu o limite de organizacoes do seu plano. Para restaurar, exclua outra definitivamente ou faca upgrade."
+            message: "Limite de organizações do seu plano atingido."
           });
         }
       }
@@ -246,7 +234,7 @@ organizationsRouter.patch(
       return res.json({ organization: updated });
     } catch (error) {
       console.error("Error restoring organization", error);
-      return res.status(500).json({ message: "Erro ao restaurar organizacao." });
+      return res.status(500).json({ message: "Erro ao restaurar organização." });
     }
   }
 );
@@ -266,7 +254,7 @@ organizationsRouter.delete(
       return res.json({ success: true });
     } catch (error) {
       console.error("Error deleting organization", error);
-      return res.status(500).json({ message: "Erro ao excluir organizacao." });
+      return res.status(500).json({ message: "Erro ao excluir organização." });
     }
   }
 );

@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
 import { canManageBilling, type OrgRole } from "../components/permissions";
 import { apiUrl } from "../config/api";
+import { PLAN_DEFINITIONS, formatBillingPrice, formatMonthlyPrice } from "../config/plans";
 
 type Subscription = {
   id: string;
@@ -19,18 +20,22 @@ type Subscription = {
   } | null;
 };
 
-const formatPrice = (priceCents?: number | null, period?: string | null) => {
-  if (!priceCents && priceCents !== 0) return "-";
-  const formatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-  const base = formatter.format(priceCents / 100);
-  return period ? `${base}/${period === "monthly" ? "mês" : period}` : base;
-};
-
 const statusLabel: Record<string, string> = {
   ACTIVE: "Ativa",
   PAST_DUE: "Em atraso",
   CANCELED: "Cancelada"
 };
+
+const planCards = [
+  PLAN_DEFINITIONS.START,
+  PLAN_DEFINITIONS.BUSINESS,
+  PLAN_DEFINITIONS.ENTERPRISE
+].map((plan) => ({
+  code: plan.code,
+  name: plan.name,
+  price: formatMonthlyPrice(plan.priceCents, false),
+  summary: plan.marketing.summary
+}));
 
 const PlanPage = () => {
   const navigate = useNavigate();
@@ -118,29 +123,8 @@ const PlanPage = () => {
   };
 
   const product = subscription?.product;
-  const price = useMemo(() => formatPrice(product?.priceCents, product?.billingPeriod), [product]);
+  const price = useMemo(() => formatBillingPrice(product?.priceCents, product?.billingPeriod), [product]);
   const statusText = subscription?.status ? statusLabel[subscription.status] ?? subscription.status : "-";
-
-  const planCards = [
-    {
-      code: "START",
-      name: "Plano Start",
-      price: "R$ 49/mês",
-      summary: "Para começar"
-    },
-    {
-      code: "BUSINESS",
-      name: "Plano Business",
-      price: "R$ 97/mês",
-      summary: "Times em crescimento"
-    },
-    {
-      code: "ENTERPRISE",
-      name: "Plano Enterprise",
-      price: "R$ 197/mês",
-      summary: "Operações avançadas"
-    }
-  ];
 
   return (
     <div className="plan-page">

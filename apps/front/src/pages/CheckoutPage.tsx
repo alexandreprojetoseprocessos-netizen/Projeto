@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { apiUrl } from "../config/api";
+import { PLAN_DEFINITIONS, formatMonthlyPrice } from "../config/plans";
 
 type PaymentMethod = "card" | "pix" | "boleto";
 
@@ -12,13 +13,22 @@ type CheckoutPageProps = {
 };
 
 const plans = {
-  START: { name: "Plano Start", price: "R$ 49/mês" },
-  BUSINESS: { name: "Plano Business", price: "R$ 97/mês" },
-  ENTERPRISE: { name: "Plano Enterprise", price: "R$ 197/mês" }
+  START: {
+    name: PLAN_DEFINITIONS.START.name,
+    price: formatMonthlyPrice(PLAN_DEFINITIONS.START.priceCents, false)
+  },
+  BUSINESS: {
+    name: PLAN_DEFINITIONS.BUSINESS.name,
+    price: formatMonthlyPrice(PLAN_DEFINITIONS.BUSINESS.priceCents, false)
+  },
+  ENTERPRISE: {
+    name: PLAN_DEFINITIONS.ENTERPRISE.name,
+    price: formatMonthlyPrice(PLAN_DEFINITIONS.ENTERPRISE.priceCents, false)
+  }
 };
 
 const baseBenefits = [
-  "Organizações e usuários ilimitados",
+  "Usuários ilimitados",
   "Kanban avançado, EDT e cronograma",
   "Documentos, anexos e aprovações",
   "Relatórios e portfólio em tempo real"
@@ -175,7 +185,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
             <strong>Passo 3:</strong> crie sua organização e projetos.
           </li>
         </ul>
-        <p className="muted">Dúvidas? Fale com nosso time e ajuda no onboarding.</p>
+        <p className="muted">Dúvidas? Fale com nosso time e peça ajuda no onboarding.</p>
       </aside>
     </div>
   );

@@ -10,6 +10,7 @@ type OrgStatusModalProps = {
   open: boolean;
   onClose: () => void;
   onReload?: () => void;
+  limitMax?: number | null;
 };
 
 type OrgItem = {
@@ -26,13 +27,50 @@ const getDaysLeft = (deletedAt?: string | null) => {
   return Math.max(0, 90 - diffDays);
 };
 
-const OrgStatusModal = ({ type, open, onClose, onReload }: OrgStatusModalProps) => {
+const OrgLimitModal = ({
+  isOpen,
+  onClose,
+  maxOrganizations
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  maxOrganizations: number | null;
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="gp-modal-backdrop" onClick={onClose}>
+      <div className="gp-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="gp-modal-header">
+          <h2>Limite do plano</h2>
+          <button type="button" className="gp-modal-close" onClick={onClose} aria-label="Fechar">
+            ×
+          </button>
+        </div>
+        <p className="gp-modal-subtitle">
+          {maxOrganizations === null
+            ? "Seu plano atual não possui limite de organizações."
+            : `Seu plano permite até ${maxOrganizations} organizações. Exclua uma organização para continuar.`}
+        </p>
+        <p className="muted">Organizações desativadas contam para o limite do plano.</p>
+        <div className="gp-modal-footer">
+          <button type="button" className="btn-primary" onClick={onClose}>
+            Entendi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const OrgStatusModal = ({ type, open, onClose, onReload, limitMax }: OrgStatusModalProps) => {
   const { token } = useAuth();
   const [items, setItems] = useState<OrgItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [limitModalOpen, setLimitModalOpen] = useState(false);
 
   const title = type === "DEACTIVATED" ? "Organizações desativadas" : "Lixeira (90 dias)";
 
@@ -80,7 +118,8 @@ const OrgStatusModal = ({ type, open, onClose, onReload }: OrgStatusModalProps) 
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
         if (response.status === 409 && body?.code === "ORG_LIMIT_REACHED") {
-          setActionError(body?.message || "Limite de organizações atingido.");
+          setActionError(null);
+          setLimitModalOpen(true);
           return;
         }
         throw new Error(body?.message || "Erro ao restaurar organização");
@@ -212,6 +251,12 @@ const OrgStatusModal = ({ type, open, onClose, onReload }: OrgStatusModalProps) 
 
         <div className="org-modal__content">{content}</div>
       </div>
+
+      <OrgLimitModal
+        isOpen={limitModalOpen}
+        onClose={() => setLimitModalOpen(false)}
+        maxOrganizations={limitMax ?? null}
+      />
     </div>
   );
 };

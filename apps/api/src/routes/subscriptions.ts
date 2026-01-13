@@ -1,36 +1,13 @@
 import { Router } from "express";
+import { prisma } from "@gestao/database";
+import { SubscriptionStatus } from "@prisma/client";
 import { authMiddleware } from "../middleware/auth";
 import {
   createOrActivateSubscriptionForUser,
   getActiveSubscriptionForUser
 } from "../services/subscriptions";
-import { prisma } from "@gestao/database";
 import { canManageBilling } from "../services/permissions";
-import { SubscriptionStatus } from "@prisma/client";
-
-const defaultProducts: Record<
-  string,
-  { name: string; description?: string; priceCents: number; billingPeriod: string }
-> = {
-  START: {
-    name: "Plano Start",
-    description: "Ideal para validar o fluxo de projetos",
-    priceCents: 4900,
-    billingPeriod: "monthly"
-  },
-  BUSINESS: {
-    name: "Plano Business",
-    description: "Para PMOs e squads colaborativos",
-    priceCents: 9700,
-    billingPeriod: "monthly"
-  },
-  ENTERPRISE: {
-    name: "Plano Enterprise",
-    description: "Limites customizados e suporte dedicado",
-    priceCents: 19700,
-    billingPeriod: "monthly"
-  }
-};
+import { getPlanProduct } from "../config/plans";
 
 export const subscriptionsRouter = Router();
 
@@ -43,10 +20,10 @@ subscriptionsRouter.post("/checkout", async (req, res) => {
 
   const { planCode, paymentMethod } = req.body ?? {};
   if (!planCode || typeof planCode !== "string") {
-    return res.status(400).json({ message: "planCode Ǹ obrigat��rio" });
+    return res.status(400).json({ message: "planCode é obrigatório" });
   }
   if (!paymentMethod || typeof paymentMethod !== "string" || !["card", "pix", "boleto"].includes(paymentMethod)) {
-    return res.status(400).json({ message: "Forma de pagamento invǭlida" });
+    return res.status(400).json({ message: "Forma de pagamento inválida" });
   }
 
   try {
@@ -122,16 +99,20 @@ subscriptionsRouter.post("/change-plan", async (req, res) => {
     return res.status(404).json({ message: "Nenhuma assinatura ativa encontrada" });
   }
 
+  const planProduct = getPlanProduct(planCode);
+  if (!planProduct) {
+    return res.status(400).json({ message: "Plano não encontrado" });
+  }
+
   let product = await prisma.product.findUnique({ where: { code: planCode } });
-  if (!product && defaultProducts[planCode]) {
+  if (!product) {
     product = await prisma.product.create({
       data: {
         code: planCode,
-        ...defaultProducts[planCode]
+        ...planProduct
       }
     });
   }
-  if (!product) return res.status(400).json({ message: "Plano não encontrado" });
 
   const updated = await prisma.subscription.update({
     where: { id: subscription.id },

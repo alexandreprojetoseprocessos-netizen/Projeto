@@ -1,30 +1,7 @@
 import { prisma } from "@gestao/database";
 import { SubscriptionStatus } from "@prisma/client";
+import { getPlanProduct } from "../config/plans";
 import type { AuthenticatedUser } from "../types/http";
-
-const defaultProducts: Record<
-  string,
-  { name: string; description?: string; priceCents: number; billingPeriod: string }
-> = {
-  START: {
-    name: "Plano Start",
-    description: "Ideal para validar o fluxo de projetos",
-    priceCents: 4900,
-    billingPeriod: "monthly"
-  },
-  BUSINESS: {
-    name: "Plano Business",
-    description: "Para PMOs e squads colaborativos",
-    priceCents: 9700,
-    billingPeriod: "monthly"
-  },
-  ENTERPRISE: {
-    name: "Plano Enterprise",
-    description: "Limites customizados e suporte dedicado",
-    priceCents: 19700,
-    billingPeriod: "monthly"
-  }
-};
 
 const ensureUserExists = async (user: AuthenticatedUser) => {
   const email = user.email || `${user.id}@supabase.local`;
@@ -53,19 +30,20 @@ export const createOrActivateSubscriptionForUser = async (
 ) => {
   await ensureUserExists(user);
 
+  const planProduct = getPlanProduct(productCode);
+  if (!planProduct) {
+    throw new Error("Plano não encontrado");
+  }
+
   let product = await prisma.product.findUnique({ where: { code: productCode } });
 
-  if (!product && defaultProducts[productCode]) {
+  if (!product) {
     product = await prisma.product.create({
       data: {
         code: productCode,
-        ...defaultProducts[productCode]
+        ...planProduct
       }
     });
-  }
-
-  if (!product) {
-    throw new Error("Plano não encontrado");
   }
 
   const existing = await prisma.subscription.findFirst({

@@ -760,7 +760,7 @@ wbsRouter.get("/export", async (req: RequestWithUser, res) => {
   const safeName = (projectName ?? "projeto").replace(/[^a-z0-9-_]/gi, "_");
   const filename = format === "csv" ? `EAP-${safeName}-${dateStr}.csv` : `EAP-${safeName}-${dateStr}.xlsx`;
 
-  res.setHeader("Content-Disposition", `attachment; filename=\"${filename}\"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.setHeader(
     "Content-Type",
     format === "csv" ? "text/csv" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

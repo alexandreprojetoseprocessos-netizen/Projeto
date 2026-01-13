@@ -43,7 +43,6 @@ export const TeamPage = () => {
     };
     useEffect(() => {
         fetchMembers();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedOrganizationId, token]);
     const handleInvite = async (event) => {
         event.preventDefault();

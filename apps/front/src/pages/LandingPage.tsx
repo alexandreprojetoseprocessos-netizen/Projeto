@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { PLAN_DEFINITIONS, formatMonthlyPrice } from "../config/plans";
 
 type Plan = {
   code: string;
@@ -11,29 +12,17 @@ type Plan = {
 };
 
 const plans: Plan[] = [
-  {
-    code: "START",
-    name: "Start",
-    price: "R$ 0",
-    description: "Para validar processos e criar as primeiras entregas.",
-    tag: "Popular",
-    features: ["Até 2 organizações", "3 projetos por organização", "Usuários ilimitados"]
-  },
-  {
-    code: "BUSINESS",
-    name: "Business",
-    price: "R$ 199/mês",
-    description: "Portfólio, aprovações e automatizações para squads múltiplas.",
-    features: ["Até 10 organizações", "12 projetos por organização", "Permissões avançadas"]
-  },
-  {
-    code: "ENTERPRISE",
-    name: "Enterprise",
-    price: "Fale com vendas",
-    description: "Suporte dedicado, SSO e limites customizados.",
-    features: ["Organizações ilimitadas", "Projetos ilimitados", "SLAs e onboarding premium"]
-  }
-];
+  PLAN_DEFINITIONS.START,
+  PLAN_DEFINITIONS.BUSINESS,
+  PLAN_DEFINITIONS.ENTERPRISE
+].map((plan) => ({
+  code: plan.code,
+  name: plan.displayName,
+  price: formatMonthlyPrice(plan.priceCents),
+  description: plan.marketing.description,
+  tag: plan.marketing.badge,
+  features: plan.marketing.features
+}));
 
 const features = [
   {
@@ -192,7 +181,7 @@ const LandingPage = () => {
         <div className="landing-container landing-hero__grid">
           <div className="landing-hero__content">
             <div className="landing-hero__tagline">
-              <span className="chip chip-soft">G&P • Gestão de Projetos</span>
+              <span className="chip chip-soft">G&P — Gestão de Projetos</span>
               <span className="chip chip-outline">Times e PMOs</span>
             </div>
             <h1>Planeje, execute e meça cada projeto em um só lugar.</h1>

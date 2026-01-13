@@ -24,16 +24,22 @@ export const createApp = () => {
     process.env.FRONTEND_URL,
     config.frontendUrl,
     "http://localhost:5173",
-    "http://localhost:3000"
+    "http://localhost:3000",
+    "https://app.meugp.com.br"
   ].filter((origin): origin is string => Boolean(origin));
+  const vercelPreviewRegex = /^https:\/\/.*\.vercel\.app$/i;
 
   const corsOptions: CorsOptions = {
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (vercelPreviewRegex.test(origin)) return callback(null, true);
       return callback(new Error("Not allowed by CORS"));
     },
-    credentials: true
+    credentials: true,
+    allowedHeaders: ["Authorization", "Content-Type", "X-Organization-Id"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    optionsSuccessStatus: 200
   };
 
   app.use(cors(corsOptions));

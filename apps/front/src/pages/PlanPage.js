@@ -4,18 +4,22 @@ import { useOutletContext, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { canManageBilling } from "../components/permissions";
 import { apiUrl } from "../config/api";
-const formatPrice = (priceCents, period) => {
-    if (!priceCents && priceCents !== 0)
-        return "-";
-    const formatter = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-    const base = formatter.format(priceCents / 100);
-    return period ? `${base}/${period === "monthly" ? "mês" : period}` : base;
-};
+import { PLAN_DEFINITIONS, formatBillingPrice, formatMonthlyPrice } from "../config/plans";
 const statusLabel = {
     ACTIVE: "Ativa",
     PAST_DUE: "Em atraso",
     CANCELED: "Cancelada"
 };
+const planCards = [
+    PLAN_DEFINITIONS.START,
+    PLAN_DEFINITIONS.BUSINESS,
+    PLAN_DEFINITIONS.ENTERPRISE
+].map((plan) => ({
+    code: plan.code,
+    name: plan.name,
+    price: formatMonthlyPrice(plan.priceCents, false),
+    summary: plan.marketing.summary
+}));
 const PlanPage = () => {
     const navigate = useNavigate();
     const { token } = useAuth();
@@ -53,7 +57,6 @@ const PlanPage = () => {
     };
     useEffect(() => {
         loadSubscription();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token]);
     const handleChangePlan = async (planCode) => {
         if (!token)
@@ -106,28 +109,8 @@ const PlanPage = () => {
         }
     };
     const product = subscription?.product;
-    const price = useMemo(() => formatPrice(product?.priceCents, product?.billingPeriod), [product]);
+    const price = useMemo(() => formatBillingPrice(product?.priceCents, product?.billingPeriod), [product]);
     const statusText = subscription?.status ? statusLabel[subscription.status] ?? subscription.status : "-";
-    const planCards = [
-        {
-            code: "START",
-            name: "Plano Start",
-            price: "R$ 49/mês",
-            summary: "Para começar"
-        },
-        {
-            code: "BUSINESS",
-            name: "Plano Business",
-            price: "R$ 97/mês",
-            summary: "Times em crescimento"
-        },
-        {
-            code: "ENTERPRISE",
-            name: "Plano Enterprise",
-            price: "R$ 197/mês",
-            summary: "Operações avançadas"
-        }
-    ];
     return (_jsxs("div", { className: "plan-page", children: [_jsxs("section", { className: "plan-card", children: [_jsx("p", { className: "eyebrow", children: "Minha assinatura" }), _jsx("h2", { children: "Plano atual" }), loading ? (_jsx("p", { className: "muted", children: "Carregando..." })) : error ? (_jsx("p", { className: "error-text", children: error })) : (_jsxs(_Fragment, { children: [_jsxs("div", { className: "plan-summary", children: [_jsxs("div", { children: [_jsx("p", { className: "muted", children: "Plano" }), _jsx("h3", { children: product?.name ?? product?.code ?? "Nenhum plano ativo" }), _jsx("p", { className: "muted", children: product?.code ?? "-" })] }), _jsxs("div", { children: [_jsx("p", { className: "muted", children: "Pre\u00E7o" }), _jsx("strong", { children: price })] }), _jsx("div", { className: "plan-status", children: _jsx("span", { className: `status-chip status-${(subscription?.status ?? "none").toLowerCase()}`, children: statusText }) })] }), _jsxs("div", { className: "plan-details", children: [_jsxs("p", { children: ["In\u00EDcio: ", subscription?.startedAt ? new Date(subscription.startedAt).toLocaleDateString("pt-BR") : "-"] }), _jsxs("p", { children: ["V\u00E1lida at\u00E9: ", subscription?.expiresAt ? new Date(subscription.expiresAt).toLocaleDateString("pt-BR") : "Sem término"] }), _jsxs("p", { children: ["Pagamento: ", subscription?.paymentMethod ?? "Não informado"] })] }), subscription?.status === "CANCELED" && (_jsxs("div", { className: "warning-box", children: ["Sua assinatura est\u00E1 cancelada. Para voltar a usar o sistema, escolha um plano novamente.", _jsx("button", { className: "secondary-button", type: "button", onClick: () => navigate("/checkout"), children: "Reativar assinatura" })] })), actionError && _jsx("p", { className: "error-text", children: actionError }), canEditBilling ? (_jsxs("div", { className: "plan-actions", children: [_jsxs("div", { className: "plan-switcher", children: [_jsx("p", { className: "muted", children: "Trocar plano" }), _jsx("div", { className: "plan-options", children: planCards.map((plan) => (_jsxs("button", { type: "button", className: `secondary-button ${plan.code === product?.code ? "is-active" : ""}`, disabled: changingPlan || plan.code === product?.code, onClick: () => handleChangePlan(plan.code), children: [_jsxs("div", { children: [_jsx("strong", { children: plan.name }), _jsx("p", { className: "muted", children: plan.summary })] }), _jsx("span", { children: plan.price })] }, plan.code))) })] }), _jsxs("div", { className: "plan-cancel", children: [_jsx("p", { className: "muted", children: "Cancelar assinatura" }), _jsx("button", { type: "button", className: "ghost-button", onClick: handleCancel, disabled: canceling || subscription?.status === "CANCELED", children: canceling ? "Cancelando..." : "Cancelar assinatura" })] })] })) : (_jsx("p", { className: "muted", children: "Voc\u00EA pode visualizar o plano, mas apenas o propriet\u00E1rio pode alter\u00E1-lo ou cancelar." }))] }))] }), _jsxs("aside", { className: "plan-sidebar", children: [_jsx("h4", { children: "Resumo r\u00E1pido" }), _jsxs("ul", { children: [_jsxs("li", { children: [_jsx("strong", { children: "Plano:" }), " ", product?.name ?? product?.code ?? "-"] }), _jsxs("li", { children: [_jsx("strong", { children: "Status:" }), " ", statusText] }), _jsxs("li", { children: [_jsx("strong", { children: "Pagamento:" }), " ", subscription?.paymentMethod ?? "-"] }), _jsxs("li", { children: [_jsx("strong", { children: "Pr\u00F3ximo passo:" }), " Fale conosco para upgrades personalizados."] })] })] })] }));
 };
 export default PlanPage;

@@ -3,6 +3,7 @@ import { prisma } from "@gestao/database";
 import { OrganizationStatus } from "@prisma/client";
 import { authMiddleware } from "../middleware/auth";
 import { getActiveSubscriptionForUser } from "../services/subscriptions";
+import { countOrganizationsForLimit, countProjectsForLimit } from "../services/planLimitCounts";
 import { getOrgLimitForPlan, getProjectLimitForPlan } from "../services/subscriptionLimits";
 
 export const meRouter = Router();
@@ -17,19 +18,15 @@ meRouter.get("/", async (req, res) => {
   const memberships = await prisma.organizationMembership.findMany({
     where: { userId: req.user.id },
     include: {
-      organization: {
-        include: {
-          _count: { select: { projects: true } }
-        }
-      }
+      organization: true
     }
   });
 
   const subscription = await getActiveSubscriptionForUser(req.user.id);
   const planCode = subscription?.product?.code ?? null;
 
-  const organizations = memberships
-    .map((membership) => ({
+  const organizationsWithCounts = await Promise.all(
+    memberships.map(async (membership) => ({
       id: membership.organizationId,
       name: membership.organization.name,
       domain: membership.organization.domain,
@@ -37,18 +34,25 @@ meRouter.get("/", async (req, res) => {
       isActive: membership.organization.isActive,
       status: membership.organization.status,
       role: membership.role,
-      projectsCount: membership.organization._count?.projects ?? 0
+      projectsCount: await countProjectsForLimit(membership.organizationId)
     }))
-    .filter((org) => org.status === OrganizationStatus.ACTIVE);
+  );
+
+  const organizations = organizationsWithCounts.filter((org) => org.status === OrganizationStatus.ACTIVE);
+  const organizationsForLimit = organizationsWithCounts.filter(
+    (org) => org.status === OrganizationStatus.ACTIVE || org.status === OrganizationStatus.DEACTIVATED
+  );
 
   const maxOrganizations = getOrgLimitForPlan(planCode);
-  const usedOrganizations = organizations.length;
+  const usedOrganizations = await countOrganizationsForLimit(req.user.id);
   const remainingOrganizations =
     maxOrganizations === null ? null : Math.max(maxOrganizations - usedOrganizations, 0);
 
-  const maxProjects = getProjectLimitForPlan(planCode);
-  const usedProjects = organizations.reduce((acc, org) => acc + (org.projectsCount ?? 0), 0);
-  const remainingProjects = maxProjects === null ? null : Math.max(maxProjects - usedProjects, 0);
+  const maxProjectsPerOrganization = getProjectLimitForPlan(planCode);
+  const totalProjectLimit =
+    maxProjectsPerOrganization === null ? null : maxProjectsPerOrganization * organizationsForLimit.length;
+  const usedProjects = organizationsForLimit.reduce((acc, org) => acc + (org.projectsCount ?? 0), 0);
+  const remainingProjects = totalProjectLimit === null ? null : Math.max(totalProjectLimit - usedProjects, 0);
 
   return res.json({
     user: req.user,
@@ -61,9 +65,10 @@ meRouter.get("/", async (req, res) => {
     },
     projectLimits: {
       planCode,
-      max: maxProjects,
+      max: totalProjectLimit,
       used: usedProjects,
-      remaining: remainingProjects
+      remaining: remainingProjects,
+      perOrganization: maxProjectsPerOrganization
     }
   });
 });

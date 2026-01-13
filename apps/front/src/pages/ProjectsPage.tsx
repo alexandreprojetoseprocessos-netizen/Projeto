@@ -1,4 +1,4 @@
-﻿import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useOutletContext } from "react-router-dom";
 import { ProjectPortfolio } from "../components/ProjectPortfolio";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
@@ -131,6 +131,42 @@ const NewProjectModal = ({
   );
 };
 
+const ProjectLimitModal = ({
+  isOpen,
+  onClose,
+  maxProjects
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  maxProjects: number | null;
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="gp-modal-backdrop" onClick={onClose}>
+      <div className="gp-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="gp-modal-header">
+          <h2>Limite do plano</h2>
+          <button type="button" className="gp-modal-close" onClick={onClose} aria-label="Fechar">
+            ×
+          </button>
+        </div>
+        <p className="gp-modal-subtitle">
+          {maxProjects === null
+            ? "Seu plano atual não possui limite de projetos."
+            : `Seu plano permite até ${maxProjects} projetos. Exclua ou mova um projeto para continuar.`}
+        </p>
+        <p className="muted">Projetos desativados contam para o limite do plano.</p>
+        <div className="gp-modal-footer">
+          <button type="button" className="btn-primary" onClick={onClose}>
+            Entendi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const ProjectsPage = () => {
   const {
     portfolio,
@@ -148,6 +184,7 @@ export const ProjectsPage = () => {
   } = useOutletContext<DashboardOutletContext>();
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
@@ -225,6 +262,12 @@ export const ProjectsPage = () => {
       });
       setIsCreateModalOpen(false);
     } catch (error: any) {
+      const code = error?.body?.code;
+      if (code === "PLAN_LIMIT_REACHED" || code === "PROJECT_LIMIT_REACHED") {
+        setCreateError(null);
+        setIsLimitModalOpen(true);
+        return;
+      }
       const message = error?.body?.message ?? (error instanceof Error ? error.message : "Erro ao criar projeto");
       setCreateError(message);
     } finally {
@@ -244,17 +287,23 @@ export const ProjectsPage = () => {
           className="btn-primary"
           type="button"
           onClick={() => {
-            if (projectLimits && projectLimits.remaining === 0) return;
+            if (isAtProjectLimit) return;
             setIsCreateModalOpen(true);
           }}
-          disabled={projectLimits?.remaining === 0}
+          disabled={isAtProjectLimit}
         >
           + Novo projeto
         </button>
-        {projectLimits?.remaining === 0 && (
+        {isAtProjectLimit && (
           <div className="projects-limit-hint">
-            Você atingiu o limite de projetos do seu plano atual ({projectLimits.used} de {projectLimits.max}). Arquive
-            ou exclua um projeto para criar outro.
+            <div>
+              Você atingiu o limite de projetos do seu plano atual ({projectLimits?.used} de {projectLimits?.max}). Arquive
+              ou exclua um projeto para criar outro.
+            </div>
+            <button type="button" className="link-button" onClick={() => setIsLimitModalOpen(true)}>
+              Entenda o limite
+            </button>
+            <div className="muted">Projetos desativados contam para o limite do plano.</div>
           </div>
         )}
       </header>
@@ -388,6 +437,12 @@ export const ProjectsPage = () => {
           </div>
         </form>
       </NewProjectModal>
+
+      <ProjectLimitModal
+        isOpen={isLimitModalOpen}
+        onClose={() => setIsLimitModalOpen(false)}
+        maxProjects={projectLimits?.max ?? null}
+      />
     </div>
   );
 };
