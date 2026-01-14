@@ -114,7 +114,7 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
   const isLoginValid = Boolean(corporateEmail.trim() && password.trim());
   const isDisabled = submitting;
 
-  const validateSignupForm = (startMode: string) => {
+  const validateSignupForm = (startMode: RegisterPayload["startMode"]) => {
     const errors: Record<string, string> = {};
     const trimmedFullName = fullName.trim();
     const trimmedCorporateEmail = corporateEmail.trim();
@@ -123,9 +123,6 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
     const trimmedOrganizationName = organizationName.trim();
     const trimmedInviteToken = inviteToken.trim();
 
-    if (!startMode) {
-      errors.startMode = "Selecione como voc\u00ea quer come\u00e7ar.";
-    }
     if (!trimmedFullName) {
       errors.fullName = "Informe seu nome completo.";
     }
@@ -180,7 +177,7 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
       return;
     }
     setLocalError(null);
-    const startMode = orgMode === "invite" ? "INVITE" : orgMode === "new" ? "NEW_ORG" : "";
+    const startMode = orgMode === "invite" ? "INVITE" : "NEW_ORG";
 
     if (mode === "register") {
       const errors = validateSignupForm(startMode);

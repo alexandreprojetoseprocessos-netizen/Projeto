@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@gestao/database";
@@ -137,7 +137,7 @@ const resolveSupabaseCreateError = (error: { message?: string } | null) => {
 
 export const authRouter = Router();
 
-const registerHandler = async (req, res) => {
+const registerHandler = async (req: Request, res: Response) => {
   const requestId = randomUUID();
   logger.info({ requestId, step: "signup:start" }, "Signup started");
 
@@ -456,7 +456,7 @@ const registerHandler = async (req, res) => {
 authRouter.post("/register", registerHandler);
 authRouter.post("/signup", registerHandler);
 
-authRouter.post("/login", (_req, res) => {
+authRouter.post("/login", (_req: Request, res: Response) => {
   const requestId = randomUUID();
   return res.status(501).json({
     code: "LOGIN_NOT_IMPLEMENTED",
@@ -465,7 +465,7 @@ authRouter.post("/login", (_req, res) => {
   });
 });
 
-authRouter.get("/login", (_req, res) => {
+authRouter.get("/login", (_req: Request, res: Response) => {
   const requestId = randomUUID();
   return res.status(501).json({
     code: "LOGIN_NOT_IMPLEMENTED",

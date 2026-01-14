@@ -112,9 +112,6 @@ export const AuthPage = ({ onSubmit, onSignUp, error }) => {
         const normalizedDocument = stripDocument(documentNumber);
         const trimmedOrganizationName = organizationName.trim();
         const trimmedInviteToken = inviteToken.trim();
-        if (!startMode) {
-            errors.startMode = "Selecione como voc\u00ea quer come\u00e7ar.";
-        }
         if (!trimmedFullName) {
             errors.fullName = "Informe seu nome completo.";
         }
@@ -169,7 +166,7 @@ export const AuthPage = ({ onSubmit, onSignUp, error }) => {
             return;
         }
         setLocalError(null);
-        const startMode = orgMode === "invite" ? "INVITE" : orgMode === "new" ? "NEW_ORG" : "";
+        const startMode = orgMode === "invite" ? "INVITE" : "NEW_ORG";
         if (mode === "register") {
             const errors = validateSignupForm(startMode);
             if (errors) {
