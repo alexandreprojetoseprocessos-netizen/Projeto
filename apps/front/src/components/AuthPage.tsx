@@ -169,7 +169,13 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
   };
 
   const displayedError = localError ?? error ?? null;
-  const submitLabel = submitting ? "Processando..." : mode === "login" ? "Entrar" : "Criar conta";
+  const submitLabel = submitting
+    ? mode === "login"
+      ? "Entrando..."
+      : "Criando..."
+    : mode === "login"
+    ? "Entrar"
+    : "Criar conta";
   const documentPlaceholder = documentType === "CPF" ? "000.000.000-00" : "00.000.000/0000-00";
 
   return (

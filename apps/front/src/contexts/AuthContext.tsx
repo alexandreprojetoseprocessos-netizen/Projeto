@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
-import { apiUrl } from "../config/api";
+import { apiFetch, getNetworkErrorMessage } from "../config/api";
 
 type AuthStatus = "loading" | "unauthenticated" | "authenticated";
 
@@ -28,6 +28,22 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+const registerErrorMap: Record<string, string> = {
+  EMAIL_ALREADY_USED: "E-mail já cadastrado.",
+  INVALID_DOCUMENT: "CPF ou CNPJ inválido.",
+  INVITE_INVALID_OR_EXPIRED: "Convite inválido ou expirado.",
+  INVITE_REQUIRED: "Informe o código do convite para continuar.",
+  SUPABASE_NOT_CONFIGURED: "Servidor indisponível. Tente novamente.",
+  WEAK_PASSWORD: "Senha fraca. Use pelo menos 6 caracteres."
+};
+
+const resolveRegisterErrorMessage = (response: Response, body: any) => {
+  const code = body?.code;
+  if (code && registerErrorMap[code]) return registerErrorMap[code];
+  if (response.status >= 500) return "Servidor indisponível. Tente novamente.";
+  return body?.message ?? "Falha ao criar conta.";
+};
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
@@ -67,14 +83,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signUp = async (payload: RegisterPayload) => {
     setError(null);
-    const response = await fetch(apiUrl("/auth/register"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    let response: Response;
+    try {
+      response = await apiFetch("/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        retry: 0
+      });
+    } catch (error) {
+      const message = getNetworkErrorMessage(error);
+      setError(message);
+      throw new Error(message);
+    }
+
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const message = body?.message ?? "Falha ao criar conta.";
+      const message = resolveRegisterErrorMessage(response, body);
       setError(message);
       throw new Error(message);
     }

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@gestao/database";
 import { supabaseAdmin } from "../lib/supabase";
 import { logger } from "../config/logger";
-import { InviteStatus, MembershipRole } from "@prisma/client";
+import { InviteStatus, MembershipRole, OrganizationStatus, Prisma } from "@prisma/client";
 
 const registerSchema = z.object({
   fullName: z.string().min(3),
@@ -11,7 +11,7 @@ const registerSchema = z.object({
   personalEmail: z.string().email(),
   documentType: z.enum(["CPF", "CNPJ"]),
   documentNumber: z.string().min(1),
-  password: z.string().min(6),
+  password: z.string().min(1),
   startMode: z.enum(["NEW_ORG", "INVITE"]),
   inviteToken: z.string().optional()
 });
@@ -59,6 +59,78 @@ const validateCnpj = (raw: string) => {
   return check1 === Number(cnpj[12]) && check2 === Number(cnpj[13]);
 };
 
+const slugify = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "")
+    .slice(0, 40) || "org";
+
+const ensureUniqueSlug = async (client: Prisma.TransactionClient, baseSlug: string) => {
+  let suffix = 0;
+  let candidate = baseSlug;
+  let exists = await client.organization.findUnique({ where: { slug: candidate } });
+
+  while (exists) {
+    suffix += 1;
+    candidate = `${baseSlug}-${suffix}`;
+    exists = await client.organization.findUnique({ where: { slug: candidate } });
+  }
+  return candidate;
+};
+
+const resolveOrganizationName = (fullName: string, corporateEmail: string) => {
+  const domainPart = corporateEmail.split("@")[1] ?? "";
+  const base = domainPart.split(".")[0] ?? "";
+  const cleaned = base.replace(/[^a-zA-Z0-9]+/g, " ").trim();
+  if (cleaned) {
+    return `Organização ${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}`;
+  }
+
+  const firstName = fullName.trim().split(/\s+/)[0];
+  if (firstName) {
+    return `Organização ${firstName}`;
+  }
+
+  return "Minha organização";
+};
+
+const resolveOrganizationDomain = (corporateEmail: string) => {
+  const domain = corporateEmail.split("@")[1]?.trim().toLowerCase();
+  return domain || null;
+};
+
+const resolveSupabaseCreateError = (error: { message?: string } | null) => {
+  const message = error?.message ?? "Falha ao criar usuário.";
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("password") || normalized.includes("senha") || normalized.includes("weak")) {
+    return {
+      code: "WEAK_PASSWORD",
+      message: "Senha fraca. Use pelo menos 6 caracteres."
+    };
+  }
+
+  if (
+    normalized.includes("already") ||
+    normalized.includes("exist") ||
+    normalized.includes("registered") ||
+    normalized.includes("duplicate")
+  ) {
+    return {
+      code: "EMAIL_ALREADY_USED",
+      message: "E-mail já cadastrado."
+    };
+  }
+
+  return {
+    code: "SUPABASE_ERROR",
+    message
+  };
+};
+
 export const authRouter = Router();
 
 authRouter.post("/register", async (req, res) => {
@@ -80,6 +152,13 @@ authRouter.post("/register", async (req, res) => {
   const corporateEmail = normalizeEmail(payload.corporateEmail);
   const personalEmail = normalizeEmail(payload.personalEmail);
   const documentNumber = onlyDigits(payload.documentNumber);
+
+  if (payload.password.length < 6) {
+    return res.status(400).json({
+      code: "WEAK_PASSWORD",
+      message: "Senha fraca. Use pelo menos 6 caracteres."
+    });
+  }
 
   if (corporateEmail === personalEmail) {
     return res.status(400).json({
@@ -135,7 +214,7 @@ authRouter.post("/register", async (req, res) => {
         });
       }
       return res.status(400).json({
-        code: "INVITE_INVALID",
+        code: "INVITE_INVALID_OR_EXPIRED",
         message: "Convite inválido ou expirado."
       });
     }
@@ -143,7 +222,7 @@ authRouter.post("/register", async (req, res) => {
     const inviteEmail = normalizeEmail(invite.email);
     if (inviteEmail !== corporateEmail && inviteEmail !== personalEmail) {
       return res.status(400).json({
-        code: "INVITE_EMAIL_MISMATCH",
+        code: "INVITE_INVALID_OR_EXPIRED",
         message: "O e-mail do convite não corresponde ao cadastro informado."
       });
     }
@@ -167,63 +246,97 @@ authRouter.post("/register", async (req, res) => {
     });
 
     if (createError || !created.user) {
-      const message = createError?.message ?? "Falha ao criar usuário.";
+      const resolved = resolveSupabaseCreateError(createError);
       logger.error({ err: createError }, "Supabase create user failed");
-      return res.status(400).json({ code: "SUPABASE_ERROR", message });
+      const status = resolved.code === "EMAIL_ALREADY_USED" ? 409 : 400;
+      return res.status(status).json({ code: resolved.code, message: resolved.message });
     }
 
     const supabaseUserId = created.user.id;
 
-    await prisma.user.upsert({
-      where: { id: supabaseUserId },
-      update: {
-        email: corporateEmail,
-        corporateEmail,
-        personalEmail,
-        documentType: payload.documentType,
-        documentNumber,
-        fullName
-      },
-      create: {
-        id: supabaseUserId,
-        email: corporateEmail,
-        corporateEmail,
-        personalEmail,
-        documentType: payload.documentType,
-        documentNumber,
-        fullName,
-        passwordHash: "supabase-auth",
-        locale: "pt-BR",
-        timezone: "America/Sao_Paulo"
-      }
-    });
-
-    if (inviteRecord) {
-      await prisma.organizationMembership.upsert({
-        where: {
-          organizationId_userId: {
-            organizationId: inviteRecord.organizationId,
-            userId: supabaseUserId
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.user.upsert({
+          where: { id: supabaseUserId },
+          update: {
+            email: corporateEmail,
+            corporateEmail,
+            personalEmail,
+            documentType: payload.documentType,
+            documentNumber,
+            fullName
+          },
+          create: {
+            id: supabaseUserId,
+            email: corporateEmail,
+            corporateEmail,
+            personalEmail,
+            documentType: payload.documentType,
+            documentNumber,
+            fullName,
+            passwordHash: "supabase-auth",
+            locale: "pt-BR",
+            timezone: "America/Sao_Paulo"
           }
-        },
-        update: {
-          role: inviteRecord.role
-        },
-        create: {
-          organizationId: inviteRecord.organizationId,
-          userId: supabaseUserId,
-          role: inviteRecord.role
-        }
-      });
+        });
 
-      await prisma.invite.update({
-        where: { id: inviteRecord.id },
-        data: {
-          status: InviteStatus.ACCEPTED,
-          acceptedAt: new Date(),
-          acceptedById: supabaseUserId
+        if (inviteRecord) {
+          await tx.organizationMembership.upsert({
+            where: {
+              organizationId_userId: {
+                organizationId: inviteRecord.organizationId,
+                userId: supabaseUserId
+              }
+            },
+            update: {
+              role: inviteRecord.role
+            },
+            create: {
+              organizationId: inviteRecord.organizationId,
+              userId: supabaseUserId,
+              role: inviteRecord.role
+            }
+          });
+
+          await tx.invite.update({
+            where: { id: inviteRecord.id },
+            data: {
+              status: InviteStatus.ACCEPTED,
+              acceptedAt: new Date(),
+              acceptedById: supabaseUserId
+            }
+          });
+        }
+
+        if (payload.startMode === "NEW_ORG") {
+          const organizationName = resolveOrganizationName(fullName, corporateEmail);
+          const organizationDomain = resolveOrganizationDomain(corporateEmail);
+          const slug = await ensureUniqueSlug(tx, slugify(organizationName));
+
+          await tx.organization.create({
+            data: {
+              name: organizationName,
+              slug,
+              domain: organizationDomain,
+              status: OrganizationStatus.ACTIVE,
+              isActive: true,
+              memberships: {
+                create: {
+                  userId: supabaseUserId,
+                  role: MembershipRole.OWNER
+                }
+              }
+            }
+          });
         }
       });
+    } catch (dbError) {
+      try {
+        await supabaseAdmin.auth.admin.deleteUser(supabaseUserId);
+      } catch (cleanupError) {
+        logger.warn({ err: cleanupError }, "Failed to rollback Supabase user");
+      }
+      throw dbError;
     }
 
     const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({

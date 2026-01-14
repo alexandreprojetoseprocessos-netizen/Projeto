@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { apiUrl } from "../config/api";
+import { apiFetch, getNetworkErrorMessage } from "../config/api";
 import {
   ANNUAL_DISCOUNT_LABEL,
   PLAN_DEFINITIONS,
@@ -55,6 +55,14 @@ export const CheckoutPage = ({ subscription, subscriptionError }: CheckoutPagePr
     return formatBillingPrice(priceCents, "annual");
   }, [billingCycle, priceCents]);
 
+  const resolveCheckoutErrorMessage = (error: unknown) => {
+    if (error instanceof DOMException || error instanceof TypeError) {
+      return getNetworkErrorMessage(error);
+    }
+    if (error instanceof Error) return error.message;
+    return "Falha ao iniciar pagamento.";
+  };
+
   const handleCheckout = async () => {
     if (!token) {
       setError("Sessão expirada. Faça login novamente.");
@@ -65,7 +73,7 @@ export const CheckoutPage = ({ subscription, subscriptionError }: CheckoutPagePr
     setError(null);
 
     try {
-      const response = await fetch(apiUrl("/billing/checkout"), {
+      const response = await apiFetch("/billing/checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -74,12 +82,15 @@ export const CheckoutPage = ({ subscription, subscriptionError }: CheckoutPagePr
         body: JSON.stringify({
           planId: plan.code,
           billingCycle
-        })
+        }),
+        retry: 0
       });
 
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const message = (body as any).message ?? "Falha ao iniciar pagamento.";
+        const message =
+          (body as any).message ??
+          (response.status >= 500 ? "Servidor indisponível. Tente novamente." : "Falha ao iniciar pagamento.");
         throw new Error(message);
       }
 
@@ -90,7 +101,7 @@ export const CheckoutPage = ({ subscription, subscriptionError }: CheckoutPagePr
 
       throw new Error("Link de pagamento não disponível.");
     } catch (checkoutError) {
-      setError(checkoutError instanceof Error ? checkoutError.message : "Falha ao iniciar pagamento.");
+      setError(resolveCheckoutErrorMessage(checkoutError));
     } finally {
       setIsLoading(false);
     }

@@ -24,26 +24,34 @@ export const createApp = () => {
   app.set("trust proxy", 1);
 
   app.use(helmet());
-  const allowedOrigins = [
-    process.env.FRONTEND_URL,
-    config.frontendUrl,
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "https://app.meugp.com.br"
-  ].filter((origin): origin is string => Boolean(origin));
+  const normalizeOrigin = (value: string) => value.trim().replace(/\/$/, "");
+  const allowedOrigins = new Set(
+    [
+      process.env.FRONTEND_URL,
+      config.frontendUrl,
+      "http://localhost:5173",
+      "http://localhost:3000",
+      "https://app.meugp.com.br"
+    ]
+      .filter((origin): origin is string => Boolean(origin))
+      .map(normalizeOrigin)
+  );
   const vercelPreviewRegex = /^https:\/\/.*\.vercel\.app$/i;
+  const isOriginAllowed = (origin?: string | null) => {
+    if (!origin) return true;
+    const normalized = normalizeOrigin(origin);
+    return allowedOrigins.has(normalized) || vercelPreviewRegex.test(origin);
+  };
 
   const corsOptions: CorsOptions = {
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      if (vercelPreviewRegex.test(origin)) return callback(null, true);
-      return callback(new Error("Not allowed by CORS"));
+      if (isOriginAllowed(origin)) return callback(null, true);
+      return callback(null, false);
     },
     credentials: true,
     allowedHeaders: ["Authorization", "Content-Type", "X-Organization-Id"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    optionsSuccessStatus: 200
+    optionsSuccessStatus: 204
   };
 
   app.use(cors(corsOptions));
@@ -74,8 +82,12 @@ export const createApp = () => {
   app.use("/service-catalog", serviceCatalogRouter);
 
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    logger.error(err, "Unhandled error");
-    return res.status(500).json({ message: "Internal server error" });
+    const statusCode =
+      (err as any)?.status ??
+      (err as any)?.statusCode ??
+      500;
+    logger.error({ err, status: statusCode, stack: err.stack }, "Unhandled error");
+    return res.status(statusCode).json({ message: "Internal server error" });
   });
 
   app.get("/", (_req, res) => {

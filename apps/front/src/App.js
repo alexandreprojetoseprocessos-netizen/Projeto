@@ -30,7 +30,7 @@ import NotFoundPage from "./pages/NotFoundPage";
 import LandingPage from "./pages/LandingPage";
 import { CheckoutPage } from "./pages/CheckoutPage";
 import { BillingReturnPage } from "./pages/BillingReturnPage";
-import { apiUrl } from "./config/api";
+import { apiFetch, apiUrl, getNetworkErrorMessage } from "./config/api";
 import { getPlanDefinition } from "./config/plans";
 const SELECTED_ORG_KEY = "gp:selectedOrganizationId";
 const SELECTED_PROJECT_KEY = "gp:selectedProjectId";
@@ -41,10 +41,18 @@ async function fetchJson(path, token, options, organizationId) {
     headers.set("Authorization", `Bearer ${token}`);
     if (organizationId)
         headers.set("X-Organization-Id", organizationId);
-    const response = await fetch(apiUrl(path), {
-        ...options,
-        headers
-    });
+    let response;
+    try {
+        response = await apiFetch(path, {
+            ...options,
+            headers
+        });
+    }
+    catch (error) {
+        const message = getNetworkErrorMessage(error);
+        const networkError = new Error(message);
+        throw networkError;
+    }
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
         const message = body.error ?? body.message ?? `API respondeu com status ${response.status}`;

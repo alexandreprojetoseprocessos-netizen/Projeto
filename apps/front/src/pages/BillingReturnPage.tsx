@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { apiUrl } from "../config/api";
+import { apiFetch, getNetworkErrorMessage } from "../config/api";
 
 type BillingReturnPageProps = {
   onSubscriptionActivated?: () => Promise<void> | void;
@@ -17,6 +17,13 @@ export const BillingReturnPage = ({ onSubscriptionActivated }: BillingReturnPage
   const [attempt, setAttempt] = useState(0);
   const statusParam = useMemo(() => new URLSearchParams(location.search).get("status"), [location.search]);
   const maxAttempts = 3;
+  const resolveStatusErrorMessage = (error: unknown) => {
+    if (error instanceof DOMException || error instanceof TypeError) {
+      return getNetworkErrorMessage(error);
+    }
+    if (error instanceof Error) return error.message;
+    return "Falha ao carregar status do pagamento.";
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -27,12 +34,15 @@ export const BillingReturnPage = ({ onSubscriptionActivated }: BillingReturnPage
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(apiUrl("/billing/status"), {
+        const response = await apiFetch("/me/subscription", {
           headers: { Authorization: `Bearer ${token}` }
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
-          throw new Error(body?.message ?? "Falha ao carregar status do pagamento.");
+          const message =
+            body?.message ??
+            (response.status >= 500 ? "Servidor indisponível. Tente novamente." : "Falha ao carregar status do pagamento.");
+          throw new Error(message);
         }
         const current = body?.subscription ?? null;
         setSubscription(current);
@@ -43,7 +53,7 @@ export const BillingReturnPage = ({ onSubscriptionActivated }: BillingReturnPage
           timeoutId = setTimeout(() => setAttempt((value) => value + 1), 4000);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Falha ao carregar status do pagamento.");
+        setError(resolveStatusErrorMessage(err));
       } finally {
         setLoading(false);
       }

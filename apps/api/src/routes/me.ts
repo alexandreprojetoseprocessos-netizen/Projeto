@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma } from "@gestao/database";
 import { OrganizationStatus } from "@prisma/client";
 import { authMiddleware } from "../middleware/auth";
-import { getActiveSubscriptionForUser } from "../services/subscriptions";
+import { getActiveSubscriptionForUser, getLatestSubscriptionForUser } from "../services/subscriptions";
 import { countOrganizationsForLimit, countProjectsForLimit } from "../services/planLimitCounts";
 import { getOrgLimitForPlan, getProjectLimitForPlan } from "../services/subscriptionLimits";
 
@@ -22,7 +22,9 @@ meRouter.get("/", async (req, res) => {
     }
   });
 
-  const subscription = await getActiveSubscriptionForUser(req.user.id);
+  const subscription =
+    (await getActiveSubscriptionForUser(req.user.id)) ??
+    (await getLatestSubscriptionForUser(req.user.id));
   const planCode = subscription?.product?.code ?? null;
 
   const organizationsWithCounts = await Promise.all(
