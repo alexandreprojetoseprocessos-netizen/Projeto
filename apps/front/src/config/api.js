@@ -53,6 +53,30 @@ export const apiFetch = async (path, options = {}) => {
     }
     throw lastError;
 };
+export const parseApiError = async (response, url) => {
+    const rawText = await response.text();
+    let body = {};
+    if (rawText) {
+        try {
+            body = JSON.parse(rawText);
+        }
+        catch {
+            body = { message: rawText };
+        }
+    }
+    console.warn("[api] request failed", {
+        url: url ?? response.url,
+        status: response.status,
+        body: rawText
+    });
+    return {
+        status: response.status,
+        code: body?.code,
+        message: body?.message ?? body?.error ?? `API respondeu com status ${response.status}`,
+        requestId: body?.requestId,
+        body
+    };
+};
 export const getNetworkErrorMessage = (error) => {
     if (error instanceof DOMException && error.name === "AbortError") {
         return "Servidor demorou a responder. Tente novamente.";

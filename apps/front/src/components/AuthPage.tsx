@@ -70,6 +70,13 @@ const validateCnpj = (raw: string) => {
 
 const isEmailValid = (value: string) => /\S+@\S+\.\S+/.test(value);
 
+const isPasswordStrong = (value: string) => {
+  if (value.length < 8) return false;
+  if (!/[A-Za-z]/.test(value)) return false;
+  if (!/\d/.test(value)) return false;
+  return true;
+};
+
 export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
   const location = useLocation();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -83,6 +90,7 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [orgMode, setOrgMode] = useState<"new" | "invite">("new");
+  const [organizationName, setOrganizationName] = useState("");
   const [inviteToken, setInviteToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -103,44 +111,96 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
     setDocumentNumber((current) => (documentType === "CPF" ? formatCpf(current) : formatCnpj(current)));
   }, [documentType]);
 
-  const isRegisterValid = useMemo(() => {
-    if (!fullName.trim()) return false;
-    if (!isEmailValid(corporateEmail) || !isEmailValid(personalEmail)) return false;
-    if (normalizeEmail(corporateEmail) === normalizeEmail(personalEmail)) return false;
-    if (documentType === "CPF" && !validateCpf(documentNumber)) return false;
-    if (documentType === "CNPJ" && !validateCnpj(documentNumber)) return false;
-    if (!password || password.length < 6) return false;
-    if (password !== confirmPassword) return false;
-    if (orgMode === "invite" && !inviteToken.trim()) return false;
-    return true;
-  }, [
-    fullName,
-    corporateEmail,
-    personalEmail,
-    documentType,
-    documentNumber,
-    password,
-    confirmPassword,
-    orgMode,
-    inviteToken
-  ]);
-
   const isLoginValid = Boolean(corporateEmail.trim() && password.trim());
-  const isDisabled = submitting || (mode === "register" ? !isRegisterValid : !isLoginValid);
+  const isDisabled = submitting;
+
+  const validateSignupForm = (startMode: string) => {
+    const errors: Record<string, string> = {};
+    const trimmedFullName = fullName.trim();
+    const trimmedCorporateEmail = corporateEmail.trim();
+    const trimmedPersonalEmail = personalEmail.trim();
+    const normalizedDocument = stripDocument(documentNumber);
+    const trimmedOrganizationName = organizationName.trim();
+    const trimmedInviteToken = inviteToken.trim();
+
+    if (!startMode) {
+      errors.startMode = "Selecione como voc\u00ea quer come\u00e7ar.";
+    }
+    if (!trimmedFullName) {
+      errors.fullName = "Informe seu nome completo.";
+    }
+    if (!trimmedCorporateEmail || !isEmailValid(trimmedCorporateEmail)) {
+      errors.corporateEmail = "Informe um e-mail corporativo v\u00e1lido.";
+    }
+    if (!trimmedPersonalEmail || !isEmailValid(trimmedPersonalEmail)) {
+      errors.personalEmail = "Informe um e-mail pessoal v\u00e1lido.";
+    }
+    if (
+      trimmedCorporateEmail &&
+      trimmedPersonalEmail &&
+      normalizeEmail(trimmedCorporateEmail) === normalizeEmail(trimmedPersonalEmail)
+    ) {
+      errors.email = "Os e-mails corporativo e pessoal precisam ser diferentes.";
+    }
+    if (!documentType) {
+      errors.documentType = "Selecione o tipo de documento.";
+    }
+    if (!normalizedDocument) {
+      errors.documentNumber = "Informe o n\u00famero do documento.";
+    } else if (documentType === "CPF" && !validateCpf(documentNumber)) {
+      errors.documentNumber = "CPF inv\u00e1lido.";
+    } else if (documentType === "CNPJ" && !validateCnpj(documentNumber)) {
+      errors.documentNumber = "CNPJ inv\u00e1lido.";
+    }
+    if (!password.trim()) {
+      errors.password = "Informe uma senha.";
+    } else if (!isPasswordStrong(password)) {
+      errors.password = "Senha fraca. Use no m\u00ednimo 8 caracteres, com letras e n\u00fameros.";
+    }
+    if (!confirmPassword.trim()) {
+      errors.confirmPassword = "Confirme a sua senha.";
+    } else if (password !== confirmPassword) {
+      errors.confirmPassword = "As senhas n\u00e3o conferem.";
+    }
+    if (startMode === "NEW_ORG" && !trimmedOrganizationName) {
+      errors.organizationName = "Informe o nome da organiza\u00e7\u00e3o.";
+    }
+    if (startMode === "INVITE" && !trimmedInviteToken) {
+      errors.inviteToken = "Informe o c\u00f3digo do convite.";
+    }
+
+    return Object.keys(errors).length ? errors : null;
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setLocalError(null);
-    if (mode === "register" && !isRegisterValid) {
-      setLocalError("Preencha todos os campos obrigatórios corretamente.");
+    event.stopPropagation();
+    console.log("SUBMIT_CLICK");
+    if (submitting) {
       return;
     }
-    if (mode === "login" && !isLoginValid) {
-      setLocalError("Informe seu e-mail corporativo e senha.");
+    setLocalError(null);
+    const startMode = orgMode === "invite" ? "INVITE" : orgMode === "new" ? "NEW_ORG" : "";
+
+    if (mode === "register") {
+      const errors = validateSignupForm(startMode);
+      if (errors) {
+        console.log("VALIDATION_FAIL", errors);
+        const [firstError] = Object.values(errors);
+        if (firstError) {
+          setLocalError(firstError);
+        }
+        return;
+      }
+    } else if (!isLoginValid) {
+      const errors = { login: "Informe seu e-mail corporativo e senha." };
+      console.log("VALIDATION_FAIL", errors);
+      setLocalError(errors.login);
       return;
     }
 
     setSubmitting(true);
+    console.log("CALLING_API");
 
     try {
       if (mode === "register") {
@@ -151,17 +211,23 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
           documentType,
           documentNumber: stripDocument(documentNumber),
           password,
-          startMode: orgMode === "invite" ? "INVITE" : "NEW_ORG",
-          inviteToken: orgMode === "invite" ? inviteToken.trim() : undefined
+          startMode,
+          organizationName: startMode === "NEW_ORG" ? organizationName.trim() : undefined,
+          inviteToken: startMode === "INVITE" ? inviteToken.trim() : undefined
         };
 
         await onSignUp(payload);
       } else {
         await onSubmit({ email: normalizeEmail(corporateEmail), password });
       }
+      console.log("DONE");
     } catch (submitError) {
+      console.log("ERROR", submitError);
+      setSubmitting(false);
       setLocalError(
-        submitError instanceof Error ? submitError.message : "Não foi possível completar a solicitação."
+        submitError instanceof Error
+          ? submitError.message
+          : "N\u00e3o foi poss\u00edvel completar a solicita\u00e7\u00e3o."
       );
     } finally {
       setSubmitting(false);
@@ -209,7 +275,7 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
             </p>
           )}
 
-          <form className="auth-form" onSubmit={handleSubmit}>
+          <form className="auth-form" onSubmit={handleSubmit} noValidate>
             {mode === "register" && (
               <label className="input-group">
                 <span>Nome completo</span>
@@ -348,6 +414,19 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
                   </label>
                 </div>
               </div>
+            )}
+
+            {mode === "register" && orgMode === "new" && (
+              <label className="input-group">
+                <span>Nome da organização</span>
+                <input
+                  type="text"
+                  placeholder="Ex: Empresa Exemplo"
+                  value={organizationName}
+                  onChange={(event) => setOrganizationName(event.target.value)}
+                  required
+                />
+              </label>
             )}
 
             {mode === "register" && orgMode === "invite" && (

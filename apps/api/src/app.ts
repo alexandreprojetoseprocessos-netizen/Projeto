@@ -64,6 +64,7 @@ export const createApp = () => {
       }
     })
   );
+  app.use(express.urlencoded({ extended: true, limit: "1mb" }));
   app.use(morgan("dev"));
 
   app.use("/health", healthRouter);

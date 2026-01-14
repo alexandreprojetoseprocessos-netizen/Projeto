@@ -1,8 +1,10 @@
 import { Router } from "express";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@gestao/database";
 import { supabaseAdmin } from "../lib/supabase";
 import { logger } from "../config/logger";
+import { config } from "../config/env";
 import { InviteStatus, MembershipRole, OrganizationStatus, Prisma } from "@prisma/client";
 
 const registerSchema = z.object({
@@ -12,8 +14,10 @@ const registerSchema = z.object({
   documentType: z.enum(["CPF", "CNPJ"]),
   documentNumber: z.string().min(1),
   password: z.string().min(1),
-  startMode: z.enum(["NEW_ORG", "INVITE"]),
-  inviteToken: z.string().optional()
+  startMode: z.enum(["NEW_ORG", "INVITE"]).optional(),
+  mode: z.enum(["NEW_ORG", "INVITE"]).optional(),
+  inviteToken: z.string().optional(),
+  organizationName: z.string().min(2).optional()
 });
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
@@ -103,13 +107,13 @@ const resolveOrganizationDomain = (corporateEmail: string) => {
 };
 
 const resolveSupabaseCreateError = (error: { message?: string } | null) => {
-  const message = error?.message ?? "Falha ao criar usuário.";
+  const message = error?.message ?? "Falha ao criar usu\u00e1rio.";
   const normalized = message.toLowerCase();
 
   if (normalized.includes("password") || normalized.includes("senha") || normalized.includes("weak")) {
     return {
       code: "WEAK_PASSWORD",
-      message: "Senha fraca. Use pelo menos 6 caracteres."
+      message: "Senha fraca. Use no m\u00ednimo 8 caracteres, com letras e n\u00fameros."
     };
   }
 
@@ -121,121 +125,182 @@ const resolveSupabaseCreateError = (error: { message?: string } | null) => {
   ) {
     return {
       code: "EMAIL_ALREADY_USED",
-      message: "E-mail já cadastrado."
+      message: "E-mail j\u00e1 cadastrado."
     };
   }
 
   return {
-    code: "SUPABASE_ERROR",
-    message
+    code: "INTERNAL",
+    message: "Erro ao criar conta. Tente novamente em instantes."
   };
 };
 
 export const authRouter = Router();
 
-authRouter.post("/register", async (req, res) => {
-  if (!supabaseAdmin) {
-    return res.status(500).json({ code: "SUPABASE_NOT_CONFIGURED", message: "Supabase não configurado." });
-  }
+const registerHandler = async (req, res) => {
+  const requestId = randomUUID();
+  logger.info({ requestId, step: "signup:start" }, "Signup started");
 
-  const parsed = registerSchema.safeParse(req.body ?? {});
-  if (!parsed.success) {
+  try {
+    if (!config.supabase.url || !config.supabase.serviceRoleKey || !supabaseAdmin) {
+      logger.error({ requestId, step: "signup:config" }, "Supabase admin is not configured");
+      return res.status(500).json({
+        code: "MISSING_SUPABASE_ADMIN",
+        message: "Supabase admin n\u00e3o configurado.",
+        requestId
+      });
+    }
+
+    const parsed = registerSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      logger.warn({ requestId, step: "signup:validate", errors: parsed.error.flatten().fieldErrors }, "Signup payload invalid");
+      return res.status(400).json({
+        code: "INVALID_PAYLOAD",
+        message: "Dados de cadastro inv\u00e1lidos.",
+        details: parsed.error.flatten().fieldErrors,
+        requestId
+      });
+    }
+
+    const payload = parsed.data;
+    const startMode = payload.startMode ?? payload.mode;
+    const organizationNameInput = typeof payload.organizationName === "string"
+      ? payload.organizationName.trim()
+      : "";
+    const fullName = payload.fullName.trim();
+    const corporateEmail = normalizeEmail(payload.corporateEmail);
+    const personalEmail = normalizeEmail(payload.personalEmail);
+    const documentNumber = onlyDigits(payload.documentNumber);
+
+    logger.info({
+      requestId,
+      step: "signup:payload",
+      payload: {
+        fullName,
+        corporateEmail,
+        personalEmail,
+        documentType: payload.documentType,
+        documentLast4: documentNumber ? documentNumber.slice(-4) : null,
+        startMode,
+        organizationName: organizationNameInput || null,
+        inviteTokenProvided: Boolean(payload.inviteToken)
+      }
+    }, "Signup payload sanitized");
+
+    if (!startMode) {
     return res.status(400).json({
       code: "INVALID_PAYLOAD",
-      message: "Dados de cadastro inválidos.",
-      details: parsed.error.flatten().fieldErrors
+      message: "Dados de cadastro inv\u00e1lidos.",
+      details: { startMode: ["Campo obrigat?rio."] },
+      requestId
     });
   }
 
-  const payload = parsed.data;
-  const fullName = payload.fullName.trim();
-  const corporateEmail = normalizeEmail(payload.corporateEmail);
-  const personalEmail = normalizeEmail(payload.personalEmail);
-  const documentNumber = onlyDigits(payload.documentNumber);
+  const passwordHasLetter = /[A-Za-z]/.test(payload.password);
+    const passwordHasNumber = /\d/.test(payload.password);
+    if (payload.password.length < 8 || !passwordHasLetter || !passwordHasNumber) {
+      return res.status(400).json({
+        code: "WEAK_PASSWORD",
+        message: "Senha fraca. Use no m\u00ednimo 8 caracteres, com letras e n\u00fameros.",
+        requestId
+      });
+    }
 
-  if (payload.password.length < 6) {
+    if (startMode === "NEW_ORG" && !organizationNameInput) {
     return res.status(400).json({
-      code: "WEAK_PASSWORD",
-      message: "Senha fraca. Use pelo menos 6 caracteres."
+      code: "INVALID_PAYLOAD",
+      message: "Dados de cadastro inv\u00e1lidos.",
+      details: { organizationName: ["Campo obrigat?rio."] },
+      requestId
     });
   }
 
   if (corporateEmail === personalEmail) {
-    return res.status(400).json({
-      code: "EMAILS_MUST_DIFFER",
-      message: "Os e-mails corporativo e pessoal precisam ser diferentes."
-    });
-  }
-
-  const documentOk =
-    payload.documentType === "CPF" ? validateCpf(documentNumber) : validateCnpj(documentNumber);
-  if (!documentOk) {
-    return res.status(400).json({
-      code: "INVALID_DOCUMENT",
-      message: "CPF ou CNPJ inválido."
-    });
-  }
-
-  if (payload.startMode === "INVITE" && !payload.inviteToken) {
-    return res.status(400).json({
-      code: "INVITE_REQUIRED",
-      message: "Informe o código do convite para continuar."
-    });
-  }
-
-  const existingUser = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { email: corporateEmail },
-        { corporateEmail },
-        { personalEmail }
-      ]
+      return res.status(400).json({
+        code: "EMAILS_MUST_DIFFER",
+        message: "Os e-mails corporativo e pessoal precisam ser diferentes.",
+        requestId
+      });
     }
-  });
-  if (existingUser) {
-    return res.status(409).json({
-      code: "EMAIL_ALREADY_USED",
-      message: "E-mail já cadastrado."
-    });
-  }
 
-  let inviteRecord: { id: string; organizationId: string; role: MembershipRole; email: string } | null = null;
-  if (payload.startMode === "INVITE") {
-    const invite = await prisma.invite.findUnique({
-      where: { token: payload.inviteToken },
-      select: { id: true, organizationId: true, role: true, email: true, status: true, expiresAt: true }
-    });
+    const documentOk =
+      payload.documentType === "CPF" ? validateCpf(documentNumber) : validateCnpj(documentNumber);
+    if (!documentOk) {
+      return res.status(400).json({
+        code: "INVALID_DOCUMENT",
+        message: "CPF ou CNPJ inv\u00e1lido.",
+        requestId
+      });
+    }
 
-    if (!invite || invite.status !== InviteStatus.PENDING || invite.expiresAt < new Date()) {
-      if (invite && invite.status === InviteStatus.PENDING && invite.expiresAt < new Date()) {
-        await prisma.invite.update({
-          where: { id: invite.id },
-          data: { status: InviteStatus.EXPIRED }
+    if (startMode === "INVITE" && !payload.inviteToken) {
+      return res.status(400).json({
+        code: "INVITE_INVALID",
+        message: "Informe o c\u00f3digo do convite para continuar.",
+        requestId
+      });
+    }
+
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: corporateEmail },
+          { corporateEmail },
+          { personalEmail }
+        ]
+      }
+    });
+    if (existingUser) {
+      return res.status(409).json({
+        code: "EMAIL_ALREADY_USED",
+        message: "E-mail j\u00e1 cadastrado.",
+        requestId
+      });
+    }
+
+    let inviteRecord: { id: string; organizationId: string; role: MembershipRole; email: string } | null = null;
+    if (startMode === "INVITE") {
+      logger.info({ requestId, step: "invite:validate:start" }, "Validating invite");
+      const invite = await prisma.invite.findUnique({
+        where: { token: payload.inviteToken },
+        select: { id: true, organizationId: true, role: true, email: true, status: true, expiresAt: true }
+      });
+
+      if (!invite || invite.status !== InviteStatus.PENDING || invite.expiresAt < new Date()) {
+        if (invite && invite.status === InviteStatus.PENDING && invite.expiresAt < new Date()) {
+          await prisma.invite.update({
+            where: { id: invite.id },
+            data: { status: InviteStatus.EXPIRED }
+          });
+        }
+        logger.warn({ requestId, step: "invite:validate:end", result: "invalid" }, "Invite invalid or expired");
+        return res.status(400).json({
+          code: "INVITE_INVALID",
+          message: "Convite inv\u00e1lido ou expirado.",
+          requestId
         });
       }
-      return res.status(400).json({
-        code: "INVITE_INVALID_OR_EXPIRED",
-        message: "Convite inválido ou expirado."
-      });
+
+      const inviteEmail = normalizeEmail(invite.email);
+      if (inviteEmail !== corporateEmail && inviteEmail !== personalEmail) {
+        logger.warn({ requestId, step: "invite:validate:end", result: "email_mismatch" }, "Invite email mismatch");
+        return res.status(400).json({
+          code: "INVITE_INVALID",
+          message: "O e-mail do convite n\u00e3o corresponde ao cadastro informado.",
+          requestId
+        });
+      }
+
+      inviteRecord = {
+        id: invite.id,
+        organizationId: invite.organizationId,
+        role: invite.role,
+        email: invite.email
+      };
+      logger.info({ requestId, step: "invite:validate:end", inviteId: invite.id }, "Invite validated");
     }
 
-    const inviteEmail = normalizeEmail(invite.email);
-    if (inviteEmail !== corporateEmail && inviteEmail !== personalEmail) {
-      return res.status(400).json({
-        code: "INVITE_INVALID_OR_EXPIRED",
-        message: "O e-mail do convite não corresponde ao cadastro informado."
-      });
-    }
-
-    inviteRecord = {
-      id: invite.id,
-      organizationId: invite.organizationId,
-      role: invite.role,
-      email: invite.email
-    };
-  }
-
-  try {
+    logger.info({ requestId, step: "supabase.admin.createUser:start" }, "Creating Supabase user");
     const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: corporateEmail,
       password: payload.password,
@@ -247,15 +312,17 @@ authRouter.post("/register", async (req, res) => {
 
     if (createError || !created.user) {
       const resolved = resolveSupabaseCreateError(createError);
-      logger.error({ err: createError }, "Supabase create user failed");
-      const status = resolved.code === "EMAIL_ALREADY_USED" ? 409 : 400;
-      return res.status(status).json({ code: resolved.code, message: resolved.message });
+      logger.error({ err: createError, requestId, step: "supabase.admin.createUser:end" }, "Supabase create user failed");
+      const status = resolved.code === "EMAIL_ALREADY_USED" ? 409 : resolved.code === "WEAK_PASSWORD" ? 400 : 500;
+      return res.status(status).json({ code: resolved.code, message: resolved.message, requestId });
     }
 
     const supabaseUserId = created.user.id;
+    logger.info({ requestId, step: "supabase.admin.createUser:end", userId: supabaseUserId }, "Supabase user created");
 
     try {
       await prisma.$transaction(async (tx) => {
+        logger.info({ requestId, step: "prisma.user.upsert:start", userId: supabaseUserId }, "Upserting user");
         await tx.user.upsert({
           where: { id: supabaseUserId },
           update: {
@@ -279,8 +346,10 @@ authRouter.post("/register", async (req, res) => {
             timezone: "America/Sao_Paulo"
           }
         });
+        logger.info({ requestId, step: "prisma.user.upsert:end", userId: supabaseUserId }, "User upserted");
 
         if (inviteRecord) {
+          logger.info({ requestId, step: "prisma.organizationMembership.create:start", organizationId: inviteRecord.organizationId }, "Creating membership from invite");
           await tx.organizationMembership.upsert({
             where: {
               organizationId_userId: {
@@ -297,7 +366,9 @@ authRouter.post("/register", async (req, res) => {
               role: inviteRecord.role
             }
           });
+          logger.info({ requestId, step: "prisma.organizationMembership.create:end", organizationId: inviteRecord.organizationId }, "Membership created from invite");
 
+          logger.info({ requestId, step: "invite:accept:start", inviteId: inviteRecord.id }, "Accepting invite");
           await tx.invite.update({
             where: { id: inviteRecord.id },
             data: {
@@ -306,13 +377,15 @@ authRouter.post("/register", async (req, res) => {
               acceptedById: supabaseUserId
             }
           });
+          logger.info({ requestId, step: "invite:accept:end", inviteId: inviteRecord.id }, "Invite accepted");
         }
 
-        if (payload.startMode === "NEW_ORG") {
-          const organizationName = resolveOrganizationName(fullName, corporateEmail);
+        if (startMode === "NEW_ORG") {
+          const organizationName = organizationNameInput || resolveOrganizationName(fullName, corporateEmail);
           const organizationDomain = resolveOrganizationDomain(corporateEmail);
           const slug = await ensureUniqueSlug(tx, slugify(organizationName));
 
+          logger.info({ requestId, step: "prisma.organization.create:start", slug }, "Creating organization");
           await tx.organization.create({
             data: {
               name: organizationName,
@@ -328,29 +401,38 @@ authRouter.post("/register", async (req, res) => {
               }
             }
           });
+          logger.info({ requestId, step: "prisma.organization.create:end", slug }, "Organization created");
         }
       });
     } catch (dbError) {
+      logger.error({ err: dbError, requestId, step: "prisma:transaction" }, "Signup transaction failed");
       try {
+        logger.warn({ requestId, step: "supabase.admin.deleteUser:start", userId: supabaseUserId }, "Rolling back Supabase user");
         await supabaseAdmin.auth.admin.deleteUser(supabaseUserId);
+        logger.warn({ requestId, step: "supabase.admin.deleteUser:end", userId: supabaseUserId }, "Supabase user rolled back");
       } catch (cleanupError) {
-        logger.warn({ err: cleanupError }, "Failed to rollback Supabase user");
+        logger.warn({ err: cleanupError, requestId, step: "supabase.admin.deleteUser:error" }, "Failed to rollback Supabase user");
       }
       throw dbError;
     }
 
+    logger.info({ requestId, step: "supabase.session:start" }, "Creating signup session");
     const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.signInWithPassword({
       email: corporateEmail,
       password: payload.password
     });
 
     if (sessionError || !sessionData.session) {
+      logger.warn({ requestId, step: "supabase.session:end", err: sessionError }, "Signup session not created");
       return res.status(201).json({
         user: { id: supabaseUserId, email: corporateEmail, fullName },
-        session: null
+        session: null,
+        requestId
       });
     }
 
+    logger.info({ requestId, step: "supabase.session:end" }, "Signup session created");
+    logger.info({ requestId, step: "signup:complete" }, "Signup completed");
     return res.status(201).json({
       user: { id: supabaseUserId, email: corporateEmail, fullName },
       session: sessionData.session,
@@ -358,10 +440,37 @@ authRouter.post("/register", async (req, res) => {
         ? {
             organizationId: inviteRecord.organizationId
           }
-        : null
+        : null,
+      requestId
     });
   } catch (error) {
-    logger.error({ err: error }, "Failed to register user");
-    return res.status(500).json({ code: "REGISTER_FAILED", message: "Falha ao criar cadastro." });
+    logger.error({ err: error, requestId, step: "signup:error" }, "Failed to register user");
+    return res.status(500).json({
+      code: "INTERNAL",
+      message: "Erro ao criar conta. Tente novamente em instantes.",
+      requestId
+    });
   }
+};
+
+authRouter.post("/register", registerHandler);
+authRouter.post("/signup", registerHandler);
+
+authRouter.post("/login", (_req, res) => {
+  const requestId = randomUUID();
+  return res.status(501).json({
+    code: "LOGIN_NOT_IMPLEMENTED",
+    message: "Login is handled by Supabase on the client.",
+    requestId
+  });
 });
+
+authRouter.get("/login", (_req, res) => {
+  const requestId = randomUUID();
+  return res.status(501).json({
+    code: "LOGIN_NOT_IMPLEMENTED",
+    message: "Login is handled by Supabase on the client.",
+    requestId
+  });
+});
+
