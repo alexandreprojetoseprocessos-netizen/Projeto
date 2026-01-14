@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { PLAN_DEFINITIONS, formatMonthlyPrice } from "../config/plans";
+import { ANNUAL_DISCOUNT_LABEL, PLAN_DEFINITIONS, formatMonthlyPrice } from "../config/plans";
 
 type Plan = {
   code: string;
@@ -108,7 +108,7 @@ const steps = [
   },
   {
     title: "Faça o pagamento",
-    description: "Cartão, Pix ou boleto (entra no próximo bloco)."
+    description: "Cartão de crédito via Mercado Pago."
   },
   {
     title: "Crie sua organização e projetos",
@@ -141,6 +141,7 @@ const LandingPage = () => {
               </div>
             </div>
             <div className="landing-plan-card__price">{plan.price}</div>
+            <p className="subtext">{ANNUAL_DISCOUNT_LABEL}</p>
             <ul className="landing-plan-card__features">
               {plan.features.map((feature) => (
                 <li key={feature}>{feature}</li>

@@ -6,13 +6,16 @@ import { supabaseAdmin } from "../lib/supabase";
 
 const mapSupabaseUser = (user: User | null) => {
   if (!user) {
-    throw new Error("Supabase session inválida");
+    throw new Error("Supabase session invalida");
   }
+
+  const fullName = (user.user_metadata?.full_name as string | undefined) ?? user.email ?? "";
 
   return {
     id: user.id,
     email: user.email ?? "",
-    name: (user.user_metadata?.full_name as string | undefined) ?? user.email
+    name: fullName,
+    fullName
   };
 };
 

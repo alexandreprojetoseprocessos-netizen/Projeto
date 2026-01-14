@@ -1,11 +1,15 @@
 import { prisma } from "@gestao/database";
-import { OrganizationStatus, ProjectStatus } from "@prisma/client";
+import { OrganizationStatus } from "@prisma/client";
 
 export const countOrganizationsForLimit = async (userId: string) => {
   return prisma.organizationMembership.count({
     where: {
       userId,
-      organization: { status: { in: [OrganizationStatus.ACTIVE, OrganizationStatus.DEACTIVATED] } }
+      organization: {
+        status: {
+          in: [OrganizationStatus.ACTIVE, OrganizationStatus.DEACTIVATED, OrganizationStatus.SOFT_DELETED]
+        }
+      }
     }
   });
 };
@@ -13,8 +17,7 @@ export const countOrganizationsForLimit = async (userId: string) => {
 export const countProjectsForLimit = async (organizationId: string) => {
   return prisma.project.count({
     where: {
-      organizationId,
-      status: { not: ProjectStatus.CANCELED }
+      organizationId
     }
   });
 };

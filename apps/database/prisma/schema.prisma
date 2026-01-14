@@ -14,6 +14,23 @@ enum OrganizationStatus {
   SOFT_DELETED
 }
 
+enum DocumentType {
+  CPF
+  CNPJ
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
 model Organization {
   id          String                   @id @default(uuid())
   name        String
@@ -28,6 +45,7 @@ model Organization {
   deletedAt   DateTime?
   auditLogs   AuditLog[]
   memberships OrganizationMembership[]
+  invites     Invite[]
   projects    Project[]
   templates   ProjectTemplate[]
   tags        Tag[]
@@ -36,6 +54,10 @@ model Organization {
 model User {
   id                  String                   @id @default(uuid())
   email               String                   @unique
+  corporateEmail      String?                  @unique
+  personalEmail       String?
+  documentType        DocumentType?
+  documentNumber      String?
   fullName            String
   passwordHash        String
   locale              String                   @default("pt-BR")
@@ -57,6 +79,8 @@ model User {
   approvedTimeEntries TimeEntry[]              @relation("TimeEntryApprover")
   timeEntries         TimeEntry[]
   ownedNodes          WbsNode[]                @relation("NodeOwner")
+  invitesCreated      Invite[]                 @relation("InviteCreatedBy")
+  invitesAccepted     Invite[]                 @relation("InviteAcceptedBy")
   subscriptions       Subscription[]
 }
 
@@ -72,6 +96,28 @@ model OrganizationMembership {
   responsibleNodes WbsNode[]    @relation("ResponsibleMembership")
 
   @@unique([organizationId, userId])
+}
+
+model Invite {
+  id             String          @id @default(uuid())
+  organizationId String
+  email          String
+  token          String          @unique
+  status         InviteStatus    @default(PENDING)
+  role           MembershipRole  @default(MEMBER)
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  createdById    String?
+  acceptedById   String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy     User?        @relation("InviteCreatedBy", fields: [createdById], references: [id])
+  acceptedBy    User?        @relation("InviteAcceptedBy", fields: [acceptedById], references: [id])
+
+  @@index([organizationId, status])
+  @@index([email])
 }
 
 model Project {
@@ -425,12 +471,20 @@ model Subscription {
   id              String              @id @default(cuid())
   userId          String
   productId       String
-  status          SubscriptionStatus  @default(ACTIVE)
-  startedAt       DateTime            @default(now())
+  status          SubscriptionStatus  @default(PENDING)
+  billingCycle    BillingCycle        @default(MONTHLY)
+  startedAt       DateTime?
+  currentPeriodEnd DateTime?
   expiresAt       DateTime?
   paymentMethod   String?
   paymentProvider String?
   providerRef     String?
+  mpPreferenceId  String?
+  mpPaymentId     String?             @unique
+  mpCustomerId    String?
+  mpSubscriptionId String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   user    User    @relation(fields: [userId], references: [id])
   product Product @relation(fields: [productId], references: [id])
@@ -522,6 +576,7 @@ enum NotificationChannel {
 }
 
 enum SubscriptionStatus {
+  PENDING
   ACTIVE
   PAST_DUE
   CANCELED

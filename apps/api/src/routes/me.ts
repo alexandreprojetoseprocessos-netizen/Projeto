@@ -40,7 +40,10 @@ meRouter.get("/", async (req, res) => {
 
   const organizations = organizationsWithCounts.filter((org) => org.status === OrganizationStatus.ACTIVE);
   const organizationsForLimit = organizationsWithCounts.filter(
-    (org) => org.status === OrganizationStatus.ACTIVE || org.status === OrganizationStatus.DEACTIVATED
+    (org) =>
+      org.status === OrganizationStatus.ACTIVE ||
+      org.status === OrganizationStatus.DEACTIVATED ||
+      org.status === OrganizationStatus.SOFT_DELETED
   );
 
   const maxOrganizations = getOrgLimitForPlan(planCode);
@@ -85,6 +88,9 @@ meRouter.get("/subscription", async (req, res) => {
           id: subscription.id,
           status: subscription.status,
           paymentMethod: subscription.paymentMethod,
+          paymentProvider: subscription.paymentProvider,
+          billingCycle: subscription.billingCycle,
+          currentPeriodEnd: subscription.currentPeriodEnd,
           startedAt: subscription.startedAt,
           expiresAt: subscription.expiresAt,
           product: subscription.product

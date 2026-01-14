@@ -21,6 +21,9 @@ const envSchema = z.object({
   SUPABASE_DB_PASSWORD: z.string(),
   JWT_SECRET: z.string(),
   WEBHOOK_SECRET: z.string().optional(),
+  MP_ACCESS_TOKEN: z.string().optional(),
+  MP_WEBHOOK_SECRET: z.string().optional(),
+  PUBLIC_API_URL: z.string().optional(),
   GITHUB_APP_ID: z.string().optional(),
   GITHUB_CLIENT_ID: z.string().optional(),
   GITHUB_CLIENT_SECRET: z.string().optional(),
@@ -65,6 +68,11 @@ export const config = {
   },
   jwtSecret: parsed.data.JWT_SECRET,
   webhookSecret: parsed.data.WEBHOOK_SECRET,
+  mercadoPago: {
+    accessToken: parsed.data.MP_ACCESS_TOKEN,
+    webhookSecret: parsed.data.MP_WEBHOOK_SECRET,
+    publicApiUrl: parsed.data.PUBLIC_API_URL
+  },
   github: {
     appId: parsed.data.GITHUB_APP_ID,
     clientId: parsed.data.GITHUB_CLIENT_ID,

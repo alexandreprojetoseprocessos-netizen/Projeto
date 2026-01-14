@@ -8,8 +8,11 @@ import { PLAN_DEFINITIONS, formatBillingPrice, formatMonthlyPrice } from "../con
 
 type Subscription = {
   id: string;
-  status: "ACTIVE" | "PAST_DUE" | "CANCELED";
+  status: "ACTIVE" | "PAST_DUE" | "CANCELED" | "PENDING";
   paymentMethod?: string | null;
+  paymentProvider?: string | null;
+  billingCycle?: string | null;
+  currentPeriodEnd?: string | null;
   startedAt?: string | null;
   expiresAt?: string | null;
   product?: {
@@ -20,10 +23,27 @@ type Subscription = {
   } | null;
 };
 
+type LimitsInfo = {
+  organizationLimits?: {
+    planCode: string | null;
+    max: number | null;
+    used: number;
+    remaining: number | null;
+  };
+  projectLimits?: {
+    planCode: string | null;
+    max: number | null;
+    used: number;
+    remaining: number | null;
+    perOrganization?: number | null;
+  };
+};
+
 const statusLabel: Record<string, string> = {
   ACTIVE: "Ativa",
   PAST_DUE: "Em atraso",
-  CANCELED: "Cancelada"
+  CANCELED: "Cancelada",
+  PENDING: "Processando"
 };
 
 const planCards = [
@@ -45,6 +65,7 @@ const PlanPage = () => {
   const canEditBilling = canManageBilling(orgRole);
 
   const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [limits, setLimits] = useState<LimitsInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -72,8 +93,26 @@ const PlanPage = () => {
     }
   };
 
+  const loadLimits = async () => {
+    if (!token) return;
+    try {
+      const response = await fetch(apiUrl("/me"), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) return;
+      setLimits({
+        organizationLimits: body?.organizationLimits,
+        projectLimits: body?.projectLimits
+      });
+    } catch {
+      setLimits(null);
+    }
+  };
+
   useEffect(() => {
     loadSubscription();
+    loadLimits();
   }, [token]);
 
   const handleChangePlan = async (planCode: string) => {
@@ -123,8 +162,18 @@ const PlanPage = () => {
   };
 
   const product = subscription?.product;
-  const price = useMemo(() => formatBillingPrice(product?.priceCents, product?.billingPeriod), [product]);
+  const price = useMemo(
+    () => formatBillingPrice(product?.priceCents, product?.billingPeriod),
+    [product]
+  );
+  const cycleLabel =
+    subscription?.billingCycle === "ANNUAL"
+      ? "Anual"
+      : subscription?.billingCycle === "MONTHLY"
+      ? "Mensal"
+      : "-";
   const statusText = subscription?.status ? statusLabel[subscription.status] ?? subscription.status : "-";
+  const periodEnd = subscription?.currentPeriodEnd ?? subscription?.expiresAt ?? null;
 
   return (
     <div className="plan-page">
@@ -147,6 +196,7 @@ const PlanPage = () => {
               <div>
                 <p className="muted">Preço</p>
                 <strong>{price}</strong>
+                <p className="muted">Ciclo: {cycleLabel}</p>
               </div>
               <div className="plan-status">
                 <span className={`status-chip status-${(subscription?.status ?? "none").toLowerCase()}`}>
@@ -158,10 +208,34 @@ const PlanPage = () => {
             <div className="plan-details">
               <p>Início: {subscription?.startedAt ? new Date(subscription.startedAt).toLocaleDateString("pt-BR") : "-"}</p>
               <p>
-                Válida até: {subscription?.expiresAt ? new Date(subscription.expiresAt).toLocaleDateString("pt-BR") : "Sem término"}
+                Válida até: {periodEnd ? new Date(periodEnd).toLocaleDateString("pt-BR") : "Sem término"}
               </p>
               <p>Pagamento: {subscription?.paymentMethod ?? "Não informado"}</p>
             </div>
+
+            {limits?.organizationLimits && (
+              <div className="plan-usage">
+                <h4>Limites do plano</h4>
+                <div className="plan-usage-grid">
+                  <div>
+                    <p className="muted">Organizações</p>
+                    <strong>
+                      {limits.organizationLimits.used} / {limits.organizationLimits.max ?? "Ilimitado"}
+                    </strong>
+                  </div>
+                  <div>
+                    <p className="muted">Projetos (total)</p>
+                    <strong>
+                      {limits.projectLimits?.used ?? 0} / {limits.projectLimits?.max ?? "Ilimitado"}
+                    </strong>
+                  </div>
+                  <div>
+                    <p className="muted">Projetos por organização</p>
+                    <strong>{limits.projectLimits?.perOrganization ?? "Ilimitado"}</strong>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {subscription?.status === "CANCELED" && (
               <div className="warning-box">

@@ -1,4 +1,5 @@
 export type PlanCode = "START" | "BUSINESS" | "ENTERPRISE";
+export type BillingCycle = "MONTHLY" | "ANNUAL";
 
 export type PlanDefinition = {
   code: PlanCode;
@@ -90,4 +91,16 @@ export const getPlanProduct = (code?: string | null) => {
     priceCents: plan.priceCents,
     billingPeriod: plan.billingPeriod
   };
+};
+
+export const calculateAnnualPriceCents = (monthlyPriceCents: number, discountPercent: number) =>
+  Math.round(monthlyPriceCents * 12 * (1 - discountPercent / 100));
+
+export const getPlanPriceCents = (code?: string | null, cycle: BillingCycle = "MONTHLY") => {
+  const plan = getPlanDefinition(code);
+  if (!plan) return null;
+  if (cycle === "ANNUAL") {
+    return calculateAnnualPriceCents(plan.priceCents, plan.annualDiscountPercent);
+  }
+  return plan.priceCents;
 };

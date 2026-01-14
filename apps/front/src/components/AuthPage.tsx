@@ -1,22 +1,89 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
+import type { RegisterPayload } from "../contexts/AuthContext";
 
 type AuthPageProps = {
   onSubmit: (payload: { email: string; password: string }) => Promise<void> | void;
-  onSignUp: (payload: { email: string; password: string }) => Promise<void> | void;
+  onSignUp: (payload: RegisterPayload) => Promise<void> | void;
   error?: string | null;
 };
+
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
+const stripDocument = (value: string) => value.replace(/\D/g, "");
+
+const formatCpf = (value: string) => {
+  const digits = stripDocument(value).slice(0, 11);
+  return digits
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+};
+
+const formatCnpj = (value: string) => {
+  const digits = stripDocument(value).slice(0, 14);
+  return digits
+    .replace(/(\d{2})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1/$2")
+    .replace(/(\d{4})(\d{1,2})$/, "$1-$2");
+};
+
+const isRepeatedDigits = (value: string) => /^(\d)\1+$/.test(value);
+
+const validateCpf = (raw: string) => {
+  const cpf = stripDocument(raw);
+  if (cpf.length !== 11 || isRepeatedDigits(cpf)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i += 1) {
+    sum += Number(cpf[i]) * (10 - i);
+  }
+  let check = (sum * 10) % 11;
+  if (check === 10) check = 0;
+  if (check !== Number(cpf[9])) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i += 1) {
+    sum += Number(cpf[i]) * (11 - i);
+  }
+  check = (sum * 10) % 11;
+  if (check === 10) check = 0;
+  return check === Number(cpf[10]);
+};
+
+const validateCnpj = (raw: string) => {
+  const cnpj = stripDocument(raw);
+  if (cnpj.length !== 14 || isRepeatedDigits(cnpj)) return false;
+  const calcCheck = (length: number) => {
+    let sum = 0;
+    let pos = length - 7;
+    for (let i = length; i >= 1; i -= 1) {
+      sum += Number(cnpj[length - i]) * pos;
+      pos -= 1;
+      if (pos < 2) pos = 9;
+    }
+    const result = sum % 11;
+    return result < 2 ? 0 : 11 - result;
+  };
+  const check1 = calcCheck(12);
+  const check2 = calcCheck(13);
+  return check1 === Number(cnpj[12]) && check2 === Number(cnpj[13]);
+};
+
+const isEmailValid = (value: string) => /\S+@\S+\.\S+/.test(value);
 
 export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
   const location = useLocation();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const selectedPlan = params.get("plan");
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [corporateEmail, setCorporateEmail] = useState("");
+  const [personalEmail, setPersonalEmail] = useState("");
+  const [documentType, setDocumentType] = useState<"CPF" | "CNPJ">("CPF");
+  const [documentNumber, setDocumentNumber] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [orgMode, setOrgMode] = useState<"new" | "invite">("new");
+  const [inviteToken, setInviteToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const planNameMap: Record<string, string> = {
@@ -32,20 +99,65 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
     }
   }, [selectedPlan]);
 
+  useEffect(() => {
+    setDocumentNumber((current) => (documentType === "CPF" ? formatCpf(current) : formatCnpj(current)));
+  }, [documentType]);
+
+  const isRegisterValid = useMemo(() => {
+    if (!fullName.trim()) return false;
+    if (!isEmailValid(corporateEmail) || !isEmailValid(personalEmail)) return false;
+    if (normalizeEmail(corporateEmail) === normalizeEmail(personalEmail)) return false;
+    if (documentType === "CPF" && !validateCpf(documentNumber)) return false;
+    if (documentType === "CNPJ" && !validateCnpj(documentNumber)) return false;
+    if (!password || password.length < 6) return false;
+    if (password !== confirmPassword) return false;
+    if (orgMode === "invite" && !inviteToken.trim()) return false;
+    return true;
+  }, [
+    fullName,
+    corporateEmail,
+    personalEmail,
+    documentType,
+    documentNumber,
+    password,
+    confirmPassword,
+    orgMode,
+    inviteToken
+  ]);
+
+  const isLoginValid = Boolean(corporateEmail.trim() && password.trim());
+  const isDisabled = submitting || (mode === "register" ? !isRegisterValid : !isLoginValid);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLocalError(null);
+    if (mode === "register" && !isRegisterValid) {
+      setLocalError("Preencha todos os campos obrigatórios corretamente.");
+      return;
+    }
+    if (mode === "login" && !isLoginValid) {
+      setLocalError("Informe seu e-mail corporativo e senha.");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
       if (mode === "register") {
-        if (password !== confirmPassword) {
-          setLocalError("As senhas não coincidem.");
-          return;
-        }
-        await onSignUp({ email, password });
+        const payload: RegisterPayload = {
+          fullName: fullName.trim(),
+          corporateEmail: normalizeEmail(corporateEmail),
+          personalEmail: normalizeEmail(personalEmail),
+          documentType,
+          documentNumber: stripDocument(documentNumber),
+          password,
+          startMode: orgMode === "invite" ? "INVITE" : "NEW_ORG",
+          inviteToken: orgMode === "invite" ? inviteToken.trim() : undefined
+        };
+
+        await onSignUp(payload);
       } else {
-        await onSubmit({ email, password });
+        await onSubmit({ email: normalizeEmail(corporateEmail), password });
       }
     } catch (submitError) {
       setLocalError(
@@ -58,6 +170,7 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
 
   const displayedError = localError ?? error ?? null;
   const submitLabel = submitting ? "Processando..." : mode === "login" ? "Entrar" : "Criar conta";
+  const documentPlaceholder = documentType === "CPF" ? "000.000.000-00" : "00.000.000/0000-00";
 
   return (
     <div className="auth-page">
@@ -97,8 +210,8 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
                 <input
                   type="text"
                   placeholder="Como devemos te chamar?"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
                   required
                 />
               </label>
@@ -109,11 +222,67 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
               <input
                 type="email"
                 placeholder="nome@empresa.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                value={corporateEmail}
+                onChange={(event) => setCorporateEmail(event.target.value)}
                 required
               />
             </label>
+
+            {mode === "register" && (
+              <label className="input-group">
+                <span>E-mail pessoal</span>
+                <input
+                  type="email"
+                  placeholder="nome@gmail.com"
+                  value={personalEmail}
+                  onChange={(event) => setPersonalEmail(event.target.value)}
+                  required
+                />
+              </label>
+            )}
+
+            {mode === "register" && (
+              <div className="auth-doc">
+                <div className="auth-doc__header">
+                  <span>Documento</span>
+                  <div className="auth-doc__types">
+                    <label>
+                      <input
+                        type="radio"
+                        name="document-type"
+                        value="CPF"
+                        checked={documentType === "CPF"}
+                        onChange={() => setDocumentType("CPF")}
+                      />
+                      <span>CPF</span>
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name="document-type"
+                        value="CNPJ"
+                        checked={documentType === "CNPJ"}
+                        onChange={() => setDocumentType("CNPJ")}
+                      />
+                      <span>CNPJ</span>
+                    </label>
+                  </div>
+                </div>
+                <label className="input-group">
+                  <span>Número do documento</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder={documentPlaceholder}
+                    value={documentNumber}
+                    onChange={(event) =>
+                      setDocumentNumber(documentType === "CPF" ? formatCpf(event.target.value) : formatCnpj(event.target.value))
+                    }
+                    required
+                  />
+                </label>
+              </div>
+            )}
 
             <label className="input-group">
               <span>Senha</span>
@@ -175,7 +344,21 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
               </div>
             )}
 
-            <button className="primary-button" type="submit" disabled={submitting} data-loading={submitting}>
+            {mode === "register" && orgMode === "invite" && (
+              <label className="input-group">
+                <span>Código do convite</span>
+                <input
+                  type="text"
+                  placeholder="Cole aqui o token do convite"
+                  value={inviteToken}
+                  onChange={(event) => setInviteToken(event.target.value)}
+                  required
+                />
+                <small className="input-helper">Peça ao administrador o convite da organização.</small>
+              </label>
+            )}
+
+            <button className="primary-button" type="submit" disabled={isDisabled} data-loading={submitting}>
               {submitLabel}
             </button>
 

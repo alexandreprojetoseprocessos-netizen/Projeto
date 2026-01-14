@@ -13,11 +13,15 @@ import { templatesRouter } from "./routes/templates";
 import { organizationsRouter } from "./routes/organizations";
 import { logger } from "./config/logger";
 import { subscriptionsRouter } from "./routes/subscriptions";
+import { authRouter } from "./routes/auth";
+import { invitesRouter } from "./routes/invites";
+import { billingRouter } from "./routes/billing";
 import teamRouter from "./routes/team";
 import { serviceCatalogRouter } from "./routes/serviceCatalog";
 
 export const createApp = () => {
   const app = express();
+  app.set("trust proxy", 1);
 
   app.use(helmet());
   const allowedOrigins = [
@@ -55,6 +59,7 @@ export const createApp = () => {
   app.use(morgan("dev"));
 
   app.use("/health", healthRouter);
+  app.use("/auth", authRouter);
   app.use("/projects", projectsRouter);
   app.use("/wbs", wbsRouter);
   app.use("/reports", reportsRouter);
@@ -63,6 +68,8 @@ export const createApp = () => {
   app.use("/me", meRouter);
   app.use("/organizations", organizationsRouter);
   app.use("/subscriptions", subscriptionsRouter);
+  app.use("/billing", billingRouter);
+  app.use("/", invitesRouter);
   app.use("/organizations", teamRouter);
   app.use("/service-catalog", serviceCatalogRouter);
 

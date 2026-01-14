@@ -18,22 +18,34 @@ subscriptionsRouter.post("/checkout", async (req, res) => {
     return res.status(401).json({ message: "Authentication required" });
   }
 
-  const { planCode, paymentMethod } = req.body ?? {};
+  const { planCode, paymentMethod, billingCycle } = req.body ?? {};
   if (!planCode || typeof planCode !== "string") {
     return res.status(400).json({ message: "planCode é obrigatório" });
   }
   if (!paymentMethod || typeof paymentMethod !== "string" || !["card", "pix", "boleto"].includes(paymentMethod)) {
     return res.status(400).json({ message: "Forma de pagamento inválida" });
   }
+  const normalizedCycle = typeof billingCycle === "string" ? billingCycle.toUpperCase() : "MONTHLY";
+  if (!["MONTHLY", "ANNUAL"].includes(normalizedCycle)) {
+    return res.status(400).json({ message: "billingCycle inválido" });
+  }
 
   try {
-    const subscription = await createOrActivateSubscriptionForUser(req.user, planCode, paymentMethod);
+    const subscription = await createOrActivateSubscriptionForUser(
+      req.user,
+      planCode,
+      paymentMethod,
+      normalizedCycle as any
+    );
     return res.status(201).json({
       status: "success",
       subscription: {
         id: subscription.id,
         status: subscription.status,
         paymentMethod: subscription.paymentMethod,
+        paymentProvider: subscription.paymentProvider,
+        billingCycle: subscription.billingCycle,
+        currentPeriodEnd: subscription.currentPeriodEnd,
         product: subscription.product
           ? {
               code: subscription.product.code,
@@ -60,6 +72,9 @@ subscriptionsRouter.get("/me", async (req, res) => {
           id: subscription.id,
           status: subscription.status,
           paymentMethod: subscription.paymentMethod,
+          paymentProvider: subscription.paymentProvider,
+          billingCycle: subscription.billingCycle,
+          currentPeriodEnd: subscription.currentPeriodEnd,
           startedAt: subscription.startedAt,
           expiresAt: subscription.expiresAt,
           product: subscription.product
@@ -85,9 +100,9 @@ subscriptionsRouter.post("/change-plan", async (req, res) => {
 
   const membership = await prisma.organizationMembership.findFirst({ where: { userId: req.user.id } });
   if (!membership || !canManageBilling(membership.role as any)) {
-    return res
-      .status(403)
-      .json({ message: "Você não tem permissão para alterar o plano. Apenas o proprietário pode gerenciar a assinatura." });
+    return res.status(403).json({
+      message: "Você não tem permissão para alterar o plano. Apenas o proprietário pode gerenciar a assinatura."
+    });
   }
 
   const subscription = await prisma.subscription.findFirst({
@@ -128,9 +143,9 @@ subscriptionsRouter.post("/cancel", async (req, res) => {
 
   const membership = await prisma.organizationMembership.findFirst({ where: { userId: req.user.id } });
   if (!membership || !canManageBilling(membership.role as any)) {
-    return res
-      .status(403)
-      .json({ message: "Você não tem permissão para cancelar a assinatura. Apenas o proprietário pode gerenciar a assinatura." });
+    return res.status(403).json({
+      message: "Você não tem permissão para cancelar a assinatura. Apenas o proprietário pode gerenciar a assinatura."
+    });
   }
 
   const subscription = await prisma.subscription.findFirst({

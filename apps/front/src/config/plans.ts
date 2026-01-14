@@ -1,4 +1,5 @@
 export type PlanCode = "START" | "BUSINESS" | "ENTERPRISE";
+export type BillingCycle = "MONTHLY" | "ANNUAL";
 
 export type PlanDefinition = {
   code: PlanCode;
@@ -39,7 +40,7 @@ export const PLAN_DEFINITIONS: Record<PlanCode, PlanDefinition> = {
       summary: "Ideal para validação e projetos iniciais",
       features: [
         "1 organização",
-        "Até 3 projetos",
+        "Até 3 projetos por organização",
         "Controle essencial de tarefas",
         ANNUAL_DISCOUNT_LABEL
       ]
@@ -94,11 +95,22 @@ export const PLAN_DEFINITIONS: Record<PlanCode, PlanDefinition> = {
 const formatCurrency = (priceCents: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(priceCents / 100);
 
+export const calculateAnnualPriceCents = (monthlyPriceCents: number, discountPercent: number) =>
+  Math.round(monthlyPriceCents * 12 * (1 - discountPercent / 100));
+
+export const getPlanPriceCents = (code: PlanCode, cycle: BillingCycle) => {
+  const plan = PLAN_DEFINITIONS[code];
+  if (cycle === "ANNUAL") {
+    return calculateAnnualPriceCents(plan.priceCents, plan.annualDiscountPercent);
+  }
+  return plan.priceCents;
+};
+
 export const formatMonthlyPrice = (priceCents: number, withSpace = true) =>
   `${formatCurrency(priceCents)}${withSpace ? " / mês" : "/mês"}`;
 
 export const formatBillingPrice = (priceCents?: number | null, period?: string | null) => {
-  if (!priceCents && priceCents !== 0) return "-";
+  if (priceCents === null || priceCents === undefined) return "-";
   const base = formatCurrency(priceCents);
   if (!period) return base;
   if (period === "monthly") return `${base}/mês`;

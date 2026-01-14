@@ -1,34 +1,21 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { apiUrl } from "../config/api";
-import { PLAN_DEFINITIONS, formatMonthlyPrice } from "../config/plans";
-const plans = {
-    START: {
-        name: PLAN_DEFINITIONS.START.name,
-        price: formatMonthlyPrice(PLAN_DEFINITIONS.START.priceCents, false)
-    },
-    BUSINESS: {
-        name: PLAN_DEFINITIONS.BUSINESS.name,
-        price: formatMonthlyPrice(PLAN_DEFINITIONS.BUSINESS.priceCents, false)
-    },
-    ENTERPRISE: {
-        name: PLAN_DEFINITIONS.ENTERPRISE.name,
-        price: formatMonthlyPrice(PLAN_DEFINITIONS.ENTERPRISE.priceCents, false)
-    }
-};
+import { ANNUAL_DISCOUNT_LABEL, PLAN_DEFINITIONS, formatBillingPrice, formatMonthlyPrice, getPlanPriceCents } from "../config/plans";
 const baseBenefits = [
     "Usuários ilimitados",
-    "Kanban avançado, EDT e cronograma",
+    "Kanban, EAP e cronograma",
     "Documentos, anexos e aprovações",
     "Relatórios e portfólio em tempo real"
 ];
-export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionActivated }) => {
+export const CheckoutPage = ({ subscription, subscriptionError }) => {
     const navigate = useNavigate();
     const { token, signOut } = useAuth();
     const [error, setError] = useState(subscriptionError ?? null);
     const [isLoading, setIsLoading] = useState(false);
+    const [billingCycle, setBillingCycle] = useState("MONTHLY");
     const [selectedPlanCode] = useState(() => {
         if (typeof window === "undefined")
             return "START";
@@ -39,44 +26,48 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
             window.localStorage.setItem("gp:selectedPlan", selectedPlanCode);
         }
     }, [selectedPlanCode]);
-    const selectedPlan = selectedPlanCode && plans[selectedPlanCode]
-        ? plans[selectedPlanCode]
-        : plans.START;
-    const handleCheckout = async (method) => {
+    const plan = selectedPlanCode && PLAN_DEFINITIONS[selectedPlanCode]
+        ? PLAN_DEFINITIONS[selectedPlanCode]
+        : PLAN_DEFINITIONS.START;
+    const priceCents = getPlanPriceCents(plan.code, billingCycle);
+    const priceLabel = useMemo(() => {
+        if (billingCycle === "MONTHLY") {
+            return formatMonthlyPrice(priceCents, false);
+        }
+        return formatBillingPrice(priceCents, "annual");
+    }, [billingCycle, priceCents]);
+    const handleCheckout = async () => {
         if (!token) {
             setError("Sessão expirada. Faça login novamente.");
-            return;
-        }
-        if (!selectedPlanCode) {
-            setError("Nenhum plano selecionado. Volte e escolha um plano para continuar.");
             return;
         }
         setIsLoading(true);
         setError(null);
         try {
-            const response = await fetch(apiUrl("/subscriptions/checkout"), {
+            const response = await fetch(apiUrl("/billing/checkout"), {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${token}`
                 },
                 body: JSON.stringify({
-                    planCode: selectedPlanCode,
-                    paymentMethod: method
+                    planId: plan.code,
+                    billingCycle
                 })
             });
             const body = await response.json().catch(() => ({}));
             if (!response.ok) {
-                const message = body.message ?? "Falha ao processar pagamento.";
+                const message = body.message ?? "Falha ao iniciar pagamento.";
                 throw new Error(message);
             }
-            if (onSubscriptionActivated) {
-                await onSubscriptionActivated();
+            if (body?.init_point) {
+                window.location.href = body.init_point;
+                return;
             }
-            navigate("/organizacao", { replace: true });
+            throw new Error("Link de pagamento não disponível.");
         }
         catch (checkoutError) {
-            setError(checkoutError instanceof Error ? checkoutError.message : "Falha ao processar pagamento.");
+            setError(checkoutError instanceof Error ? checkoutError.message : "Falha ao iniciar pagamento.");
         }
         finally {
             setIsLoading(false);
@@ -85,5 +76,5 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
     if (subscription?.status === "ACTIVE") {
         return (_jsx("div", { className: "checkout-page", children: _jsxs("section", { className: "checkout-card", children: [_jsx("p", { className: "eyebrow", children: "Assinatura ativa" }), _jsx("h2", { children: "Voc\u00EA j\u00E1 tem acesso liberado" }), _jsxs("p", { className: "subtext", children: ["Plano ", subscription.product?.name ?? subscription.product?.code ?? selectedPlanCode, " ativo. Voc\u00EA pode criar sua organiza\u00E7\u00E3o e acessar os projetos normalmente."] }), _jsxs("div", { className: "payment-actions", children: [_jsx("button", { type: "button", className: "primary-button", onClick: () => navigate("/organizacao"), children: "Ir para cria\u00E7\u00E3o da organiza\u00E7\u00E3o" }), _jsx("button", { type: "button", className: "secondary-button", onClick: () => navigate("/dashboard"), children: "Ver dashboard" })] })] }) }));
     }
-    return (_jsxs("div", { className: "checkout-page", children: [_jsx("div", { className: "checkout-page-header", children: _jsx("button", { type: "button", className: "ghost-button", onClick: signOut, children: "Sair" }) }), _jsxs("section", { className: "checkout-card", children: [_jsx("p", { className: "eyebrow", children: "Checkout seguro" }), _jsx("h2", { children: "Confirme o pagamento do seu plano" }), _jsxs("div", { className: "checkout-plan", children: [_jsxs("div", { children: [_jsx("p", { className: "muted", children: "Plano selecionado" }), _jsx("h3", { children: selectedPlan.name }), _jsx("p", { className: "checkout-price", children: selectedPlan.price })] }), _jsx("div", { className: "plan-benefits", children: baseBenefits.map((benefit) => (_jsx("span", { children: benefit }, benefit))) })] }), _jsxs("div", { className: "checkout-info-row", children: [_jsx("p", { className: "subtext", children: "Voc\u00EA poder\u00E1 pagar com cart\u00E3o, Pix ou boleto. Nesta vers\u00E3o de teste, o pagamento ser\u00E1 simulado e a assinatura ser\u00E1 ativada automaticamente." }), _jsx("button", { type: "button", className: "ghost-button logout-button", onClick: signOut, children: "Sair" })] }), error && _jsx("p", { className: "error-text", children: error }), _jsxs("div", { className: "payment-actions", children: [_jsx("button", { type: "button", className: "primary-button", disabled: isLoading, onClick: () => handleCheckout("card"), children: isLoading ? "Processando..." : "Pagar com Cartão" }), _jsx("button", { type: "button", className: "secondary-button", disabled: isLoading, onClick: () => handleCheckout("pix"), children: "Pagar com Pix" }), _jsx("button", { type: "button", className: "ghost-button", disabled: isLoading, onClick: () => handleCheckout("boleto"), children: "Pagar com Boleto" })] })] }), _jsxs("aside", { className: "checkout-sidebar", children: [_jsx("h4", { children: "Resumo r\u00E1pido" }), _jsxs("ul", { children: [_jsxs("li", { children: [_jsx("strong", { children: "Passo 1:" }), " confirme o plano e o m\u00E9todo de pagamento."] }), _jsxs("li", { children: [_jsx("strong", { children: "Passo 2:" }), " assinatura fica ativa imediatamente."] }), _jsxs("li", { children: [_jsx("strong", { children: "Passo 3:" }), " crie sua organiza\u00E7\u00E3o e projetos."] })] }), _jsx("p", { className: "muted", children: "D\u00FAvidas? Fale com nosso time e pe\u00E7a ajuda no onboarding." })] })] }));
+    return (_jsxs("div", { className: "checkout-page", children: [_jsx("div", { className: "checkout-page-header", children: _jsx("button", { type: "button", className: "ghost-button", onClick: signOut, children: "Sair" }) }), _jsxs("section", { className: "checkout-card", children: [_jsx("p", { className: "eyebrow", children: "Checkout seguro" }), _jsx("h2", { children: "Confirme o pagamento do seu plano" }), _jsxs("div", { className: "checkout-plan", children: [_jsxs("div", { children: [_jsx("p", { className: "muted", children: "Plano selecionado" }), _jsx("h3", { children: plan.name }), _jsx("p", { className: "checkout-price", children: priceLabel }), _jsxs("div", { className: "checkout-billing-toggle", children: [_jsx("button", { type: "button", className: `chip chip-outline ${billingCycle === "MONTHLY" ? "is-active" : ""}`, onClick: () => setBillingCycle("MONTHLY"), children: "Mensal" }), _jsx("button", { type: "button", className: `chip chip-soft ${billingCycle === "ANNUAL" ? "is-active" : ""}`, onClick: () => setBillingCycle("ANNUAL"), children: "Anual" })] }), _jsx("p", { className: "muted", children: ANNUAL_DISCOUNT_LABEL })] }), _jsx("div", { className: "plan-benefits", children: [...plan.marketing.features, ...baseBenefits].map((benefit) => (_jsx("span", { children: benefit }, benefit))) })] }), _jsxs("div", { className: "checkout-info-row", children: [_jsx("p", { className: "subtext", children: "Pagamento com cart\u00E3o via Mercado Pago. Ap\u00F3s a confirma\u00E7\u00E3o, sua assinatura \u00E9 ativada automaticamente." }), _jsx("button", { type: "button", className: "ghost-button logout-button", onClick: signOut, children: "Sair" })] }), error && _jsx("p", { className: "error-text", children: error }), _jsx("div", { className: "payment-actions", children: _jsx("button", { type: "button", className: "primary-button", disabled: isLoading, onClick: handleCheckout, children: isLoading ? "Redirecionando..." : "Pagar com cartão" }) })] }), _jsxs("aside", { className: "checkout-sidebar", children: [_jsx("h4", { children: "Resumo r\u00E1pido" }), _jsxs("ul", { children: [_jsxs("li", { children: [_jsx("strong", { children: "Passo 1:" }), " confirme o plano e a forma de pagamento."] }), _jsxs("li", { children: [_jsx("strong", { children: "Passo 2:" }), " finalize o checkout no Mercado Pago."] }), _jsxs("li", { children: [_jsx("strong", { children: "Passo 3:" }), " acesse o painel e crie sua organiza\u00E7\u00E3o."] })] }), _jsx("p", { className: "muted", children: "D\u00FAvidas? Fale com nosso time durante o onboarding." })] })] }));
 };

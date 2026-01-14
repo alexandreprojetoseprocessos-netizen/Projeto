@@ -1,6 +1,7 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { apiUrl } from "../config/api";
 const AuthContext = createContext(undefined);
 export const AuthProvider = ({ children }) => {
     const [session, setSession] = useState(null);
@@ -14,9 +15,9 @@ export const AuthProvider = ({ children }) => {
             setSession(data.session);
             setStatus(data.session ? "authenticated" : "unauthenticated");
         });
-        const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-            setStatus(session ? "authenticated" : "unauthenticated");
+        const { data: listener } = supabase.auth.onAuthStateChange((_event, updatedSession) => {
+            setSession(updatedSession);
+            setStatus(updatedSession ? "authenticated" : "unauthenticated");
             setError(null);
         });
         return () => {
@@ -34,19 +35,34 @@ export const AuthProvider = ({ children }) => {
         setSession(data.session);
         setStatus("authenticated");
     };
-    const signUp = async ({ email, password }) => {
+    const signUp = async (payload) => {
         setError(null);
-        const { data, error } = await supabase.auth.signUp({
-            email,
-            password,
-            options: { emailRedirectTo: window.location.origin }
+        const response = await fetch(apiUrl("/auth/register"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
         });
-        if (error) {
-            setError(error.message);
-            throw error;
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const message = body?.message ?? "Falha ao criar conta.";
+            setError(message);
+            throw new Error(message);
         }
-        setSession(data.session ?? null);
-        setStatus(data.session ? "authenticated" : "unauthenticated");
+        const sessionData = body?.session;
+        if (sessionData?.access_token && sessionData?.refresh_token) {
+            const { data, error: sessionError } = await supabase.auth.setSession({
+                access_token: sessionData.access_token,
+                refresh_token: sessionData.refresh_token
+            });
+            if (sessionError) {
+                setError(sessionError.message);
+                throw sessionError;
+            }
+            setSession(data.session ?? null);
+            setStatus(data.session ? "authenticated" : "unauthenticated");
+            return;
+        }
+        await signIn(payload.corporateEmail, payload.password);
     };
     const signOut = async () => {
         await supabase.auth.signOut();

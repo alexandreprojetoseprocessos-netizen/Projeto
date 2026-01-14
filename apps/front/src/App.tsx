@@ -7,7 +7,7 @@ import "./App.css";
 import { AuthPage } from "./components/AuthPage";
 import { OrganizationSelector } from "./components/OrganizationOnboarding";
 import type { PortfolioProject } from "./components/ProjectPortfolio";
-import { useAuth } from "./contexts/AuthContext";
+import { useAuth, type RegisterPayload } from "./contexts/AuthContext";
 import {
   STATUS_MAP,
   KANBAN_STATUS_ORDER,
@@ -37,6 +37,7 @@ import { TeamPage } from "./pages/TeamPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import LandingPage from "./pages/LandingPage";
 import { CheckoutPage } from "./pages/CheckoutPage";
+import { BillingReturnPage } from "./pages/BillingReturnPage";
 import { apiUrl } from "./config/api";
 import { getPlanDefinition } from "./config/plans";
 
@@ -1416,8 +1417,8 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
           await signIn(email, password);
           navigate("/dashboard", { replace: true });
         }}
-        onSignUp={async ({ email, password }: { email: string; password: string }) => {
-          await signUp({ email, password });
+        onSignUp={async (payload: RegisterPayload) => {
+          await signUp(payload);
           // Novo usuário deve concluir o checkout antes de criar organização
           navigate("/checkout", { replace: true });
         }}
@@ -1429,16 +1430,17 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   const storedOrganizationId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
   const hasStoredOrganization = Boolean(selectedOrganizationId || storedOrganizationId);
   const isOnCheckoutRoute = location.pathname === "/checkout";
+  const isOnBillingReturnRoute = location.pathname.startsWith("/billing/return");
 
   if (subscriptionStatus === "loading" || subscriptionStatus === "idle") {
-    if (isOnCheckoutRoute) {
+    if (isOnCheckoutRoute || isOnBillingReturnRoute) {
       // Permite abrir o checkout enquanto o status é carregado
     } else {
       return <p style={{ padding: "2rem" }}>Carregando assinatura...</p>;
     }
   }
 
-  if (subscriptionStatus !== "active" && !isOnCheckoutRoute) {
+  if (subscriptionStatus !== "active" && !isOnCheckoutRoute && !isOnBillingReturnRoute) {
     return <Navigate to="/checkout" replace />;
   }
 
@@ -1560,6 +1562,10 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
               onSubscriptionActivated={fetchSubscription}
             />
           }
+        />
+        <Route
+          path="billing/return"
+          element={<BillingReturnPage onSubscriptionActivated={fetchSubscription} />}
         />
         <Route
           path="organizacao"

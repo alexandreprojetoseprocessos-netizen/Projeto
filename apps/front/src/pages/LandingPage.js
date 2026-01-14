@@ -1,7 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { PLAN_DEFINITIONS, formatMonthlyPrice } from "../config/plans";
+import { ANNUAL_DISCOUNT_LABEL, PLAN_DEFINITIONS, formatMonthlyPrice } from "../config/plans";
 const plans = [
     PLAN_DEFINITIONS.START,
     PLAN_DEFINITIONS.BUSINESS,
@@ -63,7 +63,7 @@ const steps = [
     },
     {
         title: "Faça o pagamento",
-        description: "Cartão, Pix ou boleto (entra no próximo bloco)."
+        description: "Cartão de crédito via Mercado Pago."
     },
     {
         title: "Crie sua organização e projetos",
@@ -74,7 +74,7 @@ const LandingPage = () => {
     const navigate = useNavigate();
     const planCards = useMemo(() => plans.map((plan) => {
         const isRecommended = plan.code === "BUSINESS";
-        return (_jsxs("article", { className: `landing-plan-card${isRecommended ? " is-recommended" : ""}`, "data-plan-code": plan.code, children: [_jsxs("div", { className: "landing-plan-card__header", children: [_jsxs("div", { children: [_jsx("p", { className: "eyebrow", children: plan.code }), _jsx("h3", { children: plan.name }), _jsx("p", { className: "subtext", children: plan.description })] }), _jsxs("div", { className: "landing-plan-card__badges", children: [plan.tag && _jsx("span", { className: "chip chip-soft", children: plan.tag }), isRecommended && _jsx("span", { className: "chip chip-primary", children: "Recomendado" })] })] }), _jsx("div", { className: "landing-plan-card__price", children: plan.price }), _jsx("ul", { className: "landing-plan-card__features", children: plan.features.map((feature) => (_jsx("li", { children: feature }, feature))) }), _jsx("button", { type: "button", className: "primary-button", onClick: () => {
+        return (_jsxs("article", { className: `landing-plan-card${isRecommended ? " is-recommended" : ""}`, "data-plan-code": plan.code, children: [_jsxs("div", { className: "landing-plan-card__header", children: [_jsxs("div", { children: [_jsx("p", { className: "eyebrow", children: plan.code }), _jsx("h3", { children: plan.name }), _jsx("p", { className: "subtext", children: plan.description })] }), _jsxs("div", { className: "landing-plan-card__badges", children: [plan.tag && _jsx("span", { className: "chip chip-soft", children: plan.tag }), isRecommended && _jsx("span", { className: "chip chip-primary", children: "Recomendado" })] })] }), _jsx("div", { className: "landing-plan-card__price", children: plan.price }), _jsx("p", { className: "subtext", children: ANNUAL_DISCOUNT_LABEL }), _jsx("ul", { className: "landing-plan-card__features", children: plan.features.map((feature) => (_jsx("li", { children: feature }, feature))) }), _jsx("button", { type: "button", className: "primary-button", onClick: () => {
                         navigate(`/auth?plan=${plan.code}`);
                     }, children: "Escolher plano" })] }, plan.code));
     }), [navigate]);

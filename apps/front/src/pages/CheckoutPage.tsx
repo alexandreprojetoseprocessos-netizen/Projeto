@@ -1,10 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { apiUrl } from "../config/api";
-import { PLAN_DEFINITIONS, formatMonthlyPrice } from "../config/plans";
-
-type PaymentMethod = "card" | "pix" | "boleto";
+import {
+  ANNUAL_DISCOUNT_LABEL,
+  PLAN_DEFINITIONS,
+  type BillingCycle,
+  formatBillingPrice,
+  formatMonthlyPrice,
+  getPlanPriceCents
+} from "../config/plans";
 
 type CheckoutPageProps = {
   subscription?: any | null;
@@ -12,33 +17,19 @@ type CheckoutPageProps = {
   onSubscriptionActivated?: () => Promise<void> | void;
 };
 
-const plans = {
-  START: {
-    name: PLAN_DEFINITIONS.START.name,
-    price: formatMonthlyPrice(PLAN_DEFINITIONS.START.priceCents, false)
-  },
-  BUSINESS: {
-    name: PLAN_DEFINITIONS.BUSINESS.name,
-    price: formatMonthlyPrice(PLAN_DEFINITIONS.BUSINESS.priceCents, false)
-  },
-  ENTERPRISE: {
-    name: PLAN_DEFINITIONS.ENTERPRISE.name,
-    price: formatMonthlyPrice(PLAN_DEFINITIONS.ENTERPRISE.priceCents, false)
-  }
-};
-
 const baseBenefits = [
   "Usuários ilimitados",
-  "Kanban avançado, EDT e cronograma",
+  "Kanban, EAP e cronograma",
   "Documentos, anexos e aprovações",
   "Relatórios e portfólio em tempo real"
 ];
 
-export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionActivated }: CheckoutPageProps) => {
+export const CheckoutPage = ({ subscription, subscriptionError }: CheckoutPageProps) => {
   const navigate = useNavigate();
   const { token, signOut } = useAuth();
   const [error, setError] = useState<string | null>(subscriptionError ?? null);
   const [isLoading, setIsLoading] = useState(false);
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>("MONTHLY");
   const [selectedPlanCode] = useState<string>(() => {
     if (typeof window === "undefined") return "START";
     return window.localStorage.getItem("gp:selectedPlan") ?? "START";
@@ -50,19 +41,23 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
     }
   }, [selectedPlanCode]);
 
-  const selectedPlan =
-    selectedPlanCode && plans[selectedPlanCode as keyof typeof plans]
-      ? plans[selectedPlanCode as keyof typeof plans]
-      : plans.START;
+  const plan =
+    selectedPlanCode && PLAN_DEFINITIONS[selectedPlanCode as keyof typeof PLAN_DEFINITIONS]
+      ? PLAN_DEFINITIONS[selectedPlanCode as keyof typeof PLAN_DEFINITIONS]
+      : PLAN_DEFINITIONS.START;
+  const planBenefits = plan.marketing.features.filter((feature) => feature !== ANNUAL_DISCOUNT_LABEL);
 
-  const handleCheckout = async (method: PaymentMethod) => {
+  const priceCents = getPlanPriceCents(plan.code, billingCycle);
+  const priceLabel = useMemo(() => {
+    if (billingCycle === "MONTHLY") {
+      return formatMonthlyPrice(priceCents, false);
+    }
+    return formatBillingPrice(priceCents, "annual");
+  }, [billingCycle, priceCents]);
+
+  const handleCheckout = async () => {
     if (!token) {
       setError("Sessão expirada. Faça login novamente.");
-      return;
-    }
-
-    if (!selectedPlanCode) {
-      setError("Nenhum plano selecionado. Volte e escolha um plano para continuar.");
       return;
     }
 
@@ -70,31 +65,32 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
     setError(null);
 
     try {
-      const response = await fetch(apiUrl("/subscriptions/checkout"), {
+      const response = await fetch(apiUrl("/billing/checkout"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
-          planCode: selectedPlanCode,
-          paymentMethod: method
+          planId: plan.code,
+          billingCycle
         })
       });
 
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const message = (body as any).message ?? "Falha ao processar pagamento.";
+        const message = (body as any).message ?? "Falha ao iniciar pagamento.";
         throw new Error(message);
       }
 
-      if (onSubscriptionActivated) {
-        await onSubscriptionActivated();
+      if (body?.init_point) {
+        window.location.href = body.init_point;
+        return;
       }
 
-      navigate("/organizacao", { replace: true });
+      throw new Error("Link de pagamento não disponível.");
     } catch (checkoutError) {
-      setError(checkoutError instanceof Error ? checkoutError.message : "Falha ao processar pagamento.");
+      setError(checkoutError instanceof Error ? checkoutError.message : "Falha ao iniciar pagamento.");
     } finally {
       setIsLoading(false);
     }
@@ -137,11 +133,28 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
         <div className="checkout-plan">
           <div>
             <p className="muted">Plano selecionado</p>
-            <h3>{selectedPlan.name}</h3>
-            <p className="checkout-price">{selectedPlan.price}</p>
+            <h3>{plan.name}</h3>
+            <p className="checkout-price">{priceLabel}</p>
+            <div className="checkout-billing-toggle">
+              <button
+                type="button"
+                className={`chip chip-outline ${billingCycle === "MONTHLY" ? "is-active" : ""}`}
+                onClick={() => setBillingCycle("MONTHLY")}
+              >
+                Mensal
+              </button>
+              <button
+                type="button"
+                className={`chip chip-soft ${billingCycle === "ANNUAL" ? "is-active" : ""}`}
+                onClick={() => setBillingCycle("ANNUAL")}
+              >
+                Anual
+              </button>
+            </div>
+            <p className="muted">{ANNUAL_DISCOUNT_LABEL}</p>
           </div>
           <div className="plan-benefits">
-            {baseBenefits.map((benefit) => (
+            {[...planBenefits, ...baseBenefits].map((benefit) => (
               <span key={benefit}>{benefit}</span>
             ))}
           </div>
@@ -149,8 +162,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
 
         <div className="checkout-info-row">
           <p className="subtext">
-            Você poderá pagar com cartão, Pix ou boleto. Nesta versão de teste, o pagamento será simulado e a assinatura
-            será ativada automaticamente.
+            Pagamento com cartão via Mercado Pago. Após a confirmação, sua assinatura é ativada automaticamente.
           </p>
           <button type="button" className="ghost-button logout-button" onClick={signOut}>
             Sair
@@ -160,14 +172,8 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
         {error && <p className="error-text">{error}</p>}
 
         <div className="payment-actions">
-          <button type="button" className="primary-button" disabled={isLoading} onClick={() => handleCheckout("card")}>
-            {isLoading ? "Processando..." : "Pagar com Cartão"}
-          </button>
-          <button type="button" className="secondary-button" disabled={isLoading} onClick={() => handleCheckout("pix")}>
-            Pagar com Pix
-          </button>
-          <button type="button" className="ghost-button" disabled={isLoading} onClick={() => handleCheckout("boleto")}>
-            Pagar com Boleto
+          <button type="button" className="primary-button" disabled={isLoading} onClick={handleCheckout}>
+            {isLoading ? "Redirecionando..." : "Pagar com cartão"}
           </button>
         </div>
       </section>
@@ -176,16 +182,16 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
         <h4>Resumo rápido</h4>
         <ul>
           <li>
-            <strong>Passo 1:</strong> confirme o plano e o método de pagamento.
+            <strong>Passo 1:</strong> confirme o plano e a forma de pagamento.
           </li>
           <li>
-            <strong>Passo 2:</strong> assinatura fica ativa imediatamente.
+            <strong>Passo 2:</strong> finalize o checkout no Mercado Pago.
           </li>
           <li>
-            <strong>Passo 3:</strong> crie sua organização e projetos.
+            <strong>Passo 3:</strong> acesse o painel e crie sua organização.
           </li>
         </ul>
-        <p className="muted">Dúvidas? Fale com nosso time e peça ajuda no onboarding.</p>
+        <p className="muted">Dúvidas? Fale com nosso time durante o onboarding.</p>
       </aside>
     </div>
   );

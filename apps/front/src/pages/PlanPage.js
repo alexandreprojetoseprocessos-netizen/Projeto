@@ -8,7 +8,8 @@ import { PLAN_DEFINITIONS, formatBillingPrice, formatMonthlyPrice } from "../con
 const statusLabel = {
     ACTIVE: "Ativa",
     PAST_DUE: "Em atraso",
-    CANCELED: "Cancelada"
+    CANCELED: "Cancelada",
+    PENDING: "Processando"
 };
 const planCards = [
     PLAN_DEFINITIONS.START,
@@ -27,6 +28,7 @@ const PlanPage = () => {
     const orgRole = (currentOrgRole ?? "MEMBER");
     const canEditBilling = canManageBilling(orgRole);
     const [subscription, setSubscription] = useState(null);
+    const [limits, setLimits] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [actionError, setActionError] = useState(null);
@@ -55,8 +57,28 @@ const PlanPage = () => {
             setLoading(false);
         }
     };
+    const loadLimits = async () => {
+        if (!token)
+            return;
+        try {
+            const response = await fetch(apiUrl("/me"), {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok)
+                return;
+            setLimits({
+                organizationLimits: body?.organizationLimits,
+                projectLimits: body?.projectLimits
+            });
+        }
+        catch {
+            setLimits(null);
+        }
+    };
     useEffect(() => {
         loadSubscription();
+        loadLimits();
     }, [token]);
     const handleChangePlan = async (planCode) => {
         if (!token)
@@ -110,7 +132,13 @@ const PlanPage = () => {
     };
     const product = subscription?.product;
     const price = useMemo(() => formatBillingPrice(product?.priceCents, product?.billingPeriod), [product]);
+    const cycleLabel = subscription?.billingCycle === "ANNUAL"
+        ? "Anual"
+        : subscription?.billingCycle === "MONTHLY"
+            ? "Mensal"
+            : "-";
     const statusText = subscription?.status ? statusLabel[subscription.status] ?? subscription.status : "-";
-    return (_jsxs("div", { className: "plan-page", children: [_jsxs("section", { className: "plan-card", children: [_jsx("p", { className: "eyebrow", children: "Minha assinatura" }), _jsx("h2", { children: "Plano atual" }), loading ? (_jsx("p", { className: "muted", children: "Carregando..." })) : error ? (_jsx("p", { className: "error-text", children: error })) : (_jsxs(_Fragment, { children: [_jsxs("div", { className: "plan-summary", children: [_jsxs("div", { children: [_jsx("p", { className: "muted", children: "Plano" }), _jsx("h3", { children: product?.name ?? product?.code ?? "Nenhum plano ativo" }), _jsx("p", { className: "muted", children: product?.code ?? "-" })] }), _jsxs("div", { children: [_jsx("p", { className: "muted", children: "Pre\u00E7o" }), _jsx("strong", { children: price })] }), _jsx("div", { className: "plan-status", children: _jsx("span", { className: `status-chip status-${(subscription?.status ?? "none").toLowerCase()}`, children: statusText }) })] }), _jsxs("div", { className: "plan-details", children: [_jsxs("p", { children: ["In\u00EDcio: ", subscription?.startedAt ? new Date(subscription.startedAt).toLocaleDateString("pt-BR") : "-"] }), _jsxs("p", { children: ["V\u00E1lida at\u00E9: ", subscription?.expiresAt ? new Date(subscription.expiresAt).toLocaleDateString("pt-BR") : "Sem término"] }), _jsxs("p", { children: ["Pagamento: ", subscription?.paymentMethod ?? "Não informado"] })] }), subscription?.status === "CANCELED" && (_jsxs("div", { className: "warning-box", children: ["Sua assinatura est\u00E1 cancelada. Para voltar a usar o sistema, escolha um plano novamente.", _jsx("button", { className: "secondary-button", type: "button", onClick: () => navigate("/checkout"), children: "Reativar assinatura" })] })), actionError && _jsx("p", { className: "error-text", children: actionError }), canEditBilling ? (_jsxs("div", { className: "plan-actions", children: [_jsxs("div", { className: "plan-switcher", children: [_jsx("p", { className: "muted", children: "Trocar plano" }), _jsx("div", { className: "plan-options", children: planCards.map((plan) => (_jsxs("button", { type: "button", className: `secondary-button ${plan.code === product?.code ? "is-active" : ""}`, disabled: changingPlan || plan.code === product?.code, onClick: () => handleChangePlan(plan.code), children: [_jsxs("div", { children: [_jsx("strong", { children: plan.name }), _jsx("p", { className: "muted", children: plan.summary })] }), _jsx("span", { children: plan.price })] }, plan.code))) })] }), _jsxs("div", { className: "plan-cancel", children: [_jsx("p", { className: "muted", children: "Cancelar assinatura" }), _jsx("button", { type: "button", className: "ghost-button", onClick: handleCancel, disabled: canceling || subscription?.status === "CANCELED", children: canceling ? "Cancelando..." : "Cancelar assinatura" })] })] })) : (_jsx("p", { className: "muted", children: "Voc\u00EA pode visualizar o plano, mas apenas o propriet\u00E1rio pode alter\u00E1-lo ou cancelar." }))] }))] }), _jsxs("aside", { className: "plan-sidebar", children: [_jsx("h4", { children: "Resumo r\u00E1pido" }), _jsxs("ul", { children: [_jsxs("li", { children: [_jsx("strong", { children: "Plano:" }), " ", product?.name ?? product?.code ?? "-"] }), _jsxs("li", { children: [_jsx("strong", { children: "Status:" }), " ", statusText] }), _jsxs("li", { children: [_jsx("strong", { children: "Pagamento:" }), " ", subscription?.paymentMethod ?? "-"] }), _jsxs("li", { children: [_jsx("strong", { children: "Pr\u00F3ximo passo:" }), " Fale conosco para upgrades personalizados."] })] })] })] }));
+    const periodEnd = subscription?.currentPeriodEnd ?? subscription?.expiresAt ?? null;
+    return (_jsxs("div", { className: "plan-page", children: [_jsxs("section", { className: "plan-card", children: [_jsx("p", { className: "eyebrow", children: "Minha assinatura" }), _jsx("h2", { children: "Plano atual" }), loading ? (_jsx("p", { className: "muted", children: "Carregando..." })) : error ? (_jsx("p", { className: "error-text", children: error })) : (_jsxs(_Fragment, { children: [_jsxs("div", { className: "plan-summary", children: [_jsxs("div", { children: [_jsx("p", { className: "muted", children: "Plano" }), _jsx("h3", { children: product?.name ?? product?.code ?? "Nenhum plano ativo" }), _jsx("p", { className: "muted", children: product?.code ?? "-" })] }), _jsxs("div", { children: [_jsx("p", { className: "muted", children: "Pre\u00E7o" }), _jsx("strong", { children: price }), _jsxs("p", { className: "muted", children: ["Ciclo: ", cycleLabel] })] }), _jsx("div", { className: "plan-status", children: _jsx("span", { className: `status-chip status-${(subscription?.status ?? "none").toLowerCase()}`, children: statusText }) })] }), _jsxs("div", { className: "plan-details", children: [_jsxs("p", { children: ["In\u00EDcio: ", subscription?.startedAt ? new Date(subscription.startedAt).toLocaleDateString("pt-BR") : "-"] }), _jsxs("p", { children: ["V\u00E1lida at\u00E9: ", periodEnd ? new Date(periodEnd).toLocaleDateString("pt-BR") : "Sem término"] }), _jsxs("p", { children: ["Pagamento: ", subscription?.paymentMethod ?? "Não informado"] })] }), limits?.organizationLimits && (_jsxs("div", { className: "plan-usage", children: [_jsx("h4", { children: "Limites do plano" }), _jsxs("div", { className: "plan-usage-grid", children: [_jsxs("div", { children: [_jsx("p", { className: "muted", children: "Organiza\u00E7\u00F5es" }), _jsxs("strong", { children: [limits.organizationLimits.used, " / ", limits.organizationLimits.max ?? "Ilimitado"] })] }), _jsxs("div", { children: [_jsx("p", { className: "muted", children: "Projetos (total)" }), _jsxs("strong", { children: [limits.projectLimits?.used ?? 0, " / ", limits.projectLimits?.max ?? "Ilimitado"] })] }), _jsxs("div", { children: [_jsx("p", { className: "muted", children: "Projetos por organiza\u00E7\u00E3o" }), _jsx("strong", { children: limits.projectLimits?.perOrganization ?? "Ilimitado" })] })] })] })), subscription?.status === "CANCELED" && (_jsxs("div", { className: "warning-box", children: ["Sua assinatura est\u00E1 cancelada. Para voltar a usar o sistema, escolha um plano novamente.", _jsx("button", { className: "secondary-button", type: "button", onClick: () => navigate("/checkout"), children: "Reativar assinatura" })] })), actionError && _jsx("p", { className: "error-text", children: actionError }), canEditBilling ? (_jsxs("div", { className: "plan-actions", children: [_jsxs("div", { className: "plan-switcher", children: [_jsx("p", { className: "muted", children: "Trocar plano" }), _jsx("div", { className: "plan-options", children: planCards.map((plan) => (_jsxs("button", { type: "button", className: `secondary-button ${plan.code === product?.code ? "is-active" : ""}`, disabled: changingPlan || plan.code === product?.code, onClick: () => handleChangePlan(plan.code), children: [_jsxs("div", { children: [_jsx("strong", { children: plan.name }), _jsx("p", { className: "muted", children: plan.summary })] }), _jsx("span", { children: plan.price })] }, plan.code))) })] }), _jsxs("div", { className: "plan-cancel", children: [_jsx("p", { className: "muted", children: "Cancelar assinatura" }), _jsx("button", { type: "button", className: "ghost-button", onClick: handleCancel, disabled: canceling || subscription?.status === "CANCELED", children: canceling ? "Cancelando..." : "Cancelar assinatura" })] })] })) : (_jsx("p", { className: "muted", children: "Voc\u00EA pode visualizar o plano, mas apenas o propriet\u00E1rio pode alter\u00E1-lo ou cancelar." }))] }))] }), _jsxs("aside", { className: "plan-sidebar", children: [_jsx("h4", { children: "Resumo r\u00E1pido" }), _jsxs("ul", { children: [_jsxs("li", { children: [_jsx("strong", { children: "Plano:" }), " ", product?.name ?? product?.code ?? "-"] }), _jsxs("li", { children: [_jsx("strong", { children: "Status:" }), " ", statusText] }), _jsxs("li", { children: [_jsx("strong", { children: "Pagamento:" }), " ", subscription?.paymentMethod ?? "-"] }), _jsxs("li", { children: [_jsx("strong", { children: "Pr\u00F3ximo passo:" }), " Fale conosco para upgrades personalizados."] })] })] })] }));
 };
 export default PlanPage;

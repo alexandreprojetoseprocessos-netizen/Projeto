@@ -1,6 +1,6 @@
 import { prisma } from "@gestao/database";
 import { SubscriptionStatus } from "@prisma/client";
-import { getPlanProduct } from "../config/plans";
+import { BillingCycle, getPlanProduct } from "../config/plans";
 import type { AuthenticatedUser } from "../types/http";
 
 const ensureUserExists = async (user: AuthenticatedUser) => {
@@ -10,11 +10,13 @@ const ensureUserExists = async (user: AuthenticatedUser) => {
     where: { id: user.id },
     update: {
       email,
+      corporateEmail: email,
       fullName: name
     },
     create: {
       id: user.id,
       email,
+      corporateEmail: email,
       fullName: name,
       passwordHash: "supabase-auth",
       locale: "pt-BR",
@@ -26,7 +28,8 @@ const ensureUserExists = async (user: AuthenticatedUser) => {
 export const createOrActivateSubscriptionForUser = async (
   user: AuthenticatedUser,
   productCode: string,
-  paymentMethod: string
+  paymentMethod: string,
+  billingCycle: BillingCycle = "MONTHLY"
 ) => {
   await ensureUserExists(user);
 
@@ -54,25 +57,41 @@ export const createOrActivateSubscriptionForUser = async (
     }
   });
 
+  const resolvePeriodEnd = () => {
+    const now = new Date();
+    const target = new Date(now);
+    target.setMonth(target.getMonth() + (billingCycle === "ANNUAL" ? 12 : 1));
+    return target;
+  };
+
   if (existing) {
+    const periodEnd = resolvePeriodEnd();
     return prisma.subscription.update({
       where: { id: existing.id },
       data: {
         productId: product.id,
         paymentMethod,
-        status: SubscriptionStatus.ACTIVE
+        billingCycle,
+        status: SubscriptionStatus.ACTIVE,
+        startedAt: new Date(),
+        currentPeriodEnd: periodEnd,
+        expiresAt: periodEnd
       },
       include: { product: true }
     });
   }
 
+  const periodEnd = resolvePeriodEnd();
   return prisma.subscription.create({
     data: {
       userId: user.id,
       productId: product.id,
       paymentMethod,
       status: SubscriptionStatus.ACTIVE,
-      startedAt: new Date()
+      billingCycle,
+      startedAt: new Date(),
+      currentPeriodEnd: periodEnd,
+      expiresAt: periodEnd
     },
     include: { product: true }
   });
@@ -85,6 +104,14 @@ export const getActiveSubscriptionForUser = async (userId: string) => {
       status: SubscriptionStatus.ACTIVE
     },
     orderBy: { startedAt: "desc" },
+    include: { product: true }
+  });
+};
+
+export const getLatestSubscriptionForUser = async (userId: string) => {
+  return prisma.subscription.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
     include: { product: true }
   });
 };
