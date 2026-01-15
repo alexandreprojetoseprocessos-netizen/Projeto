@@ -16,6 +16,8 @@ import { subscriptionsRouter } from "./routes/subscriptions";
 import { authRouter } from "./routes/auth";
 import { invitesRouter } from "./routes/invites";
 import { billingRouter } from "./routes/billing";
+import { paymentsRouter } from "./routes/payments";
+import { webhooksRouter } from "./routes/webhooks";
 import teamRouter from "./routes/team";
 import { serviceCatalogRouter } from "./routes/serviceCatalog";
 
@@ -78,6 +80,8 @@ export const createApp = () => {
   app.use("/organizations", organizationsRouter);
   app.use("/subscriptions", subscriptionsRouter);
   app.use("/billing", billingRouter);
+  app.use("/payments", paymentsRouter);
+  app.use("/webhooks", webhooksRouter);
   app.use("/", invitesRouter);
   app.use("/organizations", teamRouter);
   app.use("/service-catalog", serviceCatalogRouter);

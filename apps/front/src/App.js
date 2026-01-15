@@ -29,7 +29,6 @@ import { TeamPage } from "./pages/TeamPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import LandingPage from "./pages/LandingPage";
 import { CheckoutPage } from "./pages/CheckoutPage";
-import { BillingReturnPage } from "./pages/BillingReturnPage";
 import { apiFetch, apiUrl, getNetworkErrorMessage } from "./config/api";
 import { getPlanDefinition } from "./config/plans";
 const SELECTED_ORG_KEY = "gp:selectedOrganizationId";
@@ -240,7 +239,7 @@ export const App = () => {
                 });
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Falha ao carregar organizações";
+                const message = error instanceof Error ? error.message : "Falha ao carregar organiza��es";
                 setOrgError(message);
                 setOrganizations([]);
                 setSelectedOrganizationId((current) => current ?? null);
@@ -421,7 +420,7 @@ export const App = () => {
                 setServiceCatalog(data ?? []);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar catálogo de serviços";
+                const message = error instanceof Error ? error.message : "Erro ao carregar cat�logo de servi�os";
                 setServiceCatalogError(message);
             }
         };
@@ -465,7 +464,7 @@ export const App = () => {
                 setComments(nextComments);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar comentários";
+                const message = error instanceof Error ? error.message : "Erro ao carregar coment�rios";
                 setCommentsError(message);
             }
         };
@@ -506,7 +505,7 @@ export const App = () => {
     }, [status, token, selectedProjectId, selectedOrganizationId, boardRefresh, loadBoardColumns]);
     const handleImportServiceCatalog = useCallback(async (file) => {
         if (!file || !token || !selectedProjectId || !selectedOrganizationId) {
-            throw new Error("Arquivo e projeto são obrigatórios.");
+            throw new Error("Arquivo e projeto s�o obrigat�rios.");
         }
         const formData = new FormData();
         formData.append("file", file);
@@ -520,7 +519,7 @@ export const App = () => {
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
-            const message = body?.message ?? "Erro ao importar catálogo";
+            const message = body?.message ?? "Erro ao importar cat�logo";
             throw new Error(message);
         }
         setServiceCatalogRefresh((value) => value + 1);
@@ -585,7 +584,7 @@ export const App = () => {
                 setPortfolio(data.projects ?? []);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar portfólio";
+                const message = error instanceof Error ? error.message : "Erro ao carregar portf�lio";
                 setPortfolioError(message);
                 setPortfolio([]);
             }
@@ -609,7 +608,7 @@ export const App = () => {
                 setReportMetrics(data);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar relatórios";
+                const message = error instanceof Error ? error.message : "Erro ao carregar relat�rios";
                 setReportMetricsError(message);
                 setReportMetrics(null);
             }
@@ -666,7 +665,7 @@ export const App = () => {
             setCommentsError(null);
         }
         catch (error) {
-            const message = error instanceof Error ? error.message : "Erro ao criar comentário";
+            const message = error instanceof Error ? error.message : "Erro ao criar coment�rio";
             setCommentsError(message);
         }
     };
@@ -696,7 +695,7 @@ export const App = () => {
     };
     const handleCreateProject = async (payload) => {
         if (!token || !selectedOrganizationId) {
-            throw new Error("Selecione uma organização para criar projetos.");
+            throw new Error("Selecione uma organiza��o para criar projetos.");
         }
         try {
             const response = await fetchJson("/projects", token, {
@@ -756,7 +755,7 @@ export const App = () => {
     };
     const handleUpdateProject = async (projectId, payload) => {
         if (!token || !selectedOrganizationId) {
-            throw new Error("Selecione uma organização antes de editar projeto.");
+            throw new Error("Selecione uma organiza��o antes de editar projeto.");
         }
         const response = await fetchJson(`/projects/${projectId}`, token, {
             method: "PUT",
@@ -783,7 +782,7 @@ export const App = () => {
             organizationLimits?.remaining === null ||
             (organizationLimits?.remaining ?? 0) > 0;
         if (organizationLimits && !canCreate) {
-            setOrgError("Limite de organizações do plano atingido. Atualize o plano para criar mais.");
+            setOrgError("Limite de organiza��es do plano atingido. Atualize o plano para criar mais.");
             return;
         }
         try {
@@ -816,9 +815,9 @@ export const App = () => {
             const code = error?.body?.code ?? error?.response?.data?.code;
             const message = error?.body?.message ??
                 error?.response?.data?.message ??
-                (error instanceof Error ? error.message : "Erro ao criar organização");
+                (error instanceof Error ? error.message : "Erro ao criar organiza��o");
             if (status === 409 && code === "ORG_LIMIT_REACHED") {
-                setOrgError("Limite de organizações do seu plano atingido.");
+                setOrgError("Limite de organiza��es do seu plano atingido.");
             }
             else {
                 setOrgError(message);
@@ -847,7 +846,7 @@ export const App = () => {
         }
         // Normaliza o status alvo
         const newStatus = resolveStatus(destination.droppableId) ?? "BACKLOG";
-        // Atualização otimista do estado local
+        // Atualiza��o otimista do estado local
         setBoardColumns((prev) => reorderBoard(prev, source, destination, draggableId, newStatus));
         try {
             // Persiste no backend com o novo status
@@ -859,7 +858,7 @@ export const App = () => {
                     order: destination.index
                 })
             }, selectedOrganizationId);
-            // Recarrega para garantir sincronização
+            // Recarrega para garantir sincroniza��o
             setBoardRefresh((value) => value + 1);
             setWbsRefresh((value) => value + 1);
         }
@@ -910,7 +909,7 @@ export const App = () => {
         if ("serviceMultiplier" in payload && payload.serviceMultiplier !== undefined && payload.serviceMultiplier !== null) {
             payload.serviceMultiplier = Number(payload.serviceMultiplier);
         }
-        // Recalcula serviceHours = hoursBase × multiplier
+        // Recalcula serviceHours = hoursBase � multiplier
         const currentNode = findWbsNode(wbsNodes, nodeId);
         if ("serviceMultiplier" in payload && !("serviceCatalogId" in payload) && currentNode?.serviceCatalogId) {
             payload.serviceCatalogId = currentNode.serviceCatalogId;
@@ -953,7 +952,7 @@ export const App = () => {
                 .map((member) => ({
                 membershipId: member.id,
                 userId: member.userId,
-                name: member.name ?? member.email ?? "Responsável"
+                name: member.name ?? member.email ?? "Respons�vel"
             }))[0] ?? null
             : null;
         setWbsNodes((prev) => patchWbsNode(prev, nodeId, { responsible: optimisticResponsible }));
@@ -965,7 +964,7 @@ export const App = () => {
             setWbsNodes((prev) => patchWbsNode(prev, nodeId, { responsible: response.responsible ?? null }));
         }
         catch (error) {
-            const message = error instanceof Error ? error.message : "Erro ao atualizar responsável";
+            const message = error instanceof Error ? error.message : "Erro ao atualizar respons�vel";
             setWbsError(message);
             setWbsRefresh((value) => value + 1);
         }
@@ -1047,7 +1046,7 @@ export const App = () => {
     const currentOrgRole = organizationCards.find((org) => org.id === selectedOrganizationId)?.role ?? null;
     const handleCreateServiceCatalog = useCallback(async (payload) => {
         if (!token || !selectedProjectId || !selectedOrganizationId) {
-            throw new Error("Projeto selecionado é obrigatório.");
+            throw new Error("Projeto selecionado � obrigat�rio.");
         }
         const body = {
             projectId: selectedProjectId,
@@ -1063,7 +1062,7 @@ export const App = () => {
     }, [token, selectedProjectId, selectedOrganizationId]);
     const handleUpdateServiceCatalog = useCallback(async (serviceId, payload) => {
         if (!token || !selectedOrganizationId) {
-            throw new Error("Organização é obrigatória.");
+            throw new Error("Organiza��o � obrigat�ria.");
         }
         await fetchJson(`/service-catalog/${serviceId}`, token, {
             method: "PATCH",
@@ -1073,7 +1072,7 @@ export const App = () => {
     }, [token, selectedOrganizationId]);
     const handleDeleteServiceCatalog = useCallback(async (serviceId) => {
         if (!token || !selectedOrganizationId) {
-            throw new Error("Organização é obrigatória.");
+            throw new Error("Organiza��o � obrigat�ria.");
         }
         await fetchJson(`/service-catalog/${serviceId}`, token, {
             method: "DELETE"
@@ -1090,7 +1089,7 @@ export const App = () => {
                 setSelectedProjectId(storedProjId);
         }
         catch (error) {
-            console.error("Falha ao ler organização/projeto salvos", error);
+            console.error("Falha ao ler organiza��o/projeto salvos", error);
         }
     }, []);
     useEffect(() => {
@@ -1147,7 +1146,7 @@ export const App = () => {
         }
     }, [location.pathname, navigate, status]);
     if (status === "loading") {
-        return _jsx("p", { style: { padding: "2rem" }, children: "Carregando autentica\u00E7\u00E3o..." });
+        return _jsx("p", { style: { padding: "2rem" }, children: "Carregando autentica\uFFFD\uFFFDo..." });
     }
     if (status === "unauthenticated" || !token) {
         if (location.pathname === "/") {
@@ -1158,23 +1157,22 @@ export const App = () => {
                 navigate("/dashboard", { replace: true });
             }, onSignUp: async (payload) => {
                 await signUp(payload);
-                // Novo usuário deve concluir o checkout antes de criar organização
+                // Novo usu�rio deve concluir o checkout antes de criar organiza��o
                 navigate("/checkout", { replace: true });
             }, error: authError }));
     }
     const storedOrganizationId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
     const hasStoredOrganization = Boolean(selectedOrganizationId || storedOrganizationId);
     const isOnCheckoutRoute = location.pathname === "/checkout";
-    const isOnBillingReturnRoute = location.pathname.startsWith("/billing/return");
     if (subscriptionStatus === "loading" || subscriptionStatus === "idle") {
-        if (isOnCheckoutRoute || isOnBillingReturnRoute) {
-            // Permite abrir o checkout enquanto o status é carregado
+        if (isOnCheckoutRoute) {
+            // Permite abrir o checkout enquanto o status � carregado
         }
         else {
             return _jsx("p", { style: { padding: "2rem" }, children: "Carregando assinatura..." });
         }
     }
-    if (subscriptionStatus !== "active" && !isOnCheckoutRoute && !isOnBillingReturnRoute) {
+    if (subscriptionStatus !== "active" && !isOnCheckoutRoute) {
         return _jsx(Navigate, { to: "/checkout", replace: true });
     }
     if (status === "authenticated" &&
@@ -1191,7 +1189,7 @@ export const App = () => {
             navigate(`/EAP/organizacao/${selectedOrganizationId}/projeto/${projectId}`, { replace: true });
         }
     };
-    return (_jsxs(Routes, { children: [_jsx(Route, { path: "/", element: _jsx(LandingPage, {}) }), _jsxs(Route, { path: "/*", element: _jsx(DashboardLayout, { userEmail: user?.email ?? null, organizations: organizations, selectedOrganizationId: selectedOrganizationId ?? "", onOrganizationChange: setSelectedOrganizationId, currentOrgRole: currentOrgRole ?? null, orgError: orgError, onSignOut: signOut, projects: projects, selectedProjectId: selectedProjectId ?? "", onProjectChange: handleProjectSelection, onSelectProject: handleProjectSelection, projectsError: projectsError, filters: filters, onRangeChange: (rangeDays) => setFilters((prev) => ({ ...prev, rangeDays })), summary: projectSummary, summaryError: summaryError, members: members, membersError: membersError, attachments: attachments, attachmentsError: attachmentsError, attachmentsLoading: attachmentsLoading, boardColumns: boardColumns, boardError: boardError, onCreateTask: handleCreateTask, onReloadBoard: loadBoardColumns, onDragTask: handleDragEnd, newTaskTitle: newTaskTitle, onTaskTitleChange: setNewTaskTitle, newTaskColumn: newTaskColumn, onTaskColumnChange: setNewTaskColumn, newTaskStartDate: newTaskStartDate, onTaskStartDateChange: setNewTaskStartDate, newTaskEndDate: newTaskEndDate, onTaskEndDateChange: setNewTaskEndDate, newTaskAssignee: newTaskAssignee, onTaskAssigneeChange: setNewTaskAssignee, newTaskEstimateHours: newTaskEstimateHours, onTaskEstimateHoursChange: setNewTaskEstimateHours, wbsNodes: wbsNodes, wbsError: wbsError, onMoveNode: handleWbsMove, onUpdateWbsNode: handleWbsUpdate, onUpdateWbsResponsible: handleWbsResponsibleChange, onCreateWbsItem: handleCreateWbsItem, selectedNodeId: selectedNodeId, onSelectNode: setSelectedNodeId, comments: comments, commentsError: commentsError, onSubmitComment: handleCreateComment, commentBody: commentBody, onCommentBodyChange: setCommentBody, timeEntryDate: timeEntryDate, timeEntryHours: timeEntryHours, timeEntryDescription: timeEntryDescription, onTimeEntryDateChange: setTimeEntryDate, onTimeEntryHoursChange: setTimeEntryHours, onTimeEntryDescriptionChange: setTimeEntryDescription, onLogTime: handleCreateTimeEntry, timeEntryError: timeEntryError, ganttTasks: ganttTasks, ganttMilestones: ganttMilestones, ganttError: ganttError, portfolio: portfolio, portfolioError: portfolioError, portfolioLoading: portfolioLoading, reportMetrics: reportMetrics, reportMetricsError: reportMetricsError, reportMetricsLoading: reportMetricsLoading, kanbanColumns: kanbanColumns, onExportPortfolio: handleDownloadPortfolio, onCreateProject: handleCreateProject, onUpdateProject: handleUpdateProject, projectLimits: projectLimits, serviceCatalog: serviceCatalog, serviceCatalogError: serviceCatalogError, onImportServiceCatalog: handleImportServiceCatalog, onCreateServiceCatalog: handleCreateServiceCatalog, onUpdateServiceCatalog: handleUpdateServiceCatalog, onDeleteServiceCatalog: handleDeleteServiceCatalog, onReloadWbs: () => setWbsRefresh((value) => value + 1) }), children: [_jsx(Route, { index: true, element: _jsx(Navigate, { to: "/dashboard", replace: true }) }), _jsx(Route, { path: "checkout", element: _jsx(CheckoutPage, { subscription: subscription, subscriptionError: subscriptionError, onSubscriptionActivated: fetchSubscription }) }), _jsx(Route, { path: "billing/return", element: _jsx(BillingReturnPage, { onSubscriptionActivated: fetchSubscription }) }), _jsx(Route, { path: "organizacao", element: _jsx(OrganizationSelector, { organizations: organizationCards, onSelect: (organizationId) => {
+    return (_jsxs(Routes, { children: [_jsx(Route, { path: "/", element: _jsx(LandingPage, {}) }), _jsxs(Route, { path: "/*", element: _jsx(DashboardLayout, { userEmail: user?.email ?? null, organizations: organizations, selectedOrganizationId: selectedOrganizationId ?? "", onOrganizationChange: setSelectedOrganizationId, currentOrgRole: currentOrgRole ?? null, orgError: orgError, onSignOut: signOut, projects: projects, selectedProjectId: selectedProjectId ?? "", onProjectChange: handleProjectSelection, onSelectProject: handleProjectSelection, projectsError: projectsError, filters: filters, onRangeChange: (rangeDays) => setFilters((prev) => ({ ...prev, rangeDays })), summary: projectSummary, summaryError: summaryError, members: members, membersError: membersError, attachments: attachments, attachmentsError: attachmentsError, attachmentsLoading: attachmentsLoading, boardColumns: boardColumns, boardError: boardError, onCreateTask: handleCreateTask, onReloadBoard: loadBoardColumns, onDragTask: handleDragEnd, newTaskTitle: newTaskTitle, onTaskTitleChange: setNewTaskTitle, newTaskColumn: newTaskColumn, onTaskColumnChange: setNewTaskColumn, newTaskStartDate: newTaskStartDate, onTaskStartDateChange: setNewTaskStartDate, newTaskEndDate: newTaskEndDate, onTaskEndDateChange: setNewTaskEndDate, newTaskAssignee: newTaskAssignee, onTaskAssigneeChange: setNewTaskAssignee, newTaskEstimateHours: newTaskEstimateHours, onTaskEstimateHoursChange: setNewTaskEstimateHours, wbsNodes: wbsNodes, wbsError: wbsError, onMoveNode: handleWbsMove, onUpdateWbsNode: handleWbsUpdate, onUpdateWbsResponsible: handleWbsResponsibleChange, onCreateWbsItem: handleCreateWbsItem, selectedNodeId: selectedNodeId, onSelectNode: setSelectedNodeId, comments: comments, commentsError: commentsError, onSubmitComment: handleCreateComment, commentBody: commentBody, onCommentBodyChange: setCommentBody, timeEntryDate: timeEntryDate, timeEntryHours: timeEntryHours, timeEntryDescription: timeEntryDescription, onTimeEntryDateChange: setTimeEntryDate, onTimeEntryHoursChange: setTimeEntryHours, onTimeEntryDescriptionChange: setTimeEntryDescription, onLogTime: handleCreateTimeEntry, timeEntryError: timeEntryError, ganttTasks: ganttTasks, ganttMilestones: ganttMilestones, ganttError: ganttError, portfolio: portfolio, portfolioError: portfolioError, portfolioLoading: portfolioLoading, reportMetrics: reportMetrics, reportMetricsError: reportMetricsError, reportMetricsLoading: reportMetricsLoading, kanbanColumns: kanbanColumns, onExportPortfolio: handleDownloadPortfolio, onCreateProject: handleCreateProject, onUpdateProject: handleUpdateProject, projectLimits: projectLimits, serviceCatalog: serviceCatalog, serviceCatalogError: serviceCatalogError, onImportServiceCatalog: handleImportServiceCatalog, onCreateServiceCatalog: handleCreateServiceCatalog, onUpdateServiceCatalog: handleUpdateServiceCatalog, onDeleteServiceCatalog: handleDeleteServiceCatalog, onReloadWbs: () => setWbsRefresh((value) => value + 1) }), children: [_jsx(Route, { index: true, element: _jsx(Navigate, { to: "/dashboard", replace: true }) }), _jsx(Route, { path: "checkout", element: _jsx(CheckoutPage, { subscription: subscription, subscriptionError: subscriptionError, onSubscriptionActivated: fetchSubscription }) }), _jsx(Route, { path: "organizacao", element: _jsx(OrganizationSelector, { organizations: organizationCards, onSelect: (organizationId) => {
                                 setSelectedOrganizationId(organizationId);
                                 setSelectedProjectId(null);
                                 if (typeof window !== "undefined") {

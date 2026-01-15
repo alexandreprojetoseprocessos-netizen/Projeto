@@ -4200,6 +4200,84 @@ button[type="submit"]:hover {
   flex-wrap: wrap;
 }
 
+.payment-tabs {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.payment-tab {
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--primary-dark);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.payment-tab.is-active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.payment-panel {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.payment-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.payment-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.pix-result {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.pix-qr {
+  width: 220px;
+  height: 220px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.pix-code {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pix-code textarea {
+  width: 100%;
+  min-height: 120px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 12px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 .checkout-sidebar {
   background: var(--card-bg);
   border: 1px solid var(--border);

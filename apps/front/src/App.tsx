@@ -1,4 +1,4 @@
-Ôªøimport type { FormEvent } from "react";
+import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { DropResult } from "@hello-pangea/dnd";
@@ -37,7 +37,6 @@ import { TeamPage } from "./pages/TeamPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import LandingPage from "./pages/LandingPage";
 import { CheckoutPage } from "./pages/CheckoutPage";
-import { BillingReturnPage } from "./pages/BillingReturnPage";
 import { apiFetch, apiUrl, getNetworkErrorMessage } from "./config/api";
 import { getPlanDefinition } from "./config/plans";
 
@@ -331,7 +330,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
           return exists ? candidate : null;
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Falha ao carregar organiza√ß√µes";
+        const message = error instanceof Error ? error.message : "Falha ao carregar organizaÁıes";
         setOrgError(message);
         setOrganizations([]);
         setSelectedOrganizationId((current) => current ?? null);
@@ -523,7 +522,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         const data = await fetchJson(`/service-catalog?projectId=${selectedProjectId}`, token, undefined, selectedOrganizationId);
         setServiceCatalog(data ?? []);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Erro ao carregar cat√°logo de servi√ßos";
+        const message = error instanceof Error ? error.message : "Erro ao carregar cat·logo de serviÁos";
         setServiceCatalogError(message);
       }
     };
@@ -570,7 +569,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         const nextComments = Array.isArray(data) ? data : data?.comments ?? [];
         setComments(nextComments);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Erro ao carregar coment√°rios";
+        const message = error instanceof Error ? error.message : "Erro ao carregar coment·rios";
         setCommentsError(message);
       }
     };
@@ -622,7 +621,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   const handleImportServiceCatalog = useCallback(
     async (file: File | null) => {
       if (!file || !token || !selectedProjectId || !selectedOrganizationId) {
-        throw new Error("Arquivo e projeto s√£o obrigat√≥rios.");
+        throw new Error("Arquivo e projeto s„o obrigatÛrios.");
       }
       const formData = new FormData();
       formData.append("file", file);
@@ -639,7 +638,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       );
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const message = (body as any)?.message ?? "Erro ao importar cat√°logo";
+        const message = (body as any)?.message ?? "Erro ao importar cat·logo";
         throw new Error(message);
       }
       setServiceCatalogRefresh((value) => value + 1);
@@ -716,7 +715,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         const data = await fetchJson<{ projects: PortfolioProject[] }>("/reports/portfolio", token, undefined, selectedOrganizationId);
         setPortfolio(data.projects ?? []);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Erro ao carregar portf√≥lio";
+        const message = error instanceof Error ? error.message : "Erro ao carregar portfÛlio";
         setPortfolioError(message);
         setPortfolio([]);
       } finally {
@@ -741,7 +740,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         const data = await fetchJson("/reports/metrics", token, undefined, selectedOrganizationId);
         setReportMetrics(data);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Erro ao carregar relat√≥rios";
+        const message = error instanceof Error ? error.message : "Erro ao carregar relatÛrios";
         setReportMetricsError(message);
         setReportMetrics(null);
       } finally {
@@ -809,7 +808,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       setCommentsRefresh((value) => value + 1);
       setCommentsError(null);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao criar coment√°rio";
+      const message = error instanceof Error ? error.message : "Erro ao criar coment·rio";
       setCommentsError(message);
     }
   };
@@ -845,7 +844,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   const handleCreateProject = async (payload: CreateProjectPayload) => {
     if (!token || !selectedOrganizationId) {
-      throw new Error("Selecione uma organiza√ß√£o para criar projetos.");
+      throw new Error("Selecione uma organizaÁ„o para criar projetos.");
     }
 
     try {
@@ -916,7 +915,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   const handleUpdateProject = async (projectId: string, payload: CreateProjectPayload) => {
     if (!token || !selectedOrganizationId) {
-      throw new Error("Selecione uma organiza√ß√£o antes de editar projeto.");
+      throw new Error("Selecione uma organizaÁ„o antes de editar projeto.");
     }
 
     const response = await fetchJson(
@@ -957,7 +956,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       organizationLimits?.remaining === null ||
       (organizationLimits?.remaining ?? 0) > 0;
     if (organizationLimits && !canCreate) {
-      setOrgError("Limite de organiza√ß√µes do plano atingido. Atualize o plano para criar mais.");
+      setOrgError("Limite de organizaÁıes do plano atingido. Atualize o plano para criar mais.");
       return;
     }
 
@@ -995,9 +994,9 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       const message =
         error?.body?.message ??
         error?.response?.data?.message ??
-        (error instanceof Error ? error.message : "Erro ao criar organiza√ß√£o");
+        (error instanceof Error ? error.message : "Erro ao criar organizaÁ„o");
       if (status === 409 && code === "ORG_LIMIT_REACHED") {
-        setOrgError("Limite de organiza√ß√µes do seu plano atingido.");
+        setOrgError("Limite de organizaÁıes do seu plano atingido.");
       } else {
         setOrgError(message);
       }
@@ -1028,7 +1027,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     // Normaliza o status alvo
     const newStatus = resolveStatus(destination.droppableId) ?? "BACKLOG";
 
-    // Atualiza√ß√£o otimista do estado local
+    // AtualizaÁ„o otimista do estado local
     setBoardColumns((prev) => reorderBoard(prev, source, destination, draggableId, newStatus));
     
     try {
@@ -1047,7 +1046,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         selectedOrganizationId
       );
       
-      // Recarrega para garantir sincroniza√ß√£o
+      // Recarrega para garantir sincronizaÁ„o
       setBoardRefresh((value) => value + 1);
       setWbsRefresh((value) => value + 1);
     } catch (error) {
@@ -1120,7 +1119,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       payload.serviceMultiplier = Number(payload.serviceMultiplier);
     }
 
-    // Recalcula serviceHours = hoursBase √ó multiplier
+    // Recalcula serviceHours = hoursBase ◊ multiplier
     const currentNode = findWbsNode(wbsNodes, nodeId);
     if ("serviceMultiplier" in payload && !("serviceCatalogId" in payload) && currentNode?.serviceCatalogId) {
       payload.serviceCatalogId = currentNode.serviceCatalogId;
@@ -1174,7 +1173,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
             .map((member: any) => ({
               membershipId: member.id,
               userId: member.userId,
-              name: member.name ?? member.email ?? "Respons√°vel"
+              name: member.name ?? member.email ?? "Respons·vel"
             }))[0] ?? null
         : null;
 
@@ -1193,7 +1192,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
       setWbsNodes((prev) => patchWbsNode(prev, nodeId, { responsible: response.responsible ?? null }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao atualizar respons√°vel";
+      const message = error instanceof Error ? error.message : "Erro ao atualizar respons·vel";
       setWbsError(message);
       setWbsRefresh((value) => value + 1);
     }
@@ -1285,7 +1284,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   const handleCreateServiceCatalog = useCallback(
     async (payload: { name: string; hoursBase: number; description?: string | null }) => {
       if (!token || !selectedProjectId || !selectedOrganizationId) {
-        throw new Error("Projeto selecionado √© obrigat√≥rio.");
+        throw new Error("Projeto selecionado È obrigatÛrio.");
       }
 
       const body = {
@@ -1313,7 +1312,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   const handleUpdateServiceCatalog = useCallback(
     async (serviceId: string, payload: { name?: string; hoursBase?: number; description?: string | null }) => {
       if (!token || !selectedOrganizationId) {
-        throw new Error("Organiza√ß√£o √© obrigat√≥ria.");
+        throw new Error("OrganizaÁ„o È obrigatÛria.");
       }
 
       await fetchJson(
@@ -1334,7 +1333,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   const handleDeleteServiceCatalog = useCallback(
     async (serviceId: string) => {
       if (!token || !selectedOrganizationId) {
-        throw new Error("Organiza√ß√£o √© obrigat√≥ria.");
+        throw new Error("OrganizaÁ„o È obrigatÛria.");
       }
 
       await fetchJson(
@@ -1357,7 +1356,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       if (storedOrgId) setSelectedOrganizationId(storedOrgId);
       if (storedProjId) setSelectedProjectId(storedProjId);
     } catch (error) {
-      console.error("Falha ao ler organiza√ß√£o/projeto salvos", error);
+      console.error("Falha ao ler organizaÁ„o/projeto salvos", error);
     }
   }, []);
 
@@ -1411,7 +1410,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   }, [location.pathname, navigate, status]);
 
   if (status === "loading") {
-    return <p style={{ padding: "2rem" }}>Carregando autentica√ß√£o...</p>;
+    return <p style={{ padding: "2rem" }}>Carregando autenticaÁ„o...</p>;
   }
 
   if (status === "unauthenticated" || !token) {
@@ -1426,7 +1425,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         }}
         onSignUp={async (payload: RegisterPayload) => {
           await signUp(payload);
-          // Novo usu√°rio deve concluir o checkout antes de criar organiza√ß√£o
+          // Novo usu·rio deve concluir o checkout antes de criar organizaÁ„o
           navigate("/checkout", { replace: true });
         }}
         error={authError}
@@ -1437,17 +1436,16 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   const storedOrganizationId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
   const hasStoredOrganization = Boolean(selectedOrganizationId || storedOrganizationId);
   const isOnCheckoutRoute = location.pathname === "/checkout";
-  const isOnBillingReturnRoute = location.pathname.startsWith("/billing/return");
-
+  
   if (subscriptionStatus === "loading" || subscriptionStatus === "idle") {
-    if (isOnCheckoutRoute || isOnBillingReturnRoute) {
-      // Permite abrir o checkout enquanto o status √© carregado
+    if (isOnCheckoutRoute) {
+      // Permite abrir o checkout enquanto o status È carregado
     } else {
       return <p style={{ padding: "2rem" }}>Carregando assinatura...</p>;
     }
   }
 
-  if (subscriptionStatus !== "active" && !isOnCheckoutRoute && !isOnBillingReturnRoute) {
+  if (subscriptionStatus !== "active" && !isOnCheckoutRoute) {
     return <Navigate to="/checkout" replace />;
   }
 
@@ -1569,10 +1567,6 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
               onSubscriptionActivated={fetchSubscription}
             />
           }
-        />
-        <Route
-          path="billing/return"
-          element={<BillingReturnPage onSubscriptionActivated={fetchSubscription} />}
         />
         <Route
           path="organizacao"
@@ -1766,3 +1760,4 @@ function findWbsNode(nodes: WbsNode[], nodeId: string): WbsNode | null {
   }
   return null;
 }
+
