@@ -28,9 +28,11 @@ const fieldLabelMap = {
     password: "Senha"
 };
 const resolveInvalidPayloadMessage = (details) => {
-    if (!details) return registerErrorMap.INVALID_PAYLOAD;
+    if (!details)
+        return registerErrorMap.INVALID_PAYLOAD;
     const fields = Object.keys(details);
-    if (!fields.length) return registerErrorMap.INVALID_PAYLOAD;
+    if (!fields.length)
+        return registerErrorMap.INVALID_PAYLOAD;
     const labels = fields.map((field) => fieldLabelMap[field] ?? field);
     return `Confira os dados informados: ${labels.join(", ")}.`;
 };
@@ -38,17 +40,19 @@ const appendRequestId = (message, body) => {
     const requestId = body?.requestId;
     return requestId ? `${message} (ID: ${requestId})` : message;
 };
-
 const resolveRegisterErrorMessage = (response, body) => {
     const code = body?.code;
     let baseMessage;
     if (code === "INVALID_PAYLOAD") {
         baseMessage = resolveInvalidPayloadMessage(body?.details);
-    } else if (code && registerErrorMap[code]) {
+    }
+    else if (code && registerErrorMap[code]) {
         baseMessage = registerErrorMap[code];
-    } else if (response.status >= 500) {
+    }
+    else if (response.status >= 500) {
         baseMessage = "Erro ao criar conta. Tente novamente em instantes.";
-    } else {
+    }
+    else {
         baseMessage = body?.message ?? "Falha ao criar conta.";
     }
     return appendRequestId(baseMessage, body);
@@ -85,7 +89,7 @@ export const AuthProvider = ({ children }) => {
         setSession(data.session);
         setStatus("authenticated");
     };
-        const signUp = async (payload) => {
+    const signUp = async (payload) => {
         setError(null);
         let response;
         try {

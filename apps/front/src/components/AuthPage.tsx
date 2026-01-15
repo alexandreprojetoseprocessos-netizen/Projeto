@@ -89,7 +89,7 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
   const [documentNumber, setDocumentNumber] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [orgMode, setOrgMode] = useState<"new" | "invite">("new");
+  const [startMode, setStartMode] = useState<"NEW_ORG" | "INVITE">("NEW_ORG");
   const [organizationName, setOrganizationName] = useState("");
   const [inviteToken, setInviteToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -177,8 +177,6 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
       return;
     }
     setLocalError(null);
-    const startMode = orgMode === "invite" ? "INVITE" : "NEW_ORG";
-
     if (mode === "register") {
       const errors = validateSignupForm(startMode);
       if (errors) {
@@ -393,9 +391,9 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
                     <input
                       type="radio"
                       name="organization-mode"
-                      value="new"
-                      checked={orgMode === "new"}
-                      onChange={() => setOrgMode("new")}
+                      value="NEW_ORG"
+                      checked={startMode === "NEW_ORG"}
+                      onChange={() => setStartMode("NEW_ORG")}
                     />
                     <span>Criar nova organização</span>
                   </label>
@@ -403,9 +401,9 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
                     <input
                       type="radio"
                       name="organization-mode"
-                      value="invite"
-                      checked={orgMode === "invite"}
-                      onChange={() => setOrgMode("invite")}
+                      value="INVITE"
+                      checked={startMode === "INVITE"}
+                      onChange={() => setStartMode("INVITE")}
                     />
                     <span>Entrar em uma existente (convite)</span>
                   </label>
@@ -413,7 +411,7 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
               </div>
             )}
 
-            {mode === "register" && orgMode === "new" && (
+            {mode === "register" && startMode === "NEW_ORG" && (
               <label className="input-group">
                 <span>Nome da organização</span>
                 <input
@@ -426,7 +424,7 @@ export const AuthPage = ({ onSubmit, onSignUp, error }: AuthPageProps) => {
               </label>
             )}
 
-            {mode === "register" && orgMode === "invite" && (
+            {mode === "register" && startMode === "INVITE" && (
               <label className="input-group">
                 <span>Código do convite</span>
                 <input

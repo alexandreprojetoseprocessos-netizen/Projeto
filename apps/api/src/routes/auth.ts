@@ -1,4 +1,5 @@
-import { Router, Request, Response } from "express";
+import { Router } from "express";
+import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@gestao/database";
