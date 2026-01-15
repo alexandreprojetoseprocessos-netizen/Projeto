@@ -15,9 +15,15 @@ export class ApiRequestError extends Error {
 type JsonBody = Record<string, any>;
 
 export type PixPaymentPayload = {
-  amount: number;
+  transaction_amount: number;
   description: string;
-  payerEmail: string;
+  payer: {
+    email: string;
+    identification?: {
+      type: string;
+      number: string;
+    };
+  };
   externalReference?: string;
   planCode?: string;
   billingCycle?: string;
@@ -61,21 +67,26 @@ export type IdentificationType = {
   name: string;
 };
 
+export type PaymentMethodSetting = {
+  bin?: {
+    pattern?: string;
+    exclusion_pattern?: string;
+  };
+};
+
 export type PaymentMethod = {
   id: string;
   name?: string;
-};
-
-export type PaymentMethodSearchResponse = {
-  results: PaymentMethod[];
-};
-
-export type Issuer = {
-  id: string;
-  name: string;
+  payment_type_id?: string;
+  status?: string;
+  settings?: PaymentMethodSetting[];
 };
 
 export type InstallmentsResponse = Array<{
+  issuer?: {
+    id?: number | string;
+    name?: string;
+  };
   payer_costs?: Array<{
     installments: number;
     recommended_message?: string;
@@ -140,38 +151,26 @@ export const fetchIdentificationTypes = async (token: string) => {
   return handleApiResponse<IdentificationType[]>(response, "Falha ao carregar documentos.");
 };
 
-export const fetchPaymentMethods = async (token: string, bin: string) => {
-  const params = new URLSearchParams({ bin });
-  const response = await apiFetch(`/payments/payment_methods?${params.toString()}`, {
+export const fetchPaymentMethods = async (token: string) => {
+  const response = await apiFetch("/payments/payment_methods", {
     method: "GET",
     headers: authHeaders(token),
     retry: 0
   });
-  return handleApiResponse<PaymentMethodSearchResponse>(response, "Falha ao consultar bandeira.");
-};
-
-export const fetchIssuers = async (token: string, params: { paymentMethodId: string; bin: string }) => {
-  const query = new URLSearchParams({
-    payment_method_id: params.paymentMethodId,
-    bin: params.bin
-  });
-  const response = await apiFetch(`/payments/issuers?${query.toString()}`, {
-    method: "GET",
-    headers: authHeaders(token),
-    retry: 0
-  });
-  return handleApiResponse<Issuer[]>(response, "Falha ao carregar emissores.");
+  return handleApiResponse<PaymentMethod[]>(response, "Falha ao consultar metodos de pagamento.");
 };
 
 export const fetchInstallments = async (
   token: string,
-  params: { amount: number; bin: string; paymentMethodId: string }
+  params: { amount: number; paymentMethodId: string; issuerId?: string | null }
 ) => {
   const query = new URLSearchParams({
     amount: params.amount.toFixed(2),
-    bin: params.bin,
     payment_method_id: params.paymentMethodId
   });
+  if (params.issuerId) {
+    query.set("issuer_id", params.issuerId);
+  }
   const response = await apiFetch(`/payments/installments?${query.toString()}`, {
     method: "GET",
     headers: authHeaders(token),

@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { Router } from "express";
-import axios from "axios";
+import { Router, type Response } from "express";
 import { prisma } from "@gestao/database";
 import { SubscriptionStatus } from "@prisma/client";
 import { authMiddleware } from "../middleware/auth";
-import { config } from "../config/env";
 import { BillingCycle, getPlanDefinition, getPlanPriceCents, getPlanProduct } from "../config/plans";
 import { getActiveSubscriptionForUser } from "../services/subscriptions";
 import { logger } from "../config/logger";
-import { MP_BASE_URL, resolveWebhookUrl, syncSubscriptionFromPayment } from "../services/mercadopago";
+import { resolveWebhookUrl, syncSubscriptionFromPayment } from "../services/mercadopago";
+import {
+  MercadoPagoClientError,
+  mercadopagoGet,
+  mercadopagoPost
+} from "../services/mercadopagoClient";
 
 type PlanContext = {
   planCode: string;
@@ -32,6 +35,39 @@ const parseAmount = (value: any) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return Number(parsed.toFixed(2));
+};
+
+const normalizeIdentificationNumber = (value?: string | null) => {
+  if (!value) return null;
+  const digits = value.replace(/\D/g, "");
+  return digits || null;
+};
+
+const buildError = (
+  requestId: string,
+  message: string,
+  code: string,
+  details?: Record<string, unknown>
+) => ({
+  message,
+  code,
+  requestId,
+  ...(details ? { details } : {})
+});
+
+const handleMercadoPagoError = (
+  res: Response,
+  requestId: string,
+  error: unknown,
+  fallbackMessage: string
+) => {
+  if (error instanceof MercadoPagoClientError) {
+    const status = error.status ?? 502;
+    const message = error.message || fallbackMessage;
+    return res.status(status).json(buildError(requestId, message, error.code ?? "MP_ERROR", error.details));
+  }
+  logger.error({ err: error, requestId }, "Unexpected Mercado Pago error");
+  return res.status(502).json(buildError(requestId, fallbackMessage, "MP_ERROR"));
 };
 
 const matchesAmount = (amount: number, amountCents: number) => {
@@ -122,189 +158,44 @@ export const paymentsRouter = Router();
 paymentsRouter.use(authMiddleware);
 
 paymentsRouter.get("/identification_types", async (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ message: "Authentication required" });
-  }
-
   const requestId = randomUUID();
-  const accessToken = config.mercadoPago.accessToken;
-  if (!accessToken) {
-    return res.status(500).json({ message: "Mercado Pago nao configurado." });
+  if (!req.user) {
+    return res.status(401).json(buildError(requestId, "Authentication required", "UNAUTHORIZED"));
   }
 
   try {
-    const response = await axios.get(`${MP_BASE_URL}/v1/identification_types`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
-    });
-
-    logger.info(
-      {
-        requestId,
-        mp: {
-          status: response.status
-        }
-      },
-      "Mercado Pago identification types response"
-    );
-
-    return res.status(200).json(response.data);
+    const response = await mercadopagoGet<any[]>(requestId, "/v1/identification_types");
+    return res.status(200).json(response);
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      logger.error(
-        {
-          requestId,
-          mp: {
-            status: error.response?.status
-          }
-        },
-        "Failed to fetch Mercado Pago identification types"
-      );
-    } else {
-      logger.error({ err: error, requestId }, "Failed to fetch Mercado Pago identification types");
-    }
-    return res.status(502).json({ message: "Falha ao carregar documentos." });
+    return handleMercadoPagoError(res, requestId, error, "Falha ao carregar documentos.");
   }
 });
 
 paymentsRouter.get("/payment_methods", async (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ message: "Authentication required" });
-  }
-
   const requestId = randomUUID();
-  const accessToken = config.mercadoPago.accessToken;
-  if (!accessToken) {
-    return res.status(500).json({ message: "Mercado Pago nao configurado." });
-  }
-
-  const bin = typeof req.query.bin === "string" ? req.query.bin.trim() : "";
-  if (!bin) {
-    return res.status(400).json({ message: "bin obrigatorio." });
+  if (!req.user) {
+    return res.status(401).json(buildError(requestId, "Authentication required", "UNAUTHORIZED"));
   }
 
   try {
-    const response = await axios.get(`${MP_BASE_URL}/v1/payment_methods/search`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      },
-      params: {
-        bin
-      }
-    });
-
-    logger.info(
-      {
-        requestId,
-        mp: {
-          status: response.status
-        }
-      },
-      "Mercado Pago payment methods response"
-    );
-
-    return res.status(200).json(response.data);
+    const response = await mercadopagoGet<any[]>(requestId, "/v1/payment_methods");
+    return res.status(200).json(response);
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      logger.error(
-        {
-          requestId,
-          mp: {
-            status: error.response?.status
-          }
-        },
-        "Failed to fetch Mercado Pago payment methods"
-      );
-    } else {
-      logger.error({ err: error, requestId }, "Failed to fetch Mercado Pago payment methods");
-    }
-    return res.status(502).json({ message: "Falha ao consultar bandeira." });
-  }
-});
-
-paymentsRouter.get("/issuers", async (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ message: "Authentication required" });
-  }
-
-  const requestId = randomUUID();
-  const accessToken = config.mercadoPago.accessToken;
-  if (!accessToken) {
-    return res.status(500).json({ message: "Mercado Pago nao configurado." });
-  }
-
-  const bin = typeof req.query.bin === "string" ? req.query.bin.trim() : "";
-  const paymentMethodId =
-    typeof req.query.payment_method_id === "string"
-      ? req.query.payment_method_id
-      : typeof req.query.paymentMethodId === "string"
-        ? req.query.paymentMethodId
-        : "";
-  if (!paymentMethodId) {
-    return res.status(400).json({ message: "payment_method_id obrigatorio." });
-  }
-  if (!bin) {
-    return res.status(400).json({ message: "bin obrigatorio." });
-  }
-
-  try {
-    const response = await axios.get(`${MP_BASE_URL}/v1/payment_methods/issuers`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      },
-      params: {
-        payment_method_id: paymentMethodId,
-        bin
-      }
-    });
-
-    logger.info(
-      {
-        requestId,
-        mp: {
-          status: response.status
-        }
-      },
-      "Mercado Pago issuers response"
-    );
-
-    return res.status(200).json(response.data);
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      logger.error(
-        {
-          requestId,
-          mp: {
-            status: error.response?.status
-          }
-        },
-        "Failed to fetch Mercado Pago issuers"
-      );
-    } else {
-      logger.error({ err: error, requestId }, "Failed to fetch Mercado Pago issuers");
-    }
-    return res.status(502).json({ message: "Falha ao carregar emissores." });
+    return handleMercadoPagoError(res, requestId, error, "Falha ao consultar metodos de pagamento.");
   }
 });
 
 paymentsRouter.get("/installments", async (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ message: "Authentication required" });
-  }
-
   const requestId = randomUUID();
-  const accessToken = config.mercadoPago.accessToken;
-  if (!accessToken) {
-    return res.status(500).json({ message: "Mercado Pago nao configurado." });
+  if (!req.user) {
+    return res.status(401).json(buildError(requestId, "Authentication required", "UNAUTHORIZED"));
   }
 
   const amount = parseAmount(req.query.transaction_amount ?? req.query.amount);
   if (!amount) {
-    return res.status(400).json({ message: "amount obrigatorio." });
+    return res.status(400).json(buildError(requestId, "amount obrigatorio.", "VALIDATION_ERROR"));
   }
 
-  const bin = typeof req.query.bin === "string" ? req.query.bin.trim() : "";
   const paymentMethodId =
     typeof req.query.payment_method_id === "string"
       ? req.query.payment_method_id
@@ -312,66 +203,49 @@ paymentsRouter.get("/installments", async (req, res) => {
         ? req.query.paymentMethodId
         : "";
   if (!paymentMethodId) {
-    return res.status(400).json({ message: "payment_method_id obrigatorio." });
+    return res.status(400).json(buildError(requestId, "payment_method_id obrigatorio.", "VALIDATION_ERROR"));
   }
-  if (!bin) {
-    return res.status(400).json({ message: "bin obrigatorio." });
-  }
+
+  const issuerId =
+    typeof req.query.issuer_id === "string"
+      ? req.query.issuer_id
+      : typeof req.query.issuerId === "string"
+        ? req.query.issuerId
+        : null;
 
   try {
-    const response = await axios.get(`${MP_BASE_URL}/v1/payment_methods/installments`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      },
-      params: {
-        amount,
-        bin,
-        payment_method_id: paymentMethodId
-      }
+    const response = await mercadopagoGet<any[]>(requestId, "/v1/payment_methods/installments", {
+      amount,
+      payment_method_id: paymentMethodId,
+      ...(issuerId ? { issuer_id: issuerId } : {})
     });
-
-    logger.info(
-      {
-        requestId,
-        mp: {
-          status: response.status
-        }
-      },
-      "Mercado Pago installments response"
-    );
-
-    return res.status(200).json(response.data);
+    return res.status(200).json(response);
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      logger.error(
-        {
-          requestId,
-          mp: {
-            status: error.response?.status
-          }
-        },
-        "Failed to fetch Mercado Pago installments"
-      );
-    } else {
-      logger.error({ err: error, requestId }, "Failed to fetch Mercado Pago installments");
-    }
-    return res.status(502).json({ message: "Falha ao calcular parcelas." });
+    return handleMercadoPagoError(res, requestId, error, "Falha ao calcular parcelas.");
   }
 });
 
 paymentsRouter.post("/pix", async (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ message: "Authentication required" });
-  }
-
   const requestId = randomUUID();
-  const accessToken = config.mercadoPago.accessToken;
-  if (!accessToken) {
-    return res.status(500).json({ message: "Mercado Pago nao configurado." });
+  if (!req.user) {
+    return res.status(401).json(buildError(requestId, "Authentication required", "UNAUTHORIZED"));
   }
 
   const body = req.body ?? {};
   const payerFromBody = body.payer && typeof body.payer === "object" ? body.payer : null;
+  const identification =
+    payerFromBody && typeof payerFromBody.identification === "object" ? payerFromBody.identification : null;
+  const identificationType = typeof identification?.type === "string" ? identification.type.trim() : "";
+  const identificationNumber = normalizeIdentificationNumber(
+    typeof identification?.number === "string" ? identification.number : null
+  );
+
+  if (!identificationType || !identificationNumber) {
+    return res
+      .status(400)
+      .json(buildError(requestId, "identification obrigatorio.", "VALIDATION_ERROR"));
+  }
+
   const providedPlanCode = typeof body.planCode === "string" ? body.planCode : null;
   const billingCycle = resolveBillingCycle(body.billingCycle);
   const providedExternalReference = typeof body.externalReference === "string" ? body.externalReference : null;
@@ -382,13 +256,16 @@ paymentsRouter.post("/pix", async (req, res) => {
       planContext = buildPlanContext(providedPlanCode, billingCycle);
     }
   } catch (error) {
-    return res.status(400).json({ message: error instanceof Error ? error.message : "Plano invalido." });
+    return res
+      .status(400)
+      .json(buildError(requestId, error instanceof Error ? error.message : "Plano invalido.", "VALIDATION_ERROR"));
   }
 
-  const payerEmail =
-    normalizeEmail(payerFromBody?.email) ?? normalizeEmail(body.payerEmail) ?? normalizeEmail(req.user.email);
+  const payerEmail = normalizeEmail(req.user.email);
   if (!payerEmail) {
-    return res.status(400).json({ message: "payerEmail obrigatorio." });
+    return res
+      .status(400)
+      .json(buildError(requestId, "Email do usuario nao encontrado.", "VALIDATION_ERROR"));
   }
 
   let subscription = null;
@@ -396,44 +273,57 @@ paymentsRouter.post("/pix", async (req, res) => {
   if (externalReference) {
     subscription = await prisma.subscription.findUnique({ where: { id: externalReference } });
     if (!subscription || subscription.userId !== req.user.id) {
-      return res.status(404).json({ message: "Assinatura nao encontrada." });
+      return res.status(404).json(buildError(requestId, "Assinatura nao encontrada.", "NOT_FOUND"));
     }
     if (subscription.status === SubscriptionStatus.ACTIVE) {
-      return res.status(409).json({ message: "Voce ja possui uma assinatura ativa." });
+      return res
+        .status(409)
+        .json(buildError(requestId, "Voce ja possui uma assinatura ativa.", "CONFLICT"));
     }
   } else {
     if (!planContext) {
-      return res.status(400).json({ message: "planCode obrigatorio quando externalReference nao for informado." });
+      return res
+        .status(400)
+        .json(buildError(requestId, "planCode obrigatorio quando externalReference nao for informado.", "VALIDATION_ERROR"));
     }
     try {
       subscription = await createPendingSubscription(req.user, planContext.planCode, planContext.billingCycle, "pix");
       externalReference = subscription.id;
     } catch (error) {
-      return res.status(400).json({ message: error instanceof Error ? error.message : "Falha ao criar assinatura." });
+      return res
+        .status(400)
+        .json(buildError(requestId, error instanceof Error ? error.message : "Falha ao criar assinatura.", "VALIDATION_ERROR"));
     }
   }
 
   const requestedAmount = parseAmount(body.transaction_amount ?? body.amount);
-  const resolvedAmount = planContext
-    ? planContext.amountCents / 100
-    : requestedAmount;
+  const resolvedAmount = planContext ? planContext.amountCents / 100 : requestedAmount;
   if (!resolvedAmount) {
-    return res.status(400).json({ message: "amount obrigatorio." });
+    return res.status(400).json(buildError(requestId, "amount obrigatorio.", "VALIDATION_ERROR"));
   }
   if (requestedAmount && planContext && !matchesAmount(requestedAmount, planContext.amountCents)) {
-    return res.status(400).json({ message: "amount nao corresponde ao valor do plano." });
+    return res
+      .status(400)
+      .json(buildError(requestId, "amount nao corresponde ao valor do plano.", "VALIDATION_ERROR"));
   }
 
-  const description = typeof body.description === "string" && body.description.trim()
-    ? body.description.trim()
-    : planContext?.planName ?? "Pagamento Pix";
+  const description =
+    typeof body.description === "string" && body.description.trim()
+      ? body.description.trim()
+      : planContext?.planName ?? "Pagamento Pix";
 
   const notificationUrl = resolveWebhookUrl();
   const paymentPayload = {
     transaction_amount: resolvedAmount,
     description,
     payment_method_id: "pix",
-    payer: { email: payerEmail },
+    payer: {
+      email: payerEmail,
+      identification: {
+        type: identificationType,
+        number: identificationNumber
+      }
+    },
     external_reference: externalReference,
     ...(notificationUrl ? { notification_url: notificationUrl } : {})
   };
@@ -444,9 +334,7 @@ paymentsRouter.post("/pix", async (req, res) => {
       mp: {
         method: "pix",
         amount: resolvedAmount,
-        description,
         externalReference,
-        payerEmail,
         notificationUrl
       }
     },
@@ -454,13 +342,7 @@ paymentsRouter.post("/pix", async (req, res) => {
   );
 
   try {
-    const response = await axios.post(`${MP_BASE_URL}/v1/payments`, paymentPayload, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
-    });
-
-    const payment = response.data as {
+    const payment = await mercadopagoPost<{
       id: number | string;
       status: string;
       external_reference?: string;
@@ -471,7 +353,7 @@ paymentsRouter.post("/pix", async (req, res) => {
         };
       };
       payment_method_id?: string;
-    };
+    }>(requestId, "/v1/payments", paymentPayload);
 
     logger.info(
       {
@@ -493,7 +375,7 @@ paymentsRouter.post("/pix", async (req, res) => {
 
     const transactionData = payment.point_of_interaction?.transaction_data;
     if (!transactionData?.qr_code || !transactionData?.qr_code_base64) {
-      return res.status(502).json({ message: "Falha ao gerar QR Code Pix." });
+      return res.status(502).json(buildError(requestId, "Falha ao gerar QR Code Pix.", "MP_ERROR"));
     }
 
     return res.status(201).json({
@@ -504,40 +386,21 @@ paymentsRouter.post("/pix", async (req, res) => {
       externalReference
     });
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      logger.error(
-        {
-          requestId,
-          mp: {
-            status: error.response?.status,
-            data: error.response?.data
-          }
-        },
-        "Failed to create Mercado Pago pix payment"
-      );
-    } else {
-      logger.error({ err: error, requestId }, "Failed to create Mercado Pago pix payment");
-    }
-    return res.status(502).json({ message: "Falha ao criar pagamento Pix." });
+    return handleMercadoPagoError(res, requestId, error, "Falha ao criar pagamento Pix.");
   }
 });
 
 paymentsRouter.post("/card", async (req, res) => {
-  if (!req.user) {
-    return res.status(401).json({ message: "Authentication required" });
-  }
-
   const requestId = randomUUID();
-  const accessToken = config.mercadoPago.accessToken;
-  if (!accessToken) {
-    return res.status(500).json({ message: "Mercado Pago nao configurado." });
+  if (!req.user) {
+    return res.status(401).json(buildError(requestId, "Authentication required", "UNAUTHORIZED"));
   }
 
   const body = req.body ?? {};
   const cardToken =
     typeof body.cardToken === "string" ? body.cardToken : typeof body.token === "string" ? body.token : null;
   if (!cardToken) {
-    return res.status(400).json({ message: "cardToken obrigatorio." });
+    return res.status(400).json(buildError(requestId, "token obrigatorio.", "VALIDATION_ERROR"));
   }
 
   const paymentMethodId =
@@ -547,13 +410,18 @@ paymentsRouter.post("/card", async (req, res) => {
         ? body.payment_method_id
         : null;
   if (!paymentMethodId) {
-    return res.status(400).json({ message: "payment_method_id obrigatorio." });
+    return res.status(400).json(buildError(requestId, "payment_method_id obrigatorio.", "VALIDATION_ERROR"));
   }
 
-  const issuerId = typeof body.issuer_id === "string" ? body.issuer_id : typeof body.issuerId === "string" ? body.issuerId : null;
+  const issuerId =
+    typeof body.issuer_id === "string"
+      ? body.issuer_id
+      : typeof body.issuerId === "string"
+        ? body.issuerId
+        : null;
   const installments = Number(body.installments);
   if (!Number.isFinite(installments) || installments < 1) {
-    return res.status(400).json({ message: "installments obrigatorio." });
+    return res.status(400).json(buildError(requestId, "installments obrigatorio.", "VALIDATION_ERROR"));
   }
 
   const providedPlanCode = typeof body.planCode === "string" ? body.planCode : null;
@@ -562,8 +430,16 @@ paymentsRouter.post("/card", async (req, res) => {
   const payerFromBody = body.payer && typeof body.payer === "object" ? body.payer : null;
   const identification =
     payerFromBody && typeof payerFromBody.identification === "object" ? payerFromBody.identification : null;
-  const identificationType = typeof identification?.type === "string" ? identification.type : null;
-  const identificationNumber = typeof identification?.number === "string" ? identification.number : null;
+  const identificationType = typeof identification?.type === "string" ? identification.type.trim() : "";
+  const identificationNumber = normalizeIdentificationNumber(
+    typeof identification?.number === "string" ? identification.number : null
+  );
+
+  if (!identificationType || !identificationNumber) {
+    return res
+      .status(400)
+      .json(buildError(requestId, "identification obrigatorio.", "VALIDATION_ERROR"));
+  }
 
   let planContext: PlanContext | null = null;
   try {
@@ -571,13 +447,16 @@ paymentsRouter.post("/card", async (req, res) => {
       planContext = buildPlanContext(providedPlanCode, billingCycle);
     }
   } catch (error) {
-    return res.status(400).json({ message: error instanceof Error ? error.message : "Plano invalido." });
+    return res
+      .status(400)
+      .json(buildError(requestId, error instanceof Error ? error.message : "Plano invalido.", "VALIDATION_ERROR"));
   }
 
-  const payerEmail =
-    normalizeEmail(payerFromBody?.email) ?? normalizeEmail(body.payerEmail) ?? normalizeEmail(req.user.email);
+  const payerEmail = normalizeEmail(req.user.email);
   if (!payerEmail) {
-    return res.status(400).json({ message: "payerEmail obrigatorio." });
+    return res
+      .status(400)
+      .json(buildError(requestId, "Email do usuario nao encontrado.", "VALIDATION_ERROR"));
   }
 
   let subscription = null;
@@ -585,37 +464,44 @@ paymentsRouter.post("/card", async (req, res) => {
   if (externalReference) {
     subscription = await prisma.subscription.findUnique({ where: { id: externalReference } });
     if (!subscription || subscription.userId !== req.user.id) {
-      return res.status(404).json({ message: "Assinatura nao encontrada." });
+      return res.status(404).json(buildError(requestId, "Assinatura nao encontrada.", "NOT_FOUND"));
     }
     if (subscription.status === SubscriptionStatus.ACTIVE) {
-      return res.status(409).json({ message: "Voce ja possui uma assinatura ativa." });
+      return res
+        .status(409)
+        .json(buildError(requestId, "Voce ja possui uma assinatura ativa.", "CONFLICT"));
     }
   } else {
     if (!planContext) {
-      return res.status(400).json({ message: "planCode obrigatorio quando externalReference nao for informado." });
+      return res
+        .status(400)
+        .json(buildError(requestId, "planCode obrigatorio quando externalReference nao for informado.", "VALIDATION_ERROR"));
     }
     try {
       subscription = await createPendingSubscription(req.user, planContext.planCode, planContext.billingCycle, "card");
       externalReference = subscription.id;
     } catch (error) {
-      return res.status(400).json({ message: error instanceof Error ? error.message : "Falha ao criar assinatura." });
+      return res
+        .status(400)
+        .json(buildError(requestId, error instanceof Error ? error.message : "Falha ao criar assinatura.", "VALIDATION_ERROR"));
     }
   }
 
   const requestedAmount = parseAmount(body.transaction_amount ?? body.amount);
-  const resolvedAmount = planContext
-    ? planContext.amountCents / 100
-    : requestedAmount;
+  const resolvedAmount = planContext ? planContext.amountCents / 100 : requestedAmount;
   if (!resolvedAmount) {
-    return res.status(400).json({ message: "amount obrigatorio." });
+    return res.status(400).json(buildError(requestId, "amount obrigatorio.", "VALIDATION_ERROR"));
   }
   if (requestedAmount && planContext && !matchesAmount(requestedAmount, planContext.amountCents)) {
-    return res.status(400).json({ message: "amount nao corresponde ao valor do plano." });
+    return res
+      .status(400)
+      .json(buildError(requestId, "amount nao corresponde ao valor do plano.", "VALIDATION_ERROR"));
   }
 
-  const description = typeof body.description === "string" && body.description.trim()
-    ? body.description.trim()
-    : planContext?.planName ?? "Pagamento Cartao";
+  const description =
+    typeof body.description === "string" && body.description.trim()
+      ? body.description.trim()
+      : planContext?.planName ?? "Pagamento Cartao";
 
   const notificationUrl = resolveWebhookUrl();
   const paymentPayload = {
@@ -626,14 +512,10 @@ paymentsRouter.post("/card", async (req, res) => {
     payment_method_id: paymentMethodId,
     payer: {
       email: payerEmail,
-      ...(identificationType && identificationNumber
-        ? {
-            identification: {
-              type: identificationType,
-              number: identificationNumber
-            }
-          }
-        : {})
+      identification: {
+        type: identificationType,
+        number: identificationNumber
+      }
     },
     external_reference: externalReference,
     ...(issuerId ? { issuer_id: issuerId } : {}),
@@ -646,9 +528,7 @@ paymentsRouter.post("/card", async (req, res) => {
       mp: {
         method: "card",
         amount: resolvedAmount,
-        description,
         externalReference,
-        payerEmail,
         installments,
         issuerId,
         paymentMethodId,
@@ -659,19 +539,13 @@ paymentsRouter.post("/card", async (req, res) => {
   );
 
   try {
-    const response = await axios.post(`${MP_BASE_URL}/v1/payments`, paymentPayload, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
-    });
-
-    const payment = response.data as {
+    const payment = await mercadopagoPost<{
       id: number | string;
       status: string;
       status_detail?: string;
       external_reference?: string;
       payment_method_id?: string;
-    };
+    }>(requestId, "/v1/payments", paymentPayload);
 
     logger.info(
       {
@@ -698,20 +572,6 @@ paymentsRouter.post("/card", async (req, res) => {
       status_detail: payment.status_detail ?? null
     });
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      logger.error(
-        {
-          requestId,
-          mp: {
-            status: error.response?.status,
-            data: error.response?.data
-          }
-        },
-        "Failed to create Mercado Pago card payment"
-      );
-    } else {
-      logger.error({ err: error, requestId }, "Failed to create Mercado Pago card payment");
-    }
-    return res.status(502).json({ message: "Falha ao criar pagamento com cartao." });
+    return handleMercadoPagoError(res, requestId, error, "Falha ao criar pagamento com cartao.");
   }
 });

@@ -4,8 +4,6 @@ import { SubscriptionStatus } from "@prisma/client";
 import { config } from "../config/env";
 import type { BillingCycle } from "../config/plans";
 
-export const MP_BASE_URL = "https://api.mercadopago.com";
-
 const resolveBaseUrl = () => {
   if (!config.mercadoPago.publicApiUrl) return null;
   const base = config.mercadoPago.publicApiUrl.endsWith("/")

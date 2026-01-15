@@ -17,8 +17,8 @@ import {
   createPixPayment,
   fetchIdentificationTypes,
   fetchInstallments,
-  fetchIssuers,
-  fetchPaymentMethods
+  fetchPaymentMethods,
+  type PaymentMethod
 } from "../services/billingClient";
 
 type CheckoutPageProps = {
@@ -77,6 +77,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
   const [identificationTypes, setIdentificationTypes] = useState<{ id: string; name: string }[]>([]);
   const [identificationType, setIdentificationType] = useState("");
   const [identificationNumber, setIdentificationNumber] = useState("");
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [paymentMethodId, setPaymentMethodId] = useState<string | null>(null);
   const [issuerId, setIssuerId] = useState<string | null>(null);
   const [issuerOptions, setIssuerOptions] = useState<{ id: string; name: string }[]>([]);
@@ -148,20 +149,57 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
     return "Falha ao iniciar pagamento.";
   }, []);
 
+  const matchesBinPattern = (bin: string, pattern?: string, exclusionPattern?: string) => {
+    if (!pattern) return false;
+    try {
+      const regex = new RegExp(pattern);
+      if (!regex.test(bin)) return false;
+      if (exclusionPattern) {
+        const exclusionRegex = new RegExp(exclusionPattern);
+        if (exclusionRegex.test(bin)) return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const resolvePaymentMethodId = useCallback(
+    (bin: string) => {
+      if (!bin || bin.length < 6) return null;
+      const candidates = paymentMethods.filter(
+        (method) => method.payment_type_id === "credit_card" && method.status !== "inactive"
+      );
+      for (const method of candidates) {
+        const settings = method.settings ?? [];
+        for (const setting of settings) {
+          const pattern = setting.bin?.pattern;
+          const exclusionPattern = setting.bin?.exclusion_pattern;
+          if (matchesBinPattern(bin, pattern, exclusionPattern)) {
+            return method.id;
+          }
+        }
+      }
+      return null;
+    },
+    [paymentMethods]
+  );
+
   useEffect(() => {
     if (!token) return;
     let active = true;
-    fetchIdentificationTypes(token)
-      .then((types) => {
+    Promise.all([fetchIdentificationTypes(token), fetchPaymentMethods(token)])
+      .then(([types, methods]) => {
         if (!active) return;
-        const normalized = (types ?? []).map((type) => ({
+        const normalizedTypes = (types ?? []).map((type) => ({
           id: String(type.id),
           name: type.name
         }));
-        setIdentificationTypes(normalized);
-        if (normalized.length) {
-          setIdentificationType((current) => current || normalized[0].id);
+        setIdentificationTypes(normalizedTypes);
+        if (normalizedTypes.length) {
+          setIdentificationType((current) => current || normalizedTypes[0].id);
         }
+        setPaymentMethods(Array.isArray(methods) ? methods : []);
       })
       .catch((fetchError) => {
         if (!active) return;
@@ -171,11 +209,11 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, resolveCheckoutErrorMessage]);
 
   useEffect(() => {
     const cardBin = onlyDigits(cardNumber).slice(0, 6);
-    if (!token || cardBin.length < 6 || !amount) {
+    if (cardBin.length < 6 || !paymentMethods.length) {
       setPaymentMethodId(null);
       setIssuerId(null);
       setIssuerOptions([]);
@@ -184,54 +222,87 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
       return;
     }
 
+    const resolvedMethodId = resolvePaymentMethodId(cardBin);
+    if (!resolvedMethodId) {
+      setPaymentMethodId(null);
+      setIssuerId(null);
+      setIssuerOptions([]);
+      setInstallmentOptions([]);
+      setInstallments(1);
+      setCardError("Cartao nao reconhecido.");
+      return;
+    }
+
+    setCardError(null);
+    setPaymentMethodId(resolvedMethodId);
+  }, [cardNumber, resolvePaymentMethodId]);
+
+  useEffect(() => {
+    if (!token || !paymentMethodId || !amount) {
+      setIssuerId(null);
+      setIssuerOptions([]);
+      setInstallmentOptions([]);
+      setInstallments(1);
+      return;
+    }
+
     let active = true;
-
-    const loadPaymentData = async () => {
+    const loadInstallments = async () => {
       setCardError(null);
-      const paymentMethods = await fetchPaymentMethods(token, cardBin);
-      const method = paymentMethods?.results?.[0];
-      if (!method?.id) {
-        throw new Error("Cartao nao reconhecido.");
-      }
-      if (!active) return;
-      setPaymentMethodId(method.id);
-
-      const issuers = await fetchIssuers(token, { paymentMethodId: method.id, bin: cardBin });
-      if (!active) return;
-      setIssuerOptions(
-        Array.isArray(issuers)
-          ? issuers.map((issuer) => ({ id: String(issuer.id), name: issuer.name }))
-          : []
-      );
-      const defaultIssuer = Array.isArray(issuers) && issuers.length ? String(issuers[0].id) : null;
-      setIssuerId(defaultIssuer);
-
       const installmentsResponse = await fetchInstallments(token, {
         amount,
-        bin: cardBin,
-        paymentMethodId: method.id
+        paymentMethodId,
+        issuerId
       });
-      const payerCosts = installmentsResponse?.[0]?.payer_costs ?? [];
+
+      if (!active) return;
+      const normalizedResponse = Array.isArray(installmentsResponse) ? installmentsResponse : [];
+      const issuerMap = new Map<string, { id: string; name: string }>();
+      normalizedResponse.forEach((entry) => {
+        const issuer = entry?.issuer;
+        if (!issuer?.id) return;
+        const issuerKey = String(issuer.id);
+        if (issuerMap.has(issuerKey)) return;
+        issuerMap.set(issuerKey, { id: issuerKey, name: issuer.name ?? issuerKey });
+      });
+
+      const issuerList = Array.from(issuerMap.values());
+      setIssuerOptions(issuerList);
+
+      if (issuerId && !issuerMap.has(issuerId)) {
+        setIssuerId(null);
+      }
+      if (!issuerId && issuerList.length === 1) {
+        setIssuerId(issuerList[0].id);
+      }
+
+      const selectedIssuerId = issuerId ?? issuerList[0]?.id ?? null;
+      const selectedEntry =
+        (selectedIssuerId &&
+          normalizedResponse.find((entry) => String(entry?.issuer?.id) === selectedIssuerId)) ||
+        normalizedResponse[0];
+      const payerCosts = selectedEntry?.payer_costs ?? [];
       const options = payerCosts.map((cost) => ({
         value: cost.installments,
         label: cost.recommended_message ?? `${cost.installments}x`
       }));
-      if (!active) return;
       setInstallmentOptions(options);
       if (options.length) {
         setInstallments(options[0].value);
+      } else {
+        setInstallments(1);
       }
     };
 
-    loadPaymentData().catch((err) => {
+    loadInstallments().catch((err) => {
       if (!active) return;
-      setCardError(err instanceof Error ? err.message : "Erro ao validar cartao.");
+      setCardError(err instanceof Error ? err.message : "Erro ao calcular parcelas.");
     });
 
     return () => {
       active = false;
     };
-  }, [cardNumber, amount, token]);
+  }, [amount, issuerId, paymentMethodId, token]);
 
   const handlePixPayment = async () => {
     if (!token) {
@@ -240,6 +311,11 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
     }
     if (!payerEmail) {
       setPixError("E-mail do pagador obrigatorio.");
+      return;
+    }
+    const identificationDigits = onlyDigits(identificationNumber);
+    if (!identificationType || !identificationDigits) {
+      setPixError("Documento do pagador obrigatorio.");
       return;
     }
     if (!amount) {
@@ -253,9 +329,15 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
 
     try {
       const response = await createPixPayment(token, {
-        amount,
+        transaction_amount: amount,
         description,
-        payerEmail,
+        payer: {
+          email: payerEmail,
+          identification: {
+            type: identificationType,
+            number: identificationDigits
+          }
+        },
         planCode: plan.code,
         billingCycle
       });
@@ -496,6 +578,32 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
         {activeTab === "pix" && (
           <div className="payment-panel">
             <p className="muted">Gere o QR Code Pix e finalize o pagamento no seu banco.</p>
+            <div className="payment-row">
+              <label className="input-group">
+                <span>Tipo de documento</span>
+                <select
+                  value={identificationType}
+                  onChange={(event) => setIdentificationType(event.target.value)}
+                  disabled={!identificationTypes.length}
+                >
+                  {identificationTypes.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="input-group">
+                <span>Numero do documento</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="CPF/CNPJ"
+                  value={identificationNumber}
+                  onChange={(event) => setIdentificationNumber(formatIdentificationNumber(event.target.value))}
+                />
+              </label>
+            </div>
             {pixData ? (
               <div className="pix-result">
                 <img

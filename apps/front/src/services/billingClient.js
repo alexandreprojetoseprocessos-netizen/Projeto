@@ -61,33 +61,22 @@ export const fetchIdentificationTypes = async (token) => {
     });
     return handleApiResponse(response, "Falha ao carregar documentos.");
 };
-export const fetchPaymentMethods = async (token, bin) => {
-    const params = new URLSearchParams({ bin });
-    const response = await apiFetch(`/payments/payment_methods?${params.toString()}`, {
+export const fetchPaymentMethods = async (token) => {
+    const response = await apiFetch("/payments/payment_methods", {
         method: "GET",
         headers: authHeaders(token),
         retry: 0
     });
-    return handleApiResponse(response, "Falha ao consultar bandeira.");
-};
-export const fetchIssuers = async (token, params) => {
-    const query = new URLSearchParams({
-        payment_method_id: params.paymentMethodId,
-        bin: params.bin
-    });
-    const response = await apiFetch(`/payments/issuers?${query.toString()}`, {
-        method: "GET",
-        headers: authHeaders(token),
-        retry: 0
-    });
-    return handleApiResponse(response, "Falha ao carregar emissores.");
+    return handleApiResponse(response, "Falha ao consultar metodos de pagamento.");
 };
 export const fetchInstallments = async (token, params) => {
     const query = new URLSearchParams({
         amount: params.amount.toFixed(2),
-        bin: params.bin,
         payment_method_id: params.paymentMethodId
     });
+    if (params.issuerId) {
+        query.set("issuer_id", params.issuerId);
+    }
     const response = await apiFetch(`/payments/installments?${query.toString()}`, {
         method: "GET",
         headers: authHeaders(token),
