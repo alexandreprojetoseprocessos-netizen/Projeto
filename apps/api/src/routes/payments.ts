@@ -121,6 +121,244 @@ export const paymentsRouter = Router();
 
 paymentsRouter.use(authMiddleware);
 
+paymentsRouter.get("/identification_types", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+
+  const requestId = randomUUID();
+  const accessToken = config.mercadoPago.accessToken;
+  if (!accessToken) {
+    return res.status(500).json({ message: "Mercado Pago nao configurado." });
+  }
+
+  try {
+    const response = await axios.get(`${MP_BASE_URL}/v1/identification_types`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+
+    logger.info(
+      {
+        requestId,
+        mp: {
+          status: response.status
+        }
+      },
+      "Mercado Pago identification types response"
+    );
+
+    return res.status(200).json(response.data);
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      logger.error(
+        {
+          requestId,
+          mp: {
+            status: error.response?.status
+          }
+        },
+        "Failed to fetch Mercado Pago identification types"
+      );
+    } else {
+      logger.error({ err: error, requestId }, "Failed to fetch Mercado Pago identification types");
+    }
+    return res.status(502).json({ message: "Falha ao carregar documentos." });
+  }
+});
+
+paymentsRouter.get("/payment_methods", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+
+  const requestId = randomUUID();
+  const accessToken = config.mercadoPago.accessToken;
+  if (!accessToken) {
+    return res.status(500).json({ message: "Mercado Pago nao configurado." });
+  }
+
+  const bin = typeof req.query.bin === "string" ? req.query.bin.trim() : "";
+  if (!bin) {
+    return res.status(400).json({ message: "bin obrigatorio." });
+  }
+
+  try {
+    const response = await axios.get(`${MP_BASE_URL}/v1/payment_methods/search`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      },
+      params: {
+        bin
+      }
+    });
+
+    logger.info(
+      {
+        requestId,
+        mp: {
+          status: response.status
+        }
+      },
+      "Mercado Pago payment methods response"
+    );
+
+    return res.status(200).json(response.data);
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      logger.error(
+        {
+          requestId,
+          mp: {
+            status: error.response?.status
+          }
+        },
+        "Failed to fetch Mercado Pago payment methods"
+      );
+    } else {
+      logger.error({ err: error, requestId }, "Failed to fetch Mercado Pago payment methods");
+    }
+    return res.status(502).json({ message: "Falha ao consultar bandeira." });
+  }
+});
+
+paymentsRouter.get("/issuers", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+
+  const requestId = randomUUID();
+  const accessToken = config.mercadoPago.accessToken;
+  if (!accessToken) {
+    return res.status(500).json({ message: "Mercado Pago nao configurado." });
+  }
+
+  const bin = typeof req.query.bin === "string" ? req.query.bin.trim() : "";
+  const paymentMethodId =
+    typeof req.query.payment_method_id === "string"
+      ? req.query.payment_method_id
+      : typeof req.query.paymentMethodId === "string"
+        ? req.query.paymentMethodId
+        : "";
+  if (!paymentMethodId) {
+    return res.status(400).json({ message: "payment_method_id obrigatorio." });
+  }
+  if (!bin) {
+    return res.status(400).json({ message: "bin obrigatorio." });
+  }
+
+  try {
+    const response = await axios.get(`${MP_BASE_URL}/v1/payment_methods/issuers`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      },
+      params: {
+        payment_method_id: paymentMethodId,
+        bin
+      }
+    });
+
+    logger.info(
+      {
+        requestId,
+        mp: {
+          status: response.status
+        }
+      },
+      "Mercado Pago issuers response"
+    );
+
+    return res.status(200).json(response.data);
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      logger.error(
+        {
+          requestId,
+          mp: {
+            status: error.response?.status
+          }
+        },
+        "Failed to fetch Mercado Pago issuers"
+      );
+    } else {
+      logger.error({ err: error, requestId }, "Failed to fetch Mercado Pago issuers");
+    }
+    return res.status(502).json({ message: "Falha ao carregar emissores." });
+  }
+});
+
+paymentsRouter.get("/installments", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+
+  const requestId = randomUUID();
+  const accessToken = config.mercadoPago.accessToken;
+  if (!accessToken) {
+    return res.status(500).json({ message: "Mercado Pago nao configurado." });
+  }
+
+  const amount = parseAmount(req.query.transaction_amount ?? req.query.amount);
+  if (!amount) {
+    return res.status(400).json({ message: "amount obrigatorio." });
+  }
+
+  const bin = typeof req.query.bin === "string" ? req.query.bin.trim() : "";
+  const paymentMethodId =
+    typeof req.query.payment_method_id === "string"
+      ? req.query.payment_method_id
+      : typeof req.query.paymentMethodId === "string"
+        ? req.query.paymentMethodId
+        : "";
+  if (!paymentMethodId) {
+    return res.status(400).json({ message: "payment_method_id obrigatorio." });
+  }
+  if (!bin) {
+    return res.status(400).json({ message: "bin obrigatorio." });
+  }
+
+  try {
+    const response = await axios.get(`${MP_BASE_URL}/v1/payment_methods/installments`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      },
+      params: {
+        amount,
+        bin,
+        payment_method_id: paymentMethodId
+      }
+    });
+
+    logger.info(
+      {
+        requestId,
+        mp: {
+          status: response.status
+        }
+      },
+      "Mercado Pago installments response"
+    );
+
+    return res.status(200).json(response.data);
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      logger.error(
+        {
+          requestId,
+          mp: {
+            status: error.response?.status
+          }
+        },
+        "Failed to fetch Mercado Pago installments"
+      );
+    } else {
+      logger.error({ err: error, requestId }, "Failed to fetch Mercado Pago installments");
+    }
+    return res.status(502).json({ message: "Falha ao calcular parcelas." });
+  }
+});
+
 paymentsRouter.post("/pix", async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ message: "Authentication required" });
@@ -133,6 +371,7 @@ paymentsRouter.post("/pix", async (req, res) => {
   }
 
   const body = req.body ?? {};
+  const payerFromBody = body.payer && typeof body.payer === "object" ? body.payer : null;
   const providedPlanCode = typeof body.planCode === "string" ? body.planCode : null;
   const billingCycle = resolveBillingCycle(body.billingCycle);
   const providedExternalReference = typeof body.externalReference === "string" ? body.externalReference : null;
@@ -146,7 +385,8 @@ paymentsRouter.post("/pix", async (req, res) => {
     return res.status(400).json({ message: error instanceof Error ? error.message : "Plano invalido." });
   }
 
-  const payerEmail = normalizeEmail(body.payerEmail) ?? normalizeEmail(req.user.email);
+  const payerEmail =
+    normalizeEmail(payerFromBody?.email) ?? normalizeEmail(body.payerEmail) ?? normalizeEmail(req.user.email);
   if (!payerEmail) {
     return res.status(400).json({ message: "payerEmail obrigatorio." });
   }
@@ -173,7 +413,7 @@ paymentsRouter.post("/pix", async (req, res) => {
     }
   }
 
-  const requestedAmount = parseAmount(body.amount);
+  const requestedAmount = parseAmount(body.transaction_amount ?? body.amount);
   const resolvedAmount = planContext
     ? planContext.amountCents / 100
     : requestedAmount;
@@ -300,9 +540,14 @@ paymentsRouter.post("/card", async (req, res) => {
     return res.status(400).json({ message: "cardToken obrigatorio." });
   }
 
-  const paymentMethodId = typeof body.paymentMethodId === "string" ? body.paymentMethodId : null;
+  const paymentMethodId =
+    typeof body.paymentMethodId === "string"
+      ? body.paymentMethodId
+      : typeof body.payment_method_id === "string"
+        ? body.payment_method_id
+        : null;
   if (!paymentMethodId) {
-    return res.status(400).json({ message: "paymentMethodId obrigatorio." });
+    return res.status(400).json({ message: "payment_method_id obrigatorio." });
   }
 
   const issuerId = typeof body.issuer_id === "string" ? body.issuer_id : typeof body.issuerId === "string" ? body.issuerId : null;
@@ -314,6 +559,11 @@ paymentsRouter.post("/card", async (req, res) => {
   const providedPlanCode = typeof body.planCode === "string" ? body.planCode : null;
   const billingCycle = resolveBillingCycle(body.billingCycle);
   const providedExternalReference = typeof body.externalReference === "string" ? body.externalReference : null;
+  const payerFromBody = body.payer && typeof body.payer === "object" ? body.payer : null;
+  const identification =
+    payerFromBody && typeof payerFromBody.identification === "object" ? payerFromBody.identification : null;
+  const identificationType = typeof identification?.type === "string" ? identification.type : null;
+  const identificationNumber = typeof identification?.number === "string" ? identification.number : null;
 
   let planContext: PlanContext | null = null;
   try {
@@ -324,7 +574,8 @@ paymentsRouter.post("/card", async (req, res) => {
     return res.status(400).json({ message: error instanceof Error ? error.message : "Plano invalido." });
   }
 
-  const payerEmail = normalizeEmail(body.payerEmail) ?? normalizeEmail(req.user.email);
+  const payerEmail =
+    normalizeEmail(payerFromBody?.email) ?? normalizeEmail(body.payerEmail) ?? normalizeEmail(req.user.email);
   if (!payerEmail) {
     return res.status(400).json({ message: "payerEmail obrigatorio." });
   }
@@ -351,7 +602,7 @@ paymentsRouter.post("/card", async (req, res) => {
     }
   }
 
-  const requestedAmount = parseAmount(body.amount);
+  const requestedAmount = parseAmount(body.transaction_amount ?? body.amount);
   const resolvedAmount = planContext
     ? planContext.amountCents / 100
     : requestedAmount;
@@ -373,7 +624,17 @@ paymentsRouter.post("/card", async (req, res) => {
     description,
     installments,
     payment_method_id: paymentMethodId,
-    payer: { email: payerEmail },
+    payer: {
+      email: payerEmail,
+      ...(identificationType && identificationNumber
+        ? {
+            identification: {
+              type: identificationType,
+              number: identificationNumber
+            }
+          }
+        : {})
+    },
     external_reference: externalReference,
     ...(issuerId ? { issuer_id: issuerId } : {}),
     ...(notificationUrl ? { notification_url: notificationUrl } : {})

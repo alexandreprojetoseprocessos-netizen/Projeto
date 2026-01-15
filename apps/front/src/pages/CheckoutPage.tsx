@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { getNetworkErrorMessage } from "../config/api";
@@ -11,7 +11,15 @@ import {
   getPlanPriceCents
 } from "../config/plans";
 import { getMercadoPago } from "../lib/mercadopago";
-import { createCardPayment, createPixPayment } from "../services/billingClient";
+import {
+  ApiRequestError,
+  createCardPayment,
+  createPixPayment,
+  fetchIdentificationTypes,
+  fetchInstallments,
+  fetchIssuers,
+  fetchPaymentMethods
+} from "../services/billingClient";
 
 type CheckoutPageProps = {
   subscription?: any | null;
@@ -36,6 +44,7 @@ const formatCardNumber = (value: string) => {
 const formatMonth = (value: string) => onlyDigits(value).slice(0, 2);
 const formatYear = (value: string) => onlyDigits(value).slice(0, 4);
 const formatCvv = (value: string) => onlyDigits(value).slice(0, 4);
+const formatIdentificationNumber = (value: string) => onlyDigits(value).slice(0, 14);
 
 export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionActivated }: CheckoutPageProps) => {
   const navigate = useNavigate();
@@ -65,6 +74,9 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
   const [expirationYear, setExpirationYear] = useState("");
   const [securityCode, setSecurityCode] = useState("");
   const [cardholderName, setCardholderName] = useState("");
+  const [identificationTypes, setIdentificationTypes] = useState<{ id: string; name: string }[]>([]);
+  const [identificationType, setIdentificationType] = useState("");
+  const [identificationNumber, setIdentificationNumber] = useState("");
   const [paymentMethodId, setPaymentMethodId] = useState<string | null>(null);
   const [issuerId, setIssuerId] = useState<string | null>(null);
   const [issuerOptions, setIssuerOptions] = useState<{ id: string; name: string }[]>([]);
@@ -128,17 +140,42 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
   const description = `Plano ${plan.name}`;
   const payerEmail = user?.email ?? "";
 
-  const resolveCheckoutErrorMessage = (error: unknown) => {
+  const resolveCheckoutErrorMessage = useCallback((error: unknown) => {
     if (error instanceof DOMException || error instanceof TypeError) {
       return getNetworkErrorMessage(error);
     }
     if (error instanceof Error) return error.message;
     return "Falha ao iniciar pagamento.";
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+    fetchIdentificationTypes(token)
+      .then((types) => {
+        if (!active) return;
+        const normalized = (types ?? []).map((type) => ({
+          id: String(type.id),
+          name: type.name
+        }));
+        setIdentificationTypes(normalized);
+        if (normalized.length) {
+          setIdentificationType((current) => current || normalized[0].id);
+        }
+      })
+      .catch((fetchError) => {
+        if (!active) return;
+        setCardError(resolveCheckoutErrorMessage(fetchError));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [token]);
 
   useEffect(() => {
     const cardBin = onlyDigits(cardNumber).slice(0, 6);
-    if (!mpReady || !mpRef.current || cardBin.length < 6 || !amount) {
+    if (!token || cardBin.length < 6 || !amount) {
       setPaymentMethodId(null);
       setIssuerId(null);
       setIssuerOptions([]);
@@ -151,7 +188,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
 
     const loadPaymentData = async () => {
       setCardError(null);
-      const paymentMethods = await mpRef.current.getPaymentMethods({ bin: cardBin });
+      const paymentMethods = await fetchPaymentMethods(token, cardBin);
       const method = paymentMethods?.results?.[0];
       if (!method?.id) {
         throw new Error("Cartao nao reconhecido.");
@@ -159,24 +196,23 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
       if (!active) return;
       setPaymentMethodId(method.id);
 
-      const issuersResponse = await mpRef.current.getIssuers(method.id, cardBin);
-      const issuers = issuersResponse?.results ?? issuersResponse ?? [];
+      const issuers = await fetchIssuers(token, { paymentMethodId: method.id, bin: cardBin });
       if (!active) return;
       setIssuerOptions(
         Array.isArray(issuers)
-          ? issuers.map((issuer: any) => ({ id: String(issuer.id), name: issuer.name }))
+          ? issuers.map((issuer) => ({ id: String(issuer.id), name: issuer.name }))
           : []
       );
       const defaultIssuer = Array.isArray(issuers) && issuers.length ? String(issuers[0].id) : null;
       setIssuerId(defaultIssuer);
 
-      const installmentsResponse = await mpRef.current.getInstallments({
+      const installmentsResponse = await fetchInstallments(token, {
         amount,
         bin: cardBin,
         paymentMethodId: method.id
       });
       const payerCosts = installmentsResponse?.[0]?.payer_costs ?? [];
-      const options = payerCosts.map((cost: any) => ({
+      const options = payerCosts.map((cost) => ({
         value: cost.installments,
         label: cost.recommended_message ?? `${cost.installments}x`
       }));
@@ -195,7 +231,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
     return () => {
       active = false;
     };
-  }, [cardNumber, amount, mpReady]);
+  }, [cardNumber, amount, token]);
 
   const handlePixPayment = async () => {
     if (!token) {
@@ -266,6 +302,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
       return;
     }
     const cardDigits = onlyDigits(cardNumber);
+    const identificationDigits = onlyDigits(identificationNumber);
     if (!cardDigits || cardDigits.length < 13) {
       setCardError("Numero do cartao invalido.");
       return;
@@ -282,21 +319,37 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
       setCardError("CVV obrigatorio.");
       return;
     }
+    if (!identificationType) {
+      setCardError("Tipo de documento obrigatorio.");
+      return;
+    }
+    if (!identificationDigits) {
+      setCardError("Numero do documento obrigatorio.");
+      return;
+    }
 
     setCardLoading(true);
     setCardError(null);
     setCardResult(null);
 
     try {
+      const cardBin = onlyDigits(cardNumber).slice(0, 6);
+      console.log("BIN", cardBin);
+      console.log("payment_method_id", paymentMethodId);
+      console.log("installments", installments);
+
       const cardTokenResponse = await mpRef.current.createCardToken({
         cardNumber: cardDigits,
         cardholderName: cardholderName.trim(),
         cardExpirationMonth: expirationMonth,
         cardExpirationYear: expirationYear,
-        securityCode: securityCode.trim()
+        securityCode: securityCode.trim(),
+        identificationType,
+        identificationNumber: identificationDigits
       });
 
       const cardToken = cardTokenResponse?.id;
+      console.log("token created ok?", Boolean(cardToken));
       if (!cardToken) {
         const message = cardTokenResponse?.error?.message ?? "Falha ao tokenizar cartao.";
         throw new Error(message);
@@ -307,13 +360,19 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
       }
 
       const response = await createCardPayment(token, {
-        amount,
+        transaction_amount: amount,
         description,
-        payerEmail,
-        cardToken,
-        paymentMethodId,
+        token: cardToken,
+        payment_method_id: paymentMethodId,
         installments,
         issuer_id: issuerId ?? undefined,
+        payer: {
+          email: payerEmail,
+          identification: {
+            type: identificationType,
+            number: identificationDigits
+          }
+        },
         planCode: plan.code,
         billingCycle
       });
@@ -328,6 +387,14 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
         await onSubscriptionActivated?.();
       }
     } catch (cardPaymentError) {
+      if (cardPaymentError instanceof ApiRequestError) {
+        console.error("[checkout] card payment error", {
+          status: cardPaymentError.status,
+          body: cardPaymentError.body
+        });
+      } else {
+        console.error("[checkout] card payment error", cardPaymentError);
+      }
       setCardError(resolveCheckoutErrorMessage(cardPaymentError));
     } finally {
       setCardLoading(false);
@@ -476,6 +543,32 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
                   onChange={(event) => setCardholderName(event.target.value)}
                 />
               </label>
+              <div className="payment-row">
+                <label className="input-group">
+                  <span>Tipo de documento</span>
+                  <select
+                    value={identificationType}
+                    onChange={(event) => setIdentificationType(event.target.value)}
+                    disabled={!identificationTypes.length}
+                  >
+                    {identificationTypes.map((type) => (
+                      <option key={type.id} value={type.id}>
+                        {type.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="input-group">
+                  <span>Numero do documento</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="CPF/CNPJ"
+                    value={identificationNumber}
+                    onChange={(event) => setIdentificationNumber(formatIdentificationNumber(event.target.value))}
+                  />
+                </label>
+              </div>
               <div className="payment-row">
                 <label className="input-group">
                   <span>Mes</span>
