@@ -23,6 +23,9 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(1, "JWT_SECRET is required"),
   WEBHOOK_SECRET: z.string().optional(),
   MP_ACCESS_TOKEN: z.string().optional(),
+  MP_PUBLIC_KEY: z.string().optional(),
+  MP_ENV: z.string().optional(),
+  MP_DEBUG_KEY: z.string().optional(),
   MP_WEBHOOK_SECRET: z.string().optional(),
   PUBLIC_API_URL: z.string().optional(),
   GITHUB_APP_ID: z.string().optional(),
@@ -72,6 +75,9 @@ export const config = {
   webhookSecret: parsed.data.WEBHOOK_SECRET,
   mercadoPago: {
     accessToken: parsed.data.MP_ACCESS_TOKEN,
+    publicKey: parsed.data.MP_PUBLIC_KEY,
+    env: parsed.data.MP_ENV,
+    debugKey: parsed.data.MP_DEBUG_KEY,
     webhookSecret: parsed.data.MP_WEBHOOK_SECRET,
     publicApiUrl: parsed.data.PUBLIC_API_URL
   },

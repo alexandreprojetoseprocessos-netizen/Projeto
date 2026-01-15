@@ -10,6 +10,18 @@ import { logger } from "../config/logger";
 
 const MP_BASE_URL = "https://api.mercadopago.com";
 
+const maskAccessToken = (token?: string | null) => {
+  if (!token) return null;
+  return `***${token.slice(-6)}`;
+};
+
+const resolveMpEnv = (value?: string | null) => {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (normalized === "production") return "production";
+  if (normalized === "sandbox") return "sandbox";
+  return null;
+};
+
 const resolveBillingCycle = (value?: string | null): BillingCycle => {
   const normalized = (value ?? "").toUpperCase();
   if (normalized === "ANNUAL") return "ANNUAL";
@@ -142,13 +154,65 @@ billingRouter.post("/checkout", authMiddleware, async (req, res) => {
   };
 
   try {
+    const mpEnv = resolveMpEnv(config.mercadoPago.env);
+    logger.info(
+      {
+        mp: {
+          env: mpEnv,
+          nodeEnv: config.env,
+          accessToken: maskAccessToken(accessToken),
+          frontendUrl,
+          webhookUrl,
+          payload: preferencePayload
+        }
+      },
+      "Mercado Pago preference create request"
+    );
+
     const response = await axios.post(`${MP_BASE_URL}/checkout/preferences`, preferencePayload, {
       headers: {
         Authorization: `Bearer ${accessToken}`
       }
     });
 
-    const preference = response.data as { id: string; init_point: string };
+    logger.info(
+      {
+        mp: {
+          status: response.status,
+          data: response.data
+        }
+      },
+      "Mercado Pago preference create response"
+    );
+
+    const preference = response.data as { id: string; init_point?: string; sandbox_init_point?: string };
+    const useSandbox = mpEnv === "sandbox";
+    const checkoutUrlType = useSandbox ? "sandbox_init_point" : "init_point";
+    const checkoutUrl = useSandbox ? preference.sandbox_init_point : preference.init_point;
+    if (!checkoutUrl) {
+      logger.error(
+        {
+          mp: {
+            preferenceId: preference.id,
+            checkoutUrlType,
+            data: response.data
+          }
+        },
+        "Missing Mercado Pago checkout url"
+      );
+      return res.status(502).json({ message: "Falha ao iniciar pagamento." });
+    }
+
+    logger.info(
+      {
+        mp: {
+          checkoutUrlType,
+          checkoutUrl
+        }
+      },
+      "Mercado Pago checkout url selected"
+    );
+
     await prisma.subscription.update({
       where: { id: subscription.id },
       data: {
@@ -158,12 +222,61 @@ billingRouter.post("/checkout", authMiddleware, async (req, res) => {
     });
 
     return res.status(201).json({
-      init_point: preference.init_point,
+      init_point: checkoutUrl,
       subscriptionId: subscription.id
     });
   } catch (error) {
-    logger.error({ err: error }, "Failed to create Mercado Pago preference");
+    if (axios.isAxiosError(error)) {
+      logger.error(
+        {
+          mp: {
+            status: error.response?.status,
+            data: error.response?.data
+          }
+        },
+        "Failed to create Mercado Pago preference"
+      );
+    } else {
+      logger.error({ err: error }, "Failed to create Mercado Pago preference");
+    }
     return res.status(500).json({ message: "Falha ao iniciar pagamento." });
+  }
+});
+
+billingRouter.get("/debug/mp/preference/:id", async (req, res) => {
+  const debugKey = config.mercadoPago.debugKey;
+  const providedKey = req.header("X-Debug-Key");
+  if (!debugKey || !providedKey || providedKey !== debugKey) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const accessToken = config.mercadoPago.accessToken;
+  if (!accessToken) {
+    return res.status(500).json({ message: "Mercado Pago nao configurado." });
+  }
+
+  try {
+    const response = await axios.get(`${MP_BASE_URL}/checkout/preferences/${req.params.id}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+
+    const preference = response.data as { id?: string; status?: string; payment_methods?: unknown };
+    return res.json({
+      id: preference.id ?? req.params.id,
+      status: preference.status ?? null,
+      payment_methods: preference.payment_methods ?? null
+    });
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      return res.status(error.response?.status ?? 502).json({
+        message: "Falha ao consultar preference.",
+        status: error.response?.status,
+        body: error.response?.data ?? null
+      });
+    }
+    return res.status(502).json({ message: "Falha ao consultar preference." });
   }
 });
 
