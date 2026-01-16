@@ -34,17 +34,42 @@ const baseBenefits = [
   "Relatorios e portfolio em tempo real"
 ];
 
-const onlyDigits = (value: string) => value.replace(/\D/g, "");
+const digitsOnly = (value: string) => (value || "").replace(/\D/g, "");
+
+const resolvePaymentMethodId = (methods: PaymentMethod[], bin: string) => {
+  for (const method of methods) {
+    const settings = method?.settings ?? [];
+    for (const setting of settings) {
+      const pattern = setting?.bin?.pattern;
+      if (!pattern) continue;
+      try {
+        if (new RegExp(pattern).test(bin)) {
+          return method.id;
+        }
+      } catch {
+        // Ignore invalid regex patterns from upstream.
+      }
+    }
+  }
+  return null;
+};
+
+const resolveFallbackPaymentMethodId = (bin: string) => {
+  if (bin.startsWith("4")) return "visa";
+  if (bin.startsWith("5")) return "master";
+  if (bin.startsWith("3")) return "amex";
+  return null;
+};
 
 const formatCardNumber = (value: string) => {
-  const digits = onlyDigits(value).slice(0, 16);
+  const digits = digitsOnly(value).slice(0, 16);
   return digits.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
 };
 
-const formatMonth = (value: string) => onlyDigits(value).slice(0, 2);
-const formatYear = (value: string) => onlyDigits(value).slice(0, 4);
-const formatCvv = (value: string) => onlyDigits(value).slice(0, 4);
-const formatIdentificationNumber = (value: string) => onlyDigits(value).slice(0, 14);
+const formatMonth = (value: string) => digitsOnly(value).slice(0, 2);
+const formatYear = (value: string) => digitsOnly(value).slice(0, 4);
+const formatCvv = (value: string) => digitsOnly(value).slice(0, 4);
+const formatIdentificationNumber = (value: string) => digitsOnly(value).slice(0, 14);
 
 export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionActivated }: CheckoutPageProps) => {
   const navigate = useNavigate();
@@ -149,42 +174,6 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
     return "Falha ao iniciar pagamento.";
   }, []);
 
-  const matchesBinPattern = (bin: string, pattern?: string, exclusionPattern?: string) => {
-    if (!pattern) return false;
-    try {
-      const regex = new RegExp(pattern);
-      if (!regex.test(bin)) return false;
-      if (exclusionPattern) {
-        const exclusionRegex = new RegExp(exclusionPattern);
-        if (exclusionRegex.test(bin)) return false;
-      }
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const resolvePaymentMethodId = useCallback(
-    (bin: string) => {
-      if (!bin || bin.length < 6) return null;
-      const candidates = paymentMethods.filter(
-        (method) => method.payment_type_id === "credit_card" && method.status !== "inactive"
-      );
-      for (const method of candidates) {
-        const settings = method.settings ?? [];
-        for (const setting of settings) {
-          const pattern = setting.bin?.pattern;
-          const exclusionPattern = setting.bin?.exclusion_pattern;
-          if (matchesBinPattern(bin, pattern, exclusionPattern)) {
-            return method.id;
-          }
-        }
-      }
-      return null;
-    },
-    [paymentMethods]
-  );
-
   useEffect(() => {
     if (!token) return;
     let active = true;
@@ -212,8 +201,9 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
   }, [token, resolveCheckoutErrorMessage]);
 
   useEffect(() => {
-    const cardBin = onlyDigits(cardNumber).slice(0, 6);
-    if (cardBin.length < 6 || !paymentMethods.length) {
+    const cardDigits = digitsOnly(cardNumber);
+    const bin = cardDigits.slice(0, 6);
+    if (bin.length < 6) {
       setPaymentMethodId(null);
       setIssuerId(null);
       setIssuerOptions([]);
@@ -222,20 +212,22 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
       return;
     }
 
-    const resolvedMethodId = resolvePaymentMethodId(cardBin);
+    const pmFromApi = resolvePaymentMethodId(paymentMethods, bin);
+    const fallbackMethodId = resolveFallbackPaymentMethodId(bin);
+    const resolvedMethodId = pmFromApi || fallbackMethodId;
     if (!resolvedMethodId) {
       setPaymentMethodId(null);
       setIssuerId(null);
       setIssuerOptions([]);
       setInstallmentOptions([]);
       setInstallments(1);
-      setCardError("Cartao nao reconhecido.");
+      setCardError("Payment method nao identificado.");
       return;
     }
 
     setCardError(null);
     setPaymentMethodId(resolvedMethodId);
-  }, [cardNumber, resolvePaymentMethodId]);
+  }, [cardNumber, paymentMethods]);
 
   useEffect(() => {
     if (!token || !paymentMethodId || !amount) {
@@ -313,7 +305,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
       setPixError("E-mail do pagador obrigatorio.");
       return;
     }
-    const identificationDigits = onlyDigits(identificationNumber);
+    const identificationDigits = digitsOnly(identificationNumber);
     if (!identificationType || !identificationDigits) {
       setPixError("Documento do pagador obrigatorio.");
       return;
@@ -383,8 +375,8 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
       setCardError("Valor do plano invalido.");
       return;
     }
-    const cardDigits = onlyDigits(cardNumber);
-    const identificationDigits = onlyDigits(identificationNumber);
+    const cardDigits = digitsOnly(cardNumber);
+    const identificationDigits = digitsOnly(identificationNumber);
     if (!cardDigits || cardDigits.length < 13) {
       setCardError("Numero do cartao invalido.");
       return;
@@ -410,14 +402,22 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
       return;
     }
 
+    const bin = cardDigits.slice(0, 6);
+    const pmFromApi = resolvePaymentMethodId(paymentMethods, bin);
+    const fallbackMethodId = resolveFallbackPaymentMethodId(bin);
+    const resolvedMethodId = pmFromApi || fallbackMethodId;
+    if (!resolvedMethodId) {
+      setCardError("Payment method nao identificado.");
+      return;
+    }
+
     setCardLoading(true);
     setCardError(null);
     setCardResult(null);
 
     try {
-      const cardBin = onlyDigits(cardNumber).slice(0, 6);
-      console.log("BIN", cardBin);
-      console.log("payment_method_id", paymentMethodId);
+      console.log("BIN", bin);
+      console.log("payment_method_id", resolvedMethodId);
       console.log("installments", installments);
 
       const cardTokenResponse = await mpRef.current.createCardToken({
@@ -437,15 +437,11 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
         throw new Error(message);
       }
 
-      if (!paymentMethodId) {
-        throw new Error("Payment method nao identificado.");
-      }
-
       const response = await createCardPayment(token, {
         transaction_amount: amount,
         description,
         token: cardToken,
-        payment_method_id: paymentMethodId,
+        payment_method_id: resolvedMethodId,
         installments,
         issuer_id: issuerId ?? undefined,
         payer: {
