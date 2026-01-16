@@ -35,6 +35,7 @@ const baseBenefits = [
 ];
 
 const digitsOnly = (value: string) => (value || "").replace(/\D/g, "");
+const normalizeCPF = (value: string) => (value || "").replace(/\D/g, "");
 
 const resolvePaymentMethodId = (methods: PaymentMethod[], bin: string) => {
   for (const method of methods) {
@@ -376,7 +377,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
       return;
     }
     const cardDigits = digitsOnly(cardNumber);
-    const identificationDigits = digitsOnly(identificationNumber);
+    const cpf = normalizeCPF(identificationNumber);
     if (!cardDigits || cardDigits.length < 13) {
       setCardError("Numero do cartao invalido.");
       return;
@@ -397,8 +398,18 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
       setCardError("Tipo de documento obrigatorio.");
       return;
     }
-    if (!identificationDigits) {
-      setCardError("Numero do documento obrigatorio.");
+    const normalizedDocType = identificationType.trim().toUpperCase();
+    if (normalizedDocType !== "CPF") {
+      setCardError("Tipo de documento deve ser CPF.");
+      return;
+    }
+    if (cpf.length !== 11) {
+      setCardError("CPF deve conter 11 digitos.");
+      return;
+    }
+    const resolvedInstallments = Number(installments);
+    if (!Number.isFinite(resolvedInstallments) || resolvedInstallments < 1) {
+      setCardError("Parcelas obrigatorias.");
       return;
     }
 
@@ -426,15 +437,43 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
         cardExpirationMonth: expirationMonth,
         cardExpirationYear: expirationYear,
         securityCode: securityCode.trim(),
-        identificationType,
-        identificationNumber: identificationDigits
+        identificationType: normalizedDocType,
+        identificationNumber: cpf
       });
 
       const cardToken = cardTokenResponse?.id;
       console.log("token created ok?", Boolean(cardToken));
-      if (!cardToken) {
+      if (!cardToken || typeof cardToken !== "string" || !cardToken.trim()) {
         const message = cardTokenResponse?.error?.message ?? "Falha ao tokenizar cartao.";
         throw new Error(message);
+      }
+      if (!payerEmail) {
+        setCardError("E-mail do pagador obrigatorio.");
+        return;
+      }
+      if (!amount) {
+        setCardError("Valor do plano invalido.");
+        return;
+      }
+      if (!identificationType) {
+        setCardError("Tipo de documento obrigatorio.");
+        return;
+      }
+      if (normalizedDocType !== "CPF") {
+        setCardError("Tipo de documento deve ser CPF.");
+        return;
+      }
+      if (cpf.length !== 11) {
+        setCardError("CPF deve conter 11 digitos.");
+        return;
+      }
+      if (!resolvedMethodId) {
+        setCardError("Payment method nao identificado.");
+        return;
+      }
+      if (!Number.isFinite(resolvedInstallments) || resolvedInstallments < 1) {
+        setCardError("Parcelas obrigatorias.");
+        return;
       }
 
       const response = await createCardPayment(token, {
@@ -442,13 +481,13 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
         description,
         token: cardToken,
         payment_method_id: resolvedMethodId,
-        installments,
+        installments: resolvedInstallments,
         issuer_id: issuerId ?? undefined,
         payer: {
           email: payerEmail,
           identification: {
-            type: identificationType,
-            number: identificationDigits
+            type: normalizedDocType,
+            number: cpf
           }
         },
         planCode: plan.code,
