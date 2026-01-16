@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Router, type Response } from "express";
+import { Router, type Response, type Request } from "express";
 import { prisma } from "@gestao/database";
 import { SubscriptionStatus } from "@prisma/client";
 import { authMiddleware } from "../middleware/auth";
@@ -41,6 +41,14 @@ const normalizeIdentificationNumber = (value?: string | null) => {
   if (!value) return null;
   const digits = value.replace(/\D/g, "");
   return digits || null;
+};
+
+const getIdempotencyKey = (req: Request) => {
+  const headerValue = req.get("x-idempotency-key");
+  if (typeof headerValue === "string" && headerValue.trim()) {
+    return headerValue.trim();
+  }
+  return randomUUID();
 };
 
 const buildError = (
@@ -227,6 +235,7 @@ paymentsRouter.get("/installments", async (req, res) => {
 
 paymentsRouter.post("/pix", async (req, res) => {
   const requestId = randomUUID();
+  const idempotencyKey = getIdempotencyKey(req);
   if (!req.user) {
     return res.status(401).json(buildError(requestId, "Authentication required", "UNAUTHORIZED"));
   }
@@ -353,7 +362,7 @@ paymentsRouter.post("/pix", async (req, res) => {
         };
       };
       payment_method_id?: string;
-    }>(requestId, "/v1/payments", paymentPayload);
+    }>(requestId, "/v1/payments", paymentPayload, { idempotencyKey });
 
     logger.info(
       {
@@ -392,6 +401,7 @@ paymentsRouter.post("/pix", async (req, res) => {
 
 paymentsRouter.post("/card", async (req, res) => {
   const requestId = randomUUID();
+  const idempotencyKey = getIdempotencyKey(req);
   if (!req.user) {
     return res.status(401).json(buildError(requestId, "Authentication required", "UNAUTHORIZED"));
   }
@@ -545,7 +555,7 @@ paymentsRouter.post("/card", async (req, res) => {
       status_detail?: string;
       external_reference?: string;
       payment_method_id?: string;
-    }>(requestId, "/v1/payments", paymentPayload);
+    }>(requestId, "/v1/payments", paymentPayload, { idempotencyKey });
 
     logger.info(
       {

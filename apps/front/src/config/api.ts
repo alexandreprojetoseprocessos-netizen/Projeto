@@ -1,3 +1,5 @@
+import { supabase } from "../lib/supabase";
+
 const envBaseUrl = import.meta.env.VITE_API_BASE_URL;
 
 const resolvedBaseUrl = (() => {
@@ -57,11 +59,19 @@ const isRetryableMethod = (method?: string) => {
 export const apiFetch = async (path: string, options: ApiFetchOptions = {}) => {
   const { timeoutMs = DEFAULT_TIMEOUT_MS, retry, ...fetchOptions } = options;
   const retryCount = typeof retry === "number" ? retry : isRetryableMethod(fetchOptions.method) ? 1 : 0;
+  const headers = new Headers(fetchOptions.headers ?? undefined);
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (!headers.has("Authorization")) {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+  }
+  const requestOptions: RequestInit = { ...fetchOptions, headers };
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= retryCount; attempt += 1) {
     try {
-      return await fetchWithTimeout(apiUrl(path), fetchOptions, timeoutMs);
+      return await fetchWithTimeout(apiUrl(path), requestOptions, timeoutMs);
     } catch (error) {
       lastError = error;
       if (attempt === retryCount) throw error;

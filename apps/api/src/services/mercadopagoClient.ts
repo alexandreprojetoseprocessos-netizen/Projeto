@@ -51,6 +51,7 @@ type MercadoPagoRequestParams = {
   path: string;
   params?: Record<string, unknown>;
   data?: Record<string, unknown>;
+  idempotencyKey?: string;
 };
 
 export const mercadopagoRequest = async <T>({
@@ -58,7 +59,8 @@ export const mercadopagoRequest = async <T>({
   method,
   path,
   params,
-  data
+  data,
+  idempotencyKey
 }: MercadoPagoRequestParams): Promise<T> => {
   const accessToken = config.mercadoPago.accessToken;
   if (!accessToken) {
@@ -70,6 +72,12 @@ export const mercadopagoRequest = async <T>({
 
   const env = resolveMercadoPagoEnv();
   warnIfTokenMismatch(env, accessToken, requestId);
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`
+  };
+  if (typeof idempotencyKey === "string" && idempotencyKey.trim()) {
+    headers["X-Idempotency-Key"] = idempotencyKey.trim();
+  }
 
   try {
     const response = await axios.request<T>({
@@ -79,9 +87,7 @@ export const mercadopagoRequest = async <T>({
       params,
       data,
       timeout: MP_TIMEOUT_MS,
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
+      headers
     });
 
     logger.info(
@@ -177,12 +183,14 @@ export const mercadopagoGet = async <T>(
 export const mercadopagoPost = async <T>(
   requestId: string,
   path: string,
-  data?: Record<string, unknown>
+  data?: Record<string, unknown>,
+  options?: { idempotencyKey?: string }
 ) => {
   return mercadopagoRequest<T>({
     requestId,
     method: "POST",
     path,
-    data
+    data,
+    idempotencyKey: options?.idempotencyKey
   });
 };
