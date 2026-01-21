@@ -29,6 +29,7 @@ import {
 const Landing = () => {
   const navigate = useNavigate();
   const { status, token } = useAuth();
+  const buildStamp = import.meta.env.VITE_BUILD_ID ?? `dev-${new Date().toISOString()}`;
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly");
 
   const plans = [
@@ -553,10 +554,11 @@ const Landing = () => {
           </div>
           <div className="mt-10 flex flex-col md:flex-row items-center justify-between gap-3 border-t border-border/60 pt-6">
             <p className="text-xs text-muted-foreground">? 2024 G&P. Todos os direitos reservados.</p>
-            <p className="text-xs text-muted-foreground">Gestão com clareza para equipes modernas.</p>
-          </div>
-        </div>
-      </footer>
+        <p className="text-xs text-muted-foreground">Gestão com clareza para equipes modernas.</p>
+      </div>
+      <p className="mt-3 text-[11px] text-muted-foreground/70">build: {buildStamp}</p>
+    </div>
+  </footer>
     </div>
   );
 };
