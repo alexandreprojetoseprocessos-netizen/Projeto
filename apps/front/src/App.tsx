@@ -4,10 +4,9 @@ import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-
 import type { DropResult } from "@hello-pangea/dnd";
 import { DashboardLayout, type CreateProjectPayload } from "./components/DashboardLayout";
 import "./App.css";
-import { AuthPage } from "./components/AuthPage";
 import { OrganizationSelector } from "./components/OrganizationOnboarding";
 import type { PortfolioProject } from "./components/ProjectPortfolio";
-import { useAuth, type RegisterPayload } from "./contexts/AuthContext";
+import { useAuth } from "./contexts/AuthContext";
 import {
   STATUS_MAP,
   KANBAN_STATUS_ORDER,
@@ -35,7 +34,8 @@ import ActivitiesPage from "./pages/ActivitiesPage";
 import PlanPage from "./pages/PlanPage";
 import { TeamPage } from "./pages/TeamPage";
 import NotFoundPage from "./pages/NotFoundPage";
-import LandingPage from "./pages/LandingPage";
+import Landing from "./pages/Landing";
+import Auth from "./pages/Auth";
 import { CheckoutPage } from "./pages/CheckoutPage";
 import { apiFetch, apiUrl, getNetworkErrorMessage } from "./config/api";
 import { getPlanDefinition } from "./config/plans";
@@ -124,7 +124,7 @@ async function fetchJson<TResponse = any>(
 }
 
 export const App = () => {
-  const { status, user, token, signIn, signUp, signOut, error: authError } = useAuth();
+  const { status, user, token, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1415,22 +1415,9 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   if (status === "unauthenticated" || !token) {
     if (location.pathname === "/") {
-      return <LandingPage />;
+      return <Landing />;
     }
-    return (
-      <AuthPage
-        onSubmit={async ({ email, password }: { email: string; password: string }) => {
-          await signIn(email, password);
-          navigate("/dashboard", { replace: true });
-        }}
-        onSignUp={async (payload: RegisterPayload) => {
-          await signUp(payload);
-          // Novo usuário deve concluir o checkout antes de criar organização
-          navigate("/checkout", { replace: true });
-        }}
-        error={authError}
-      />
-    );
+    return <Auth />;
   }
 
   const storedOrganizationId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
@@ -1469,7 +1456,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   return (
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/" element={<Landing />} />
       <Route
         path="/*"
         element={

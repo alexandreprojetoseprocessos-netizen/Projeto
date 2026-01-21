@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useOutletContext } from "react-router-dom";
-import { ProjectPortfolio } from "../components/ProjectPortfolio";
+import { ProjectPortfolio, type PortfolioProject } from "../components/ProjectPortfolio";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
 import { canManageProjects, type OrgRole } from "../components/permissions";
 
@@ -99,11 +99,15 @@ const FirstProjectOnboarding = ({
 const NewProjectModal = ({
   isOpen,
   onClose,
-  children
+  children,
+  title = "Novo projeto",
+  subtitle = "Planeje um novo trabalho informando os dados basicos do projeto no portfolio."
 }: {
   isOpen: boolean;
   onClose: () => void;
   children: ReactNode;
+  title?: string;
+  subtitle?: string;
 }) => {
   if (!isOpen) return null;
 
@@ -117,14 +121,12 @@ const NewProjectModal = ({
         aria-labelledby="new-project-title"
       >
         <div className="gp-modal-header">
-          <h2 id="new-project-title">Novo projeto</h2>
+          <h2 id="new-project-title">{title}</h2>
           <button type="button" className="gp-modal-close" onClick={onClose} aria-label="Fechar">
             ×
           </button>
         </div>
-        <p className="gp-modal-subtitle">
-          Planeje um novo trabalho informando os dados básicos do projeto no portfólio.
-        </p>
+        <p className="gp-modal-subtitle">{subtitle}</p>
         {children}
       </div>
     </div>
@@ -179,11 +181,14 @@ export const ProjectsPage = () => {
     selectedOrganizationId,
     onProjectChange,
     onCreateProject,
+    onUpdateProject,
     currentOrgRole,
     projectLimits
   } = useOutletContext<DashboardOutletContext>();
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<PortfolioProject | null>(null);
   const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -206,6 +211,18 @@ export const ProjectsPage = () => {
   const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
   const canCreateProjects = canManageProjects(orgRole);
   const currentOrganization = organizations?.find((organization) => organization.id === selectedOrganizationId) ?? null;
+  const resetForm = () => {
+    setForm({
+      name: "",
+      clientName: "",
+      startDate: "",
+      endDate: "",
+      budget: "",
+      repositoryUrl: "",
+      teamMembers: "",
+      description: ""
+    });
+  };
 
   const handleCreateFirstProject = async (payload: FirstProjectPayload) => {
     await onCreateProject({
@@ -222,6 +239,56 @@ export const ProjectsPage = () => {
 
   const hasProjects = Boolean(portfolio && portfolio.length > 0);
   const isAtProjectLimit = projectLimits?.remaining === 0;
+  const isEditing = Boolean(editingProject);
+  const modalTitle = isEditing ? "Editar projeto" : "Novo projeto";
+  const modalSubtitle = isEditing ? "Atualize as informacoes do projeto." : undefined;
+  const modalSubmitLabel = isEditing ? "Salvar alteracoes" : "Criar projeto";
+  const modalSubmitLoadingLabel = isEditing ? "Salvando..." : "Criando...";
+
+  const handleOpenCreateModal = () => {
+    if (isAtProjectLimit) return;
+    setEditingProject(null);
+    setIsEditModalOpen(false);
+    setCreateError(null);
+    setFieldErrors({});
+    resetForm();
+    setIsCreateModalOpen(true);
+  };
+
+  const handleOpenEditModal = (project: PortfolioProject) => {
+    const members = Array.isArray(project.teamMembers)
+      ? project.teamMembers
+      : Array.isArray(project.members)
+        ? project.members
+            .map((member) => member?.name ?? member?.email ?? "")
+            .filter(Boolean)
+        : [];
+    const budgetValue = project.budget === null || project.budget === undefined ? "" : String(project.budget);
+    setForm({
+      name: project.projectName ?? "",
+      clientName: project.clientName ?? currentOrganization?.name ?? "",
+      startDate: project.startDate ? project.startDate.slice(0, 10) : "",
+      endDate: project.endDate ? project.endDate.slice(0, 10) : "",
+      budget: budgetValue,
+      repositoryUrl: project.repositoryUrl ?? "",
+      teamMembers: members.join(", "),
+      description: project.description ?? ""
+    });
+    setEditingProject(project);
+    setIsEditModalOpen(true);
+    setIsCreateModalOpen(false);
+    setCreateError(null);
+    setFieldErrors({});
+  };
+
+  const handleCloseModal = () => {
+    setIsCreateModalOpen(false);
+    setIsEditModalOpen(false);
+    setEditingProject(null);
+    setCreateError(null);
+    setFieldErrors({});
+    resetForm();
+  };
 
   const handleModalSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -235,40 +302,36 @@ export const ProjectsPage = () => {
     setIsSubmitting(true);
     setCreateError(null);
 
-    try {
-      await onCreateProject({
-        name: form.name.trim(),
-        clientName: currentOrganization?.name ?? form.clientName.trim(),
-        budget: Number(form.budget) || 0,
-        repositoryUrl: form.repositoryUrl.trim() || undefined,
-        startDate: form.startDate || undefined,
-        endDate: form.endDate || undefined,
-        description: form.description.trim() || undefined,
-        teamMembers: form.teamMembers
-          .split(",")
-          .map((member) => member.trim())
-          .filter(Boolean)
-      });
+    const payload = {
+      name: form.name.trim(),
+      clientName: currentOrganization?.name ?? form.clientName.trim(),
+      budget: Number(form.budget) || 0,
+      repositoryUrl: form.repositoryUrl.trim() || undefined,
+      startDate: form.startDate || undefined,
+      endDate: form.endDate || undefined,
+      description: form.description.trim() || undefined,
+      teamMembers: form.teamMembers
+        .split(",")
+        .map((member) => member.trim())
+        .filter(Boolean)
+    };
 
-      setForm({
-        name: "",
-        clientName: "",
-        startDate: "",
-        endDate: "",
-        budget: "",
-        repositoryUrl: "",
-        teamMembers: "",
-        description: ""
-      });
-      setIsCreateModalOpen(false);
+    try {
+      if (isEditing && editingProject) {
+        await onUpdateProject(editingProject.projectId, payload);
+      } else {
+        await onCreateProject(payload);
+      }
+      handleCloseModal();
     } catch (error: any) {
       const code = error?.body?.code;
-      if (code === "PLAN_LIMIT_REACHED" || code === "PROJECT_LIMIT_REACHED") {
+      if (!isEditing && (code === "PLAN_LIMIT_REACHED" || code === "PROJECT_LIMIT_REACHED")) {
         setCreateError(null);
         setIsLimitModalOpen(true);
         return;
       }
-      const message = error?.body?.message ?? (error instanceof Error ? error.message : "Erro ao criar projeto");
+      const fallbackMessage = isEditing ? "Erro ao salvar projeto" : "Erro ao criar projeto";
+      const message = error?.body?.message ?? (error instanceof Error ? error.message : fallbackMessage);
       setCreateError(message);
     } finally {
       setIsSubmitting(false);
@@ -286,10 +349,7 @@ export const ProjectsPage = () => {
         <button
           className="btn-primary"
           type="button"
-          onClick={() => {
-            if (isAtProjectLimit) return;
-            setIsCreateModalOpen(true);
-          }}
+          onClick={handleOpenCreateModal}
           disabled={isAtProjectLimit}
         >
           + Novo projeto
@@ -327,10 +387,16 @@ export const ProjectsPage = () => {
           selectedProjectId={selectedProjectId}
           onSelectProject={onProjectChange}
           onCreateProject={onCreateProject}
+          onEditProject={handleOpenEditModal}
         />
       )}
 
-      <NewProjectModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)}>
+      <NewProjectModal
+        isOpen={isCreateModalOpen || isEditModalOpen}
+        onClose={handleCloseModal}
+        title={modalTitle}
+        subtitle={modalSubtitle}
+      >
         <form onSubmit={handleModalSubmit} className="gp-modal-body new-project-form">
           {createError && <div className="gp-alert-error">{createError}</div>}
 
@@ -428,11 +494,11 @@ export const ProjectsPage = () => {
           </div>
 
           <div className="gp-modal-footer">
-            <button type="button" className="btn-secondary" onClick={() => setIsCreateModalOpen(false)} disabled={isSubmitting}>
+            <button type="button" className="btn-secondary" onClick={handleCloseModal} disabled={isSubmitting}>
               Cancelar
             </button>
             <button type="submit" className="btn-primary" disabled={isSubmitting || !currentOrganization}>
-              {isSubmitting ? "Criando..." : "Criar projeto"}
+              {isSubmitting ? modalSubmitLoadingLabel : modalSubmitLabel}
             </button>
           </div>
         </form>

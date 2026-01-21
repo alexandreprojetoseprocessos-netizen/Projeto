@@ -1962,6 +1962,23 @@ type WbsTreeViewProps = {
   filterOverdue?: "ALL" | "OVERDUE";
 };
 
+const PRIORITY_OPTIONS = [
+  { value: "CRITICAL", label: "Urgente" },
+  { value: "HIGH", label: "Alta" },
+  { value: "MEDIUM", label: "Média" },
+  { value: "LOW", label: "Baixa" }
+];
+
+const normalizePriorityValue = (value?: string | null) => {
+  const raw = String(value ?? "").trim().toUpperCase();
+  if (!raw) return "MEDIUM";
+  if (raw === "URGENTE" || raw === "URGENT" || raw === "CRITICAL") return "CRITICAL";
+  if (raw === "ALTA" || raw === "HIGH") return "HIGH";
+  if (raw === "MEDIA" || raw === "MÉDIA" || raw === "MEDIUM") return "MEDIUM";
+  if (raw === "BAIXA" || raw === "LOW") return "LOW";
+  return "MEDIUM";
+};
+
 
 
 export const WbsTreeView = ({
@@ -2029,6 +2046,7 @@ export const WbsTreeView = ({
 
 
   const [treeNodes, setTreeNodes] = useState(nodes);
+  const [priorityOverrides, setPriorityOverrides] = useState<Record<string, string>>({});
 
 
 
@@ -4230,6 +4248,7 @@ export const WbsTreeView = ({
             <col style={{ width: "90px" }} />
             <col style={{ width: "320px" }} />
             <col style={{ width: "170px" }} />
+            <col style={{ width: "140px" }} />
             <col style={{ width: "85px" }} />
             <col style={{ width: "180px" }} />
             <col style={{ width: "180px" }} />
@@ -4257,6 +4276,7 @@ export const WbsTreeView = ({
             <th className="px-1 py-2 text-center align-middle">Nvel</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Nome da tarefa</th>
             <th className="w-[150px] px-3 py-2 text-left align-middle">Situação</th>
+            <th className="w-[140px] px-3 py-2 text-left align-middle">Prioridade</th>
             <th className="w-[140px] px-3 py-2 text-left align-middle">Durao</th>
             <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Incio</th>
             <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Trmino</th>
@@ -4405,6 +4425,12 @@ export const WbsTreeView = ({
               const statusClass = STATUS_CLASS[normalizedStatus] ?? STATUS_CLASS.default;
               const durationInDays = calcDurationInDays(row.node.startDate, row.node.endDate);
               const isStatusPickerOpen = statusPickerId === row.node.id;
+              const priorityValue = normalizePriorityValue(
+                priorityOverrides[row.node.id] ??
+                  row.node.priority ??
+                  row.node.prioridade ??
+                  row.node.task_priority
+              );
 
 
 
@@ -4543,7 +4569,7 @@ export const WbsTreeView = ({
 
 
 
-                    <td className="px-3 py-2 align-middle">
+                    <td className="w-[140px] px-3 py-2 align-middle">
 
 
 
@@ -4746,6 +4772,29 @@ export const WbsTreeView = ({
                         {STATUS_ORDER.map((statusOption) => (
                           <option key={statusOption} value={statusOption}>
                             {statusOption}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+
+                    <td className="px-3 py-2 align-middle">
+                      <select
+                        className="wbs-priority-select"
+                        value={priorityValue}
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={(event) => {
+                          event.stopPropagation();
+                          setPriorityOverrides((current) => ({
+                            ...current,
+                            [row.node.id]: event.target.value
+                          }));
+                          // TODO: Persistir prioridade quando o backend aceitar updates no /wbs/:id.
+                        }}
+                        aria-label="Alterar prioridade da tarefa"
+                      >
+                        {PRIORITY_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
                           </option>
                         ))}
                       </select>

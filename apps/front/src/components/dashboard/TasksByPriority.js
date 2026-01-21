@@ -1,0 +1,8 @@
+﻿import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+export const TasksByPriority = ({ items }) => {
+    const total = items.reduce((sum, item) => sum + item.value, 0);
+    return (_jsxs("article", { className: "dashboard-card dashboard-hover", children: [_jsx("div", { className: "dashboard-card-header", children: _jsxs("div", { children: [_jsx("h3", { className: "dashboard-card-title", children: "Tarefas por Prioridade" }), _jsx("p", { className: "dashboard-muted", children: "Nivel de urgencia por volume" })] }) }), _jsx("div", { className: "dashboard-priority-list", children: items.map((item) => {
+                    const percent = total > 0 ? Math.round((item.value / total) * 100) : 0;
+                    return (_jsxs("div", { className: "dashboard-priority-item", children: [_jsxs("div", { className: "dashboard-priority-header", children: [_jsx("span", { className: "dashboard-priority-label", children: item.name }), _jsx("span", { className: "dashboard-priority-value", children: item.value })] }), _jsx("div", { className: "dashboard-priority-bar", children: _jsx("div", { className: "dashboard-priority-fill", style: { width: `${percent}%`, background: item.color } }) })] }, item.name));
+                }) }), _jsx("div", { className: "dashboard-priority-summary", children: items.map((item) => (_jsxs("div", { className: "dashboard-summary-dot", children: [_jsx("span", { className: "dashboard-legend-dot", style: { background: item.color } }), _jsx("span", { className: "dashboard-muted", children: item.name }), _jsx("strong", { children: item.value })] }, `summary-${item.name}`))) })] }));
+};

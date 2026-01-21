@@ -3,6 +3,9 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "baseUrl": "./src",
+    "paths": {
+      "@/*": ["*"]
+    },
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "types": ["vite/client"]

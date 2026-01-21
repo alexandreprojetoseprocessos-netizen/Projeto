@@ -1,10 +1,9 @@
 ﻿import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { PauseCircle, Trash2 } from "lucide-react";
+import { Building2, ChevronRight, Crown, PauseCircle, Trash2 } from "lucide-react";
 import OrgActionsMenu from "./OrgActionsMenu";
 import OrgStatusModal from "./OrgStatusModal";
 import { canManageOrganizationSettings, type OrgRole } from "./permissions";
-import { getColorForName, getInitials } from "../utils/color";
 
 export type OrganizationCard = {
   id: string;
@@ -129,7 +128,7 @@ export const OrganizationSelector = ({
   const isCreateDisabled = !canCreateMore || creating || !newOrgName.trim();
 
   return (
-    <div className="org-page">
+    <div className="org-onboarding">
       {showLimitBanner && (
         <div className="org-limit-banner">
           <div className="org-limit-stripe" />
@@ -146,7 +145,7 @@ export const OrganizationSelector = ({
         </div>
       )}
 
-      <div className="page-header">
+      <div className="page-header org-page-header">
         <div className="page-header-kicker">BEM-VINDO(A)</div>
         <h1 className="page-header-title">Criar nova organização</h1>
         <p className="page-header-subtitle">
@@ -157,8 +156,13 @@ export const OrganizationSelector = ({
 
       <div className="org-grid">
         <div className="org-left-column">
-          <section id="org-create-section" className="form-card org-form-card">
-            <h3>Nova organização</h3>
+          <section id="org-create-section" className="org-card org-create-card">
+            <div className="org-card-head">
+              <div className="org-card-icon">
+                <Building2 className="org-card-icon-svg" />
+              </div>
+              <h3>Nova organização</h3>
+            </div>
             <form className="org-form" onSubmit={handleSubmit} ref={formRef}>
               <div className="form-group">
                 <label>
@@ -198,137 +202,152 @@ export const OrganizationSelector = ({
             </form>
           </section>
 
-          <div className="org-status-row">
+          <div className="org-quick-actions">
             <button
               type="button"
-              className="org-status-box"
+              className="org-quick-card"
               onClick={() => setShowDeactivatedModal(true)}
             >
-              <PauseCircle className="status-icon status-icon--paused" />
+              <div className="org-quick-icon is-muted">
+                <PauseCircle className="org-quick-icon-svg" />
+              </div>
               <span>Desativados</span>
             </button>
 
             <button
               type="button"
-              className="org-status-box"
+              className="org-quick-card"
               onClick={() => setShowTrashModal(true)}
             >
-              <Trash2 className="status-icon status-icon--trash" />
+              <div className="org-quick-icon is-accent">
+                <Trash2 className="org-quick-icon-svg" />
+              </div>
               <span>Lixeira (90 dias)</span>
             </button>
           </div>
+
+          <section className="org-list-section">
+            <div className="org-list-header">
+              <div>
+                <h2 className="org-section-title">Suas organizações</h2>
+                <p className="org-section-subtitle">Escolha onde você quer trabalhar hoje.</p>
+              </div>
+            </div>
+            <div className="org-list-divider" />
+            {orgList.length === 0 ? (
+              <div className="org-empty">
+                <h3>Nenhuma organização cadastrada ainda</h3>
+                <p>
+                  Crie a sua primeira organização para começar a estruturar seus projetos. Você pode adicionar quantas
+                  precisar dentro do seu plano.
+                </p>
+                <button type="button" className="primary-button" onClick={scrollToCreate}>
+                  Criar primeira organização
+                </button>
+              </div>
+            ) : (
+              <div className="org-list-grid">
+                {orgList.map((organization) => {
+                  const createdAt = organization.createdAt ? new Date(organization.createdAt) : null;
+                  const createdLabel = createdAt ? createdAt.toLocaleDateString("pt-BR") : null;
+                  const isActive = organization.isActive ?? true;
+                  const canManageThisOrg = canManageOrganizationSettings(
+                    (currentOrgRole ?? organization.role ?? null) as OrgRole | null
+                  );
+                  const projectsCount =
+                    organization.projectsCount ?? organization.activeProjects ?? (organization as any).projectCount ?? 0;
+                  const membersCount =
+                    (organization as any).membersCount ??
+                    (organization as any).members?.length ??
+                    (organization as any).usersCount ??
+                    0;
+
+                  return (
+                    <div className="org-card org-item-card" key={organization.id}>
+                      <div className="org-card-left">
+                        <div className="org-card-avatar">
+                          <Building2 className="org-card-avatar-icon" />
+                        </div>
+
+                        <div className="org-card-info">
+                          <div className="org-card-header-row">
+                            <span className="org-card-name">{organization.name}</span>
+                          </div>
+
+                          <div className="org-card-meta" title={createdLabel ? `Criada em ${createdLabel}` : undefined}>
+                            {projectsCount} projetos {"\u2022"} {membersCount} membros
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="org-card-right">
+                        {canManageThisOrg && (
+                          <div className="org-actions-row">
+                            <OrgActionsMenu
+                              organization={organization}
+                              onRenamed={handleOrgRenamed}
+                              onToggledActive={handleOrgToggledActive}
+                              onDeleted={handleOrgDeleted}
+                              onStatusChange={handleOrgStatusChange}
+                              mode="menu"
+                            />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          className="org-card-action"
+                          disabled={!isActive}
+                          onClick={() => onSelect(organization.id)}
+                          aria-label="Entrar"
+                          title="Entrar"
+                        >
+                          <span className="org-card-action-text">Entrar</span>
+                          <ChevronRight className="org-card-action-icon" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
         </div>
 
-        <div className="plan-card org-plan-card">
-          <div>
-            <span className="plan-badge">Plano atual</span>
-            <div className="plan-title">{planName}</div>
-          </div>
-          <h3>Detalhes do plano</h3>
-
-          {userEmail && (
-            <div className="email-box">
-              <div className="org-responsible-label">Responsável pelas organizações</div>
-              <div className="org-responsible-email">{userEmail}</div>
+        <div className="org-plan-column">
+          <div className="org-card org-plan-card">
+            <div className="org-plan-header">
+              <span className="plan-badge">Plano Atual</span>
+              <Crown className="org-plan-icon" />
             </div>
-          )}
+            <div className="org-plan-name">{planName}</div>
+            <p className="org-plan-section-title">Detalhes do plano</p>
 
-          <div className="org-plan-body">
-            <p className="org-plan-label">Organizações incluídas</p>
-            <p className="org-plan-value">{totalSlotsLabel}</p>
+            {userEmail && (
+              <div className="org-plan-pill">
+                <div className="org-plan-pill-label">Responsável pelas organizações</div>
+                <div className="org-plan-pill-value">{userEmail}</div>
+              </div>
+            )}
 
-            <div className="org-plan-progress">
-              <div className="org-plan-progress-fill" style={{ width: `${organizationsPercent}%` }} />
+            <div className="org-plan-body">
+              <p className="org-plan-label">Organizações incluídas</p>
+              <p className="org-plan-value">{totalSlotsLabel}</p>
+
+              <div className="org-plan-progress">
+                <div className="org-plan-progress-fill" style={{ width: `${organizationsPercent}%` }} />
+              </div>
+
+              <p className="org-plan-helper">
+                Use esta conta para centralizar suas empresas, clínicas ou unidades.
+              </p>
             </div>
 
-            <p className="org-plan-helper">
-              Use esta conta para centralizar suas empresas, clínicas ou unidades.
-            </p>
-          </div>
-
-          <button type="button" className="button-primary org-plan-button" onClick={() => navigate("/plano")}>
-            Ver detalhes do plano
-          </button>
-        </div>
-      </div>
-
-      <section className="org-list-section">
-        <h2 className="org-section-title">Suas organizações</h2>
-        <p className="org-section-subtitle">
-          Escolha onde você quer trabalhar hoje.
-        </p>
-        {orgList.length === 0 ? (
-          <div className="org-empty">
-            <h3>Nenhuma organização cadastrada ainda</h3>
-            <p>
-              Crie a sua primeira organização para começar a estruturar seus projetos. Você pode adicionar quantas
-              precisar dentro do seu plano.
-            </p>
-            <button type="button" className="primary-button" onClick={scrollToCreate}>
-              Criar primeira organização
+            <button type="button" className="button-outline org-plan-button" onClick={() => navigate("/plano")}>
+              Ver detalhes do plano
             </button>
           </div>
-        ) : (
-          <div className="org-list-grid">
-            {orgList.map((organization) => {
-            const bgColor = getColorForName(organization.name || "Org");
-            const initials = getInitials(organization.name || "Org");
-            const createdAt = organization.createdAt ? new Date(organization.createdAt) : null;
-            const createdLabel = createdAt ? createdAt.toLocaleDateString("pt-BR") : null;
-            const isActive = organization.isActive ?? true;
-            const canManageThisOrg = canManageOrganizationSettings(
-              (currentOrgRole ?? organization.role ?? null) as OrgRole | null
-            );
-            const projectsCount =
-              organization.projectsCount ?? organization.activeProjects ?? (organization as any).projectCount ?? 0;
-
-              return (
-                <div className="org-card" key={organization.id}>
-                  <div className="org-card-left">
-                    <div className="org-card-avatar" style={{ backgroundColor: bgColor }}>
-                      {initials}
-                    </div>
-
-                    <div className="org-card-info">
-                      <div className="org-card-header-row">
-                        <span className="org-card-name">{organization.name}</span>
-                      </div>
-
-                      {canManageThisOrg && (
-                        <div className="org-actions-row org-card-actions-inline">
-                          <OrgActionsMenu
-                            organization={organization}
-                            onRenamed={handleOrgRenamed}
-                            onToggledActive={handleOrgToggledActive}
-                            onDeleted={handleOrgDeleted}
-                            onStatusChange={handleOrgStatusChange}
-                            mode="inline"
-                          />
-                        </div>
-                      )}
-
-                      <div className="org-card-meta" title={createdLabel ? `Criada em ${createdLabel}` : undefined}>
-                        {projectsCount} projeto(s) ativos {"\u00b7"} {organization.role} {"\u00b7"} Plano: {planName}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="org-card-right">
-                    <button
-                      type="button"
-                      className="button-primary"
-                      disabled={!isActive}
-                      onClick={() => onSelect(organization.id)}
-                    >
-                      Entrar
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+        </div>
+      </div>
 
       <OrgStatusModal
         type="DEACTIVATED"
