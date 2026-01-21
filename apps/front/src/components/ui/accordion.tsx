@@ -15,7 +15,7 @@ type AccordionContextValue = {
 const AccordionContext = React.createContext<AccordionContextValue | null>(null);
 const AccordionItemContext = React.createContext<{ value: string } | null>(null);
 
-export interface AccordionProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface AccordionProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "defaultValue"> {
   type?: AccordionType;
   collapsible?: boolean;
   value?: AccordionValue;
