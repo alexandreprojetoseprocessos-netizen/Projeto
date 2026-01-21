@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { DashboardLayout } from "./components/DashboardLayout";
 import "./App.css";
-import { AuthPage } from "./components/AuthPage";
 import { OrganizationSelector } from "./components/OrganizationOnboarding";
 import { useAuth } from "./contexts/AuthContext";
 import { STATUS_MAP, KANBAN_STATUS_ORDER } from "./components/KanbanBoard";
@@ -28,6 +27,7 @@ import PlanPage from "./pages/PlanPage";
 import { TeamPage } from "./pages/TeamPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import LandingPage from "./pages/LandingPage";
+import Auth from "./pages/Auth";
 import { CheckoutPage } from "./pages/CheckoutPage";
 import { apiFetch, apiUrl, getNetworkErrorMessage } from "./config/api";
 import { getPlanDefinition } from "./config/plans";
@@ -1152,14 +1152,391 @@ export const App = () => {
         if (location.pathname === "/") {
             return _jsx(LandingPage, {});
         }
-        return (_jsx(AuthPage, { onSubmit: async ({ email, password }) => {
-                await signIn(email, password);
-                navigate("/dashboard", { replace: true });
-            }, onSignUp: async (payload) => {
-                await signUp(payload);
-                // Novo usu�rio deve concluir o checkout antes de criar organiza��o
-                navigate("/checkout", { replace: true });
-            }, error: authError }));
+        return _jsx(Auth, {});
+    }
+    const storedOrganizationId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
+    const hasStoredOrganization = Boolean(selectedOrganizationId || storedOrganizationId);
+    const isOnCheckoutRoute = location.pathname === "/checkout";
+    if (subscriptionStatus === "loading" || subscriptionStatus === "idle") {
+        if (isOnCheckoutRoute) {
+            // Permite abrir o checkout enquanto o status � carregado
+        }
+        else {
+            return _jsx("p", { style: { padding: "2rem" }, children: "Carregando assinatura..." });
+        }
+    }
+    if (subscriptionStatus !== "active" && !isOnCheckoutRoute) {
+        return _jsx(Navigate, { to: "/checkout", replace: true });
+    }
+    if (status === "authenticated" &&
+        subscriptionStatus === "active" &&
+        selectedOrganizationId &&
+        projectsLoaded &&
+        projects.length === 0 &&
+        location.pathname === "/dashboard") {
+        return _jsx(Navigate, { to: "/projects", replace: true });
+    }
+    const handleProjectSelection = (projectId) => {
+        setSelectedProjectId(projectId);
+        if (selectedOrganizationId && projectId) {
+            navigate(`/EAP/organizacao/${selectedOrganizationId}/projeto/${projectId}`, { replace: true });
+        }
+    };
+    return (_jsxs(Routes, { children: [_jsx(Route, { path: "/", element: _jsx(LandingPage, {}) }), _jsxs(Route, { path: "/*", element: _jsx(DashboardLayout, { userEmail: user?.email ?? null, organizations: organizations, selectedOrganizationId: selectedOrganizationId ?? "", onOrganizationChange: setSelectedOrganizationId, currentOrgRole: currentOrgRole ?? null, orgError: orgError, onSignOut: signOut, projects: projects, selectedProjectId: selectedProjectId ?? "", onProjectChange: handleProjectSelection, onSelectProject: handleProjectSelection, projectsError: projectsError, filters: filters, onRangeChange: (rangeDays) => setFilters((prev) => ({ ...prev, rangeDays })), summary: projectSummary, summaryError: summaryError, members: members, membersError: membersError, attachments: attachments, attachmentsError: attachmentsError, attachmentsLoading: attachmentsLoading, boardColumns: boardColumns, boardError: boardError, onCreateTask: handleCreateTask, onReloadBoard: loadBoardColumns, onDragTask: handleDragEnd, newTaskTitle: newTaskTitle, onTaskTitleChange: setNewTaskTitle, newTaskColumn: newTaskColumn, onTaskColumnChange: setNewTaskColumn, newTaskStartDate: newTaskStartDate, onTaskStartDateChange: setNewTaskStartDate, newTaskEndDate: newTaskEndDate, onTaskEndDateChange: setNewTaskEndDate, newTaskAssignee: newTaskAssignee, onTaskAssigneeChange: setNewTaskAssignee, newTaskEstimateHours: newTaskEstimateHours, onTaskEstimateHoursChange: setNewTaskEstimateHours, wbsNodes: wbsNodes, wbsError: wbsError, onMoveNode: handleWbsMove, onUpdateWbsNode: handleWbsUpdate, onUpdateWbsResponsible: handleWbsResponsibleChange, onCreateWbsItem: handleCreateWbsItem, selectedNodeId: selectedNodeId, onSelectNode: setSelectedNodeId, comments: comments, commentsError: commentsError, onSubmitComment: handleCreateComment, commentBody: commentBody, onCommentBodyChange: setCommentBody, timeEntryDate: timeEntryDate, timeEntryHours: timeEntryHours, timeEntryDescription: timeEntryDescription, onTimeEntryDateChange: setTimeEntryDate, onTimeEntryHoursChange: setTimeEntryHours, onTimeEntryDescriptionChange: setTimeEntryDescription, onLogTime: handleCreateTimeEntry, timeEntryError: timeEntryError, ganttTasks: ganttTasks, ganttMilestones: ganttMilestones, ganttError: ganttError, portfolio: portfolio, portfolioError: portfolioError, portfolioLoading: portfolioLoading, reportMetrics: reportMetrics, reportMetricsError: reportMetricsError, reportMetricsLoading: reportMetricsLoading, kanbanColumns: kanbanColumns, onExportPortfolio: handleDownloadPortfolio, onCreateProject: handleCreateProject, onUpdateProject: handleUpdateProject, projectLimits: projectLimits, serviceCatalog: serviceCatalog, serviceCatalogError: serviceCatalogError, onImportServiceCatalog: handleImportServiceCatalog, onCreateServiceCatalog: handleCreateServiceCatalog, onUpdateServiceCatalog: handleUpdateServiceCatalog, onDeleteServiceCatalog: handleDeleteServiceCatalog, onReloadWbs: () => setWbsRefresh((value) => value + 1) }), children: [_jsx(Route, { index: true, element: _jsx(Navigate, { to: "/dashboard", replace: true }) }), _jsx(Route, { path: "checkout", element: _jsx(CheckoutPage, { subscription: subscription, subscriptionError: subscriptionError, onSubscriptionActivated: fetchSubscription }) }), _jsx(Route, { path: "organizacao", element: _jsx(OrganizationSelector, { organizations: organizationCards, onSelect: (organizationId) => {
+                                setSelectedOrganizationId(organizationId);
+                                setSelectedProjectId(null);
+                                if (typeof window !== "undefined") {
+                                    window.localStorage.setItem(SELECTED_ORG_KEY, organizationId);
+                                    window.localStorage.removeItem(SELECTED_PROJECT_KEY);
+                                }
+                                navigate("/projects", { replace: true });
+                            }, onCreateOrganization: handleCreateOrganization, userEmail: user?.email ?? null, currentOrgRole: currentOrgRole ?? null, organizationLimits: organizationLimits, onReloadOrganizations: () => setOrganizationsRefresh((value) => value + 1) }) }), _jsx(Route, { path: "dashboard", element: _jsx(DashboardPage, {}) }), _jsx(Route, { path: "projects", element: _jsx(ProjectsPage, {}) }), _jsx(Route, { path: "projects/:id", element: _jsx(ProjectDetailsPage, {}) }), _jsx(Route, { path: "projects/:id/edt", element: _jsx(ProjectEDTPage, {}) }), _jsx(Route, { path: "projects/:id/board", element: _jsx(ProjectBoardPage, {}) }), _jsx(Route, { path: "projects/:id/cronograma", element: _jsx(ProjectTimelinePage, {}) }), _jsx(Route, { path: "projects/:id/documentos", element: _jsx(ProjectDocumentsPage, {}) }), _jsx(Route, { path: "projects/:id/atividades", element: _jsx(ProjectActivitiesPage, {}) }), _jsx(Route, { path: "EAP/organizacao/:organizationId/projeto/:projectId", element: _jsx(EDTPage, {}) }), _jsx(Route, { path: "EAP", element: selectedOrganizationId && selectedProjectId ? (_jsx(Navigate, { to: `/EAP/organizacao/${selectedOrganizationId}/projeto/${selectedProjectId}`, replace: true })) : (_jsx(Navigate, { to: "/organizacao", replace: true })) }), _jsx(Route, { path: "edt", element: _jsx(Navigate, { to: "/EAP", replace: true }) }), _jsx(Route, { path: "board", element: _jsx(BoardPage, {}) }), _jsx(Route, { path: "kanban", element: _jsx(KanbanPage, {}) }), _jsx(Route, { path: "cronograma", element: _jsx(TimelinePage, {}) }), _jsx(Route, { path: "relatorios", element: _jsx(ReportsPage, {}) }), _jsx(Route, { path: "documentos", element: _jsx(DocumentsPage, {}) }), _jsx(Route, { path: "atividades", element: _jsx(ActivitiesPage, {}) }), _jsx(Route, { path: "plano", element: _jsx(PlanPage, {}) }), _jsx(Route, { path: "equipe", element: _jsx(TeamPage, {}) })] }), _jsx(Route, { path: "*", element: _jsx(NotFoundPage, {}) })] }));
+};
+function reorderBoard(columns, source, destination, taskId, newStatus) {
+    const nextColumns = columns.map((column) => ({
+        ...column,
+        tasks: [...column.tasks]
+    }));
+    const sourceColumn = nextColumns.find((column) => column.id === source.droppableId);
+    const destinationColumn = nextColumns.find((column) => column.id === destination.droppableId);
+    if (!sourceColumn || !destinationColumn)
+        return columns;
+    const [movedTask] = sourceColumn.tasks.splice(source.index, 1);
+    if (!movedTask)
+        return columns;
+    // Atualiza a tarefa com o novo status e coluna
+    const updatedTask = {
+        ...movedTask,
+        boardColumnId: destinationColumn.id,
+        status: newStatus || destinationColumn.id // Usa o ID da coluna como status
+    };
+    destinationColumn.tasks.splice(destination.index, 0, updatedTask);
+    return nextColumns;
+}
+function updateNodeParent(nodes, nodeId, parentId, position) {
+    const deepClone = (items) => items.map((node) => ({
+        ...node,
+        children: deepClone(node.children ?? [])
+    }));
+    const cloned = deepClone(nodes);
+    let itemToMove = null;
+    const removeFromTree = (items) => items
+        .map((node) => {
+        if (node.id === nodeId) {
+            itemToMove = node;
+            return null;
+        }
+        return { ...node, children: removeFromTree(node.children ?? []) };
+    })
+        .filter(Boolean);
+    const withoutItem = removeFromTree(cloned);
+    if (!itemToMove)
+        return nodes;
+    const movable = itemToMove;
+    const insertIntoTree = (items) => items.map((node) => {
+        if (node.id === parentId) {
+            const children = [...node.children];
+            children.splice(position, 0, { ...movable, parentId: node.id });
+            return { ...node, children };
+        }
+        return { ...node, children: insertIntoTree(node.children ?? []) };
+    });
+    if (!parentId) {
+        const topLevel = [...withoutItem];
+        topLevel.splice(position, 0, { ...movable, parentId: null });
+        return topLevel;
+    }
+    return insertIntoTree(withoutItem);
+}
+function patchWbsNode(nodes, nodeId, changes) {
+    return nodes.map((node) => {
+        if (node.id === nodeId) {
+            return { ...node, ...changes };
+        }
+        if (node.children?.length) {
+            return { ...node, children: patchWbsNode(node.children, nodeId, changes) };
+        }
+        return node;
+    });
+}
+function treeContainsNode(nodes, nodeId) {
+    for (const node of nodes) {
+        if (node.id === nodeId)
+            return true;
+        if (node.children?.length && treeContainsNode(node.children, nodeId)) {
+            return true;
+        }
+    }
+    return false;
+}
+function findWbsNode(nodes, nodeId) {
+    for (const node of nodes) {
+        if (node.id === nodeId)
+            return node;
+        if (node.children?.length) {
+            const found = findWbsNode(node.children, nodeId);
+            if (found)
+                return found;
+        }
+    }
+    return null;
+}return _jsx(Auth, {});
+    }
+    const storedOrganizationId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
+    const hasStoredOrganization = Boolean(selectedOrganizationId || storedOrganizationId);
+    const isOnCheckoutRoute = location.pathname === "/checkout";
+    if (subscriptionStatus === "loading" || subscriptionStatus === "idle") {
+        if (isOnCheckoutRoute) {
+            // Permite abrir o checkout enquanto o status � carregado
+        }
+        else {
+            return _jsx("p", { style: { padding: "2rem" }, children: "Carregando assinatura..." });
+        }
+    }
+    if (subscriptionStatus !== "active" && !isOnCheckoutRoute) {
+        return _jsx(Navigate, { to: "/checkout", replace: true });
+    }
+    if (status === "authenticated" &&
+        subscriptionStatus === "active" &&
+        selectedOrganizationId &&
+        projectsLoaded &&
+        projects.length === 0 &&
+        location.pathname === "/dashboard") {
+        return _jsx(Navigate, { to: "/projects", replace: true });
+    }
+    const handleProjectSelection = (projectId) => {
+        setSelectedProjectId(projectId);
+        if (selectedOrganizationId && projectId) {
+            navigate(`/EAP/organizacao/${selectedOrganizationId}/projeto/${projectId}`, { replace: true });
+        }
+    };
+    return (_jsxs(Routes, { children: [_jsx(Route, { path: "/", element: _jsx(LandingPage, {}) }), _jsxs(Route, { path: "/*", element: _jsx(DashboardLayout, { userEmail: user?.email ?? null, organizations: organizations, selectedOrganizationId: selectedOrganizationId ?? "", onOrganizationChange: setSelectedOrganizationId, currentOrgRole: currentOrgRole ?? null, orgError: orgError, onSignOut: signOut, projects: projects, selectedProjectId: selectedProjectId ?? "", onProjectChange: handleProjectSelection, onSelectProject: handleProjectSelection, projectsError: projectsError, filters: filters, onRangeChange: (rangeDays) => setFilters((prev) => ({ ...prev, rangeDays })), summary: projectSummary, summaryError: summaryError, members: members, membersError: membersError, attachments: attachments, attachmentsError: attachmentsError, attachmentsLoading: attachmentsLoading, boardColumns: boardColumns, boardError: boardError, onCreateTask: handleCreateTask, onReloadBoard: loadBoardColumns, onDragTask: handleDragEnd, newTaskTitle: newTaskTitle, onTaskTitleChange: setNewTaskTitle, newTaskColumn: newTaskColumn, onTaskColumnChange: setNewTaskColumn, newTaskStartDate: newTaskStartDate, onTaskStartDateChange: setNewTaskStartDate, newTaskEndDate: newTaskEndDate, onTaskEndDateChange: setNewTaskEndDate, newTaskAssignee: newTaskAssignee, onTaskAssigneeChange: setNewTaskAssignee, newTaskEstimateHours: newTaskEstimateHours, onTaskEstimateHoursChange: setNewTaskEstimateHours, wbsNodes: wbsNodes, wbsError: wbsError, onMoveNode: handleWbsMove, onUpdateWbsNode: handleWbsUpdate, onUpdateWbsResponsible: handleWbsResponsibleChange, onCreateWbsItem: handleCreateWbsItem, selectedNodeId: selectedNodeId, onSelectNode: setSelectedNodeId, comments: comments, commentsError: commentsError, onSubmitComment: handleCreateComment, commentBody: commentBody, onCommentBodyChange: setCommentBody, timeEntryDate: timeEntryDate, timeEntryHours: timeEntryHours, timeEntryDescription: timeEntryDescription, onTimeEntryDateChange: setTimeEntryDate, onTimeEntryHoursChange: setTimeEntryHours, onTimeEntryDescriptionChange: setTimeEntryDescription, onLogTime: handleCreateTimeEntry, timeEntryError: timeEntryError, ganttTasks: ganttTasks, ganttMilestones: ganttMilestones, ganttError: ganttError, portfolio: portfolio, portfolioError: portfolioError, portfolioLoading: portfolioLoading, reportMetrics: reportMetrics, reportMetricsError: reportMetricsError, reportMetricsLoading: reportMetricsLoading, kanbanColumns: kanbanColumns, onExportPortfolio: handleDownloadPortfolio, onCreateProject: handleCreateProject, onUpdateProject: handleUpdateProject, projectLimits: projectLimits, serviceCatalog: serviceCatalog, serviceCatalogError: serviceCatalogError, onImportServiceCatalog: handleImportServiceCatalog, onCreateServiceCatalog: handleCreateServiceCatalog, onUpdateServiceCatalog: handleUpdateServiceCatalog, onDeleteServiceCatalog: handleDeleteServiceCatalog, onReloadWbs: () => setWbsRefresh((value) => value + 1) }), children: [_jsx(Route, { index: true, element: _jsx(Navigate, { to: "/dashboard", replace: true }) }), _jsx(Route, { path: "checkout", element: _jsx(CheckoutPage, { subscription: subscription, subscriptionError: subscriptionError, onSubscriptionActivated: fetchSubscription }) }), _jsx(Route, { path: "organizacao", element: _jsx(OrganizationSelector, { organizations: organizationCards, onSelect: (organizationId) => {
+                                setSelectedOrganizationId(organizationId);
+                                setSelectedProjectId(null);
+                                if (typeof window !== "undefined") {
+                                    window.localStorage.setItem(SELECTED_ORG_KEY, organizationId);
+                                    window.localStorage.removeItem(SELECTED_PROJECT_KEY);
+                                }
+                                navigate("/projects", { replace: true });
+                            }, onCreateOrganization: handleCreateOrganization, userEmail: user?.email ?? null, currentOrgRole: currentOrgRole ?? null, organizationLimits: organizationLimits, onReloadOrganizations: () => setOrganizationsRefresh((value) => value + 1) }) }), _jsx(Route, { path: "dashboard", element: _jsx(DashboardPage, {}) }), _jsx(Route, { path: "projects", element: _jsx(ProjectsPage, {}) }), _jsx(Route, { path: "projects/:id", element: _jsx(ProjectDetailsPage, {}) }), _jsx(Route, { path: "projects/:id/edt", element: _jsx(ProjectEDTPage, {}) }), _jsx(Route, { path: "projects/:id/board", element: _jsx(ProjectBoardPage, {}) }), _jsx(Route, { path: "projects/:id/cronograma", element: _jsx(ProjectTimelinePage, {}) }), _jsx(Route, { path: "projects/:id/documentos", element: _jsx(ProjectDocumentsPage, {}) }), _jsx(Route, { path: "projects/:id/atividades", element: _jsx(ProjectActivitiesPage, {}) }), _jsx(Route, { path: "EAP/organizacao/:organizationId/projeto/:projectId", element: _jsx(EDTPage, {}) }), _jsx(Route, { path: "EAP", element: selectedOrganizationId && selectedProjectId ? (_jsx(Navigate, { to: `/EAP/organizacao/${selectedOrganizationId}/projeto/${selectedProjectId}`, replace: true })) : (_jsx(Navigate, { to: "/organizacao", replace: true })) }), _jsx(Route, { path: "edt", element: _jsx(Navigate, { to: "/EAP", replace: true }) }), _jsx(Route, { path: "board", element: _jsx(BoardPage, {}) }), _jsx(Route, { path: "kanban", element: _jsx(KanbanPage, {}) }), _jsx(Route, { path: "cronograma", element: _jsx(TimelinePage, {}) }), _jsx(Route, { path: "relatorios", element: _jsx(ReportsPage, {}) }), _jsx(Route, { path: "documentos", element: _jsx(DocumentsPage, {}) }), _jsx(Route, { path: "atividades", element: _jsx(ActivitiesPage, {}) }), _jsx(Route, { path: "plano", element: _jsx(PlanPage, {}) }), _jsx(Route, { path: "equipe", element: _jsx(TeamPage, {}) })] }), _jsx(Route, { path: "*", element: _jsx(NotFoundPage, {}) })] }));
+};
+function reorderBoard(columns, source, destination, taskId, newStatus) {
+    const nextColumns = columns.map((column) => ({
+        ...column,
+        tasks: [...column.tasks]
+    }));
+    const sourceColumn = nextColumns.find((column) => column.id === source.droppableId);
+    const destinationColumn = nextColumns.find((column) => column.id === destination.droppableId);
+    if (!sourceColumn || !destinationColumn)
+        return columns;
+    const [movedTask] = sourceColumn.tasks.splice(source.index, 1);
+    if (!movedTask)
+        return columns;
+    // Atualiza a tarefa com o novo status e coluna
+    const updatedTask = {
+        ...movedTask,
+        boardColumnId: destinationColumn.id,
+        status: newStatus || destinationColumn.id // Usa o ID da coluna como status
+    };
+    destinationColumn.tasks.splice(destination.index, 0, updatedTask);
+    return nextColumns;
+}
+function updateNodeParent(nodes, nodeId, parentId, position) {
+    const deepClone = (items) => items.map((node) => ({
+        ...node,
+        children: deepClone(node.children ?? [])
+    }));
+    const cloned = deepClone(nodes);
+    let itemToMove = null;
+    const removeFromTree = (items) => items
+        .map((node) => {
+        if (node.id === nodeId) {
+            itemToMove = node;
+            return null;
+        }
+        return { ...node, children: removeFromTree(node.children ?? []) };
+    })
+        .filter(Boolean);
+    const withoutItem = removeFromTree(cloned);
+    if (!itemToMove)
+        return nodes;
+    const movable = itemToMove;
+    const insertIntoTree = (items) => items.map((node) => {
+        if (node.id === parentId) {
+            const children = [...node.children];
+            children.splice(position, 0, { ...movable, parentId: node.id });
+            return { ...node, children };
+        }
+        return { ...node, children: insertIntoTree(node.children ?? []) };
+    });
+    if (!parentId) {
+        const topLevel = [...withoutItem];
+        topLevel.splice(position, 0, { ...movable, parentId: null });
+        return topLevel;
+    }
+    return insertIntoTree(withoutItem);
+}
+function patchWbsNode(nodes, nodeId, changes) {
+    return nodes.map((node) => {
+        if (node.id === nodeId) {
+            return { ...node, ...changes };
+        }
+        if (node.children?.length) {
+            return { ...node, children: patchWbsNode(node.children, nodeId, changes) };
+        }
+        return node;
+    });
+}
+function treeContainsNode(nodes, nodeId) {
+    for (const node of nodes) {
+        if (node.id === nodeId)
+            return true;
+        if (node.children?.length && treeContainsNode(node.children, nodeId)) {
+            return true;
+        }
+    }
+    return false;
+}
+function findWbsNode(nodes, nodeId) {
+    for (const node of nodes) {
+        if (node.id === nodeId)
+            return node;
+        if (node.children?.length) {
+            const found = findWbsNode(node.children, nodeId);
+            if (found)
+                return found;
+        }
+    }
+    return null;
+}return _jsx(Auth, {});
+    }
+    const storedOrganizationId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
+    const hasStoredOrganization = Boolean(selectedOrganizationId || storedOrganizationId);
+    const isOnCheckoutRoute = location.pathname === "/checkout";
+    if (subscriptionStatus === "loading" || subscriptionStatus === "idle") {
+        if (isOnCheckoutRoute) {
+            // Permite abrir o checkout enquanto o status � carregado
+        }
+        else {
+            return _jsx("p", { style: { padding: "2rem" }, children: "Carregando assinatura..." });
+        }
+    }
+    if (subscriptionStatus !== "active" && !isOnCheckoutRoute) {
+        return _jsx(Navigate, { to: "/checkout", replace: true });
+    }
+    if (status === "authenticated" &&
+        subscriptionStatus === "active" &&
+        selectedOrganizationId &&
+        projectsLoaded &&
+        projects.length === 0 &&
+        location.pathname === "/dashboard") {
+        return _jsx(Navigate, { to: "/projects", replace: true });
+    }
+    const handleProjectSelection = (projectId) => {
+        setSelectedProjectId(projectId);
+        if (selectedOrganizationId && projectId) {
+            navigate(`/EAP/organizacao/${selectedOrganizationId}/projeto/${projectId}`, { replace: true });
+        }
+    };
+    return (_jsxs(Routes, { children: [_jsx(Route, { path: "/", element: _jsx(LandingPage, {}) }), _jsxs(Route, { path: "/*", element: _jsx(DashboardLayout, { userEmail: user?.email ?? null, organizations: organizations, selectedOrganizationId: selectedOrganizationId ?? "", onOrganizationChange: setSelectedOrganizationId, currentOrgRole: currentOrgRole ?? null, orgError: orgError, onSignOut: signOut, projects: projects, selectedProjectId: selectedProjectId ?? "", onProjectChange: handleProjectSelection, onSelectProject: handleProjectSelection, projectsError: projectsError, filters: filters, onRangeChange: (rangeDays) => setFilters((prev) => ({ ...prev, rangeDays })), summary: projectSummary, summaryError: summaryError, members: members, membersError: membersError, attachments: attachments, attachmentsError: attachmentsError, attachmentsLoading: attachmentsLoading, boardColumns: boardColumns, boardError: boardError, onCreateTask: handleCreateTask, onReloadBoard: loadBoardColumns, onDragTask: handleDragEnd, newTaskTitle: newTaskTitle, onTaskTitleChange: setNewTaskTitle, newTaskColumn: newTaskColumn, onTaskColumnChange: setNewTaskColumn, newTaskStartDate: newTaskStartDate, onTaskStartDateChange: setNewTaskStartDate, newTaskEndDate: newTaskEndDate, onTaskEndDateChange: setNewTaskEndDate, newTaskAssignee: newTaskAssignee, onTaskAssigneeChange: setNewTaskAssignee, newTaskEstimateHours: newTaskEstimateHours, onTaskEstimateHoursChange: setNewTaskEstimateHours, wbsNodes: wbsNodes, wbsError: wbsError, onMoveNode: handleWbsMove, onUpdateWbsNode: handleWbsUpdate, onUpdateWbsResponsible: handleWbsResponsibleChange, onCreateWbsItem: handleCreateWbsItem, selectedNodeId: selectedNodeId, onSelectNode: setSelectedNodeId, comments: comments, commentsError: commentsError, onSubmitComment: handleCreateComment, commentBody: commentBody, onCommentBodyChange: setCommentBody, timeEntryDate: timeEntryDate, timeEntryHours: timeEntryHours, timeEntryDescription: timeEntryDescription, onTimeEntryDateChange: setTimeEntryDate, onTimeEntryHoursChange: setTimeEntryHours, onTimeEntryDescriptionChange: setTimeEntryDescription, onLogTime: handleCreateTimeEntry, timeEntryError: timeEntryError, ganttTasks: ganttTasks, ganttMilestones: ganttMilestones, ganttError: ganttError, portfolio: portfolio, portfolioError: portfolioError, portfolioLoading: portfolioLoading, reportMetrics: reportMetrics, reportMetricsError: reportMetricsError, reportMetricsLoading: reportMetricsLoading, kanbanColumns: kanbanColumns, onExportPortfolio: handleDownloadPortfolio, onCreateProject: handleCreateProject, onUpdateProject: handleUpdateProject, projectLimits: projectLimits, serviceCatalog: serviceCatalog, serviceCatalogError: serviceCatalogError, onImportServiceCatalog: handleImportServiceCatalog, onCreateServiceCatalog: handleCreateServiceCatalog, onUpdateServiceCatalog: handleUpdateServiceCatalog, onDeleteServiceCatalog: handleDeleteServiceCatalog, onReloadWbs: () => setWbsRefresh((value) => value + 1) }), children: [_jsx(Route, { index: true, element: _jsx(Navigate, { to: "/dashboard", replace: true }) }), _jsx(Route, { path: "checkout", element: _jsx(CheckoutPage, { subscription: subscription, subscriptionError: subscriptionError, onSubscriptionActivated: fetchSubscription }) }), _jsx(Route, { path: "organizacao", element: _jsx(OrganizationSelector, { organizations: organizationCards, onSelect: (organizationId) => {
+                                setSelectedOrganizationId(organizationId);
+                                setSelectedProjectId(null);
+                                if (typeof window !== "undefined") {
+                                    window.localStorage.setItem(SELECTED_ORG_KEY, organizationId);
+                                    window.localStorage.removeItem(SELECTED_PROJECT_KEY);
+                                }
+                                navigate("/projects", { replace: true });
+                            }, onCreateOrganization: handleCreateOrganization, userEmail: user?.email ?? null, currentOrgRole: currentOrgRole ?? null, organizationLimits: organizationLimits, onReloadOrganizations: () => setOrganizationsRefresh((value) => value + 1) }) }), _jsx(Route, { path: "dashboard", element: _jsx(DashboardPage, {}) }), _jsx(Route, { path: "projects", element: _jsx(ProjectsPage, {}) }), _jsx(Route, { path: "projects/:id", element: _jsx(ProjectDetailsPage, {}) }), _jsx(Route, { path: "projects/:id/edt", element: _jsx(ProjectEDTPage, {}) }), _jsx(Route, { path: "projects/:id/board", element: _jsx(ProjectBoardPage, {}) }), _jsx(Route, { path: "projects/:id/cronograma", element: _jsx(ProjectTimelinePage, {}) }), _jsx(Route, { path: "projects/:id/documentos", element: _jsx(ProjectDocumentsPage, {}) }), _jsx(Route, { path: "projects/:id/atividades", element: _jsx(ProjectActivitiesPage, {}) }), _jsx(Route, { path: "EAP/organizacao/:organizationId/projeto/:projectId", element: _jsx(EDTPage, {}) }), _jsx(Route, { path: "EAP", element: selectedOrganizationId && selectedProjectId ? (_jsx(Navigate, { to: `/EAP/organizacao/${selectedOrganizationId}/projeto/${selectedProjectId}`, replace: true })) : (_jsx(Navigate, { to: "/organizacao", replace: true })) }), _jsx(Route, { path: "edt", element: _jsx(Navigate, { to: "/EAP", replace: true }) }), _jsx(Route, { path: "board", element: _jsx(BoardPage, {}) }), _jsx(Route, { path: "kanban", element: _jsx(KanbanPage, {}) }), _jsx(Route, { path: "cronograma", element: _jsx(TimelinePage, {}) }), _jsx(Route, { path: "relatorios", element: _jsx(ReportsPage, {}) }), _jsx(Route, { path: "documentos", element: _jsx(DocumentsPage, {}) }), _jsx(Route, { path: "atividades", element: _jsx(ActivitiesPage, {}) }), _jsx(Route, { path: "plano", element: _jsx(PlanPage, {}) }), _jsx(Route, { path: "equipe", element: _jsx(TeamPage, {}) })] }), _jsx(Route, { path: "*", element: _jsx(NotFoundPage, {}) })] }));
+};
+function reorderBoard(columns, source, destination, taskId, newStatus) {
+    const nextColumns = columns.map((column) => ({
+        ...column,
+        tasks: [...column.tasks]
+    }));
+    const sourceColumn = nextColumns.find((column) => column.id === source.droppableId);
+    const destinationColumn = nextColumns.find((column) => column.id === destination.droppableId);
+    if (!sourceColumn || !destinationColumn)
+        return columns;
+    const [movedTask] = sourceColumn.tasks.splice(source.index, 1);
+    if (!movedTask)
+        return columns;
+    // Atualiza a tarefa com o novo status e coluna
+    const updatedTask = {
+        ...movedTask,
+        boardColumnId: destinationColumn.id,
+        status: newStatus || destinationColumn.id // Usa o ID da coluna como status
+    };
+    destinationColumn.tasks.splice(destination.index, 0, updatedTask);
+    return nextColumns;
+}
+function updateNodeParent(nodes, nodeId, parentId, position) {
+    const deepClone = (items) => items.map((node) => ({
+        ...node,
+        children: deepClone(node.children ?? [])
+    }));
+    const cloned = deepClone(nodes);
+    let itemToMove = null;
+    const removeFromTree = (items) => items
+        .map((node) => {
+        if (node.id === nodeId) {
+            itemToMove = node;
+            return null;
+        }
+        return { ...node, children: removeFromTree(node.children ?? []) };
+    })
+        .filter(Boolean);
+    const withoutItem = removeFromTree(cloned);
+    if (!itemToMove)
+        return nodes;
+    const movable = itemToMove;
+    const insertIntoTree = (items) => items.map((node) => {
+        if (node.id === parentId) {
+            const children = [...node.children];
+            children.splice(position, 0, { ...movable, parentId: node.id });
+            return { ...node, children };
+        }
+        return { ...node, children: insertIntoTree(node.children ?? []) };
+    });
+    if (!parentId) {
+        const topLevel = [...withoutItem];
+        topLevel.splice(position, 0, { ...movable, parentId: null });
+        return topLevel;
+    }
+    return insertIntoTree(withoutItem);
+}
+function patchWbsNode(nodes, nodeId, changes) {
+    return nodes.map((node) => {
+        if (node.id === nodeId) {
+            return { ...node, ...changes };
+        }
+        if (node.children?.length) {
+            return { ...node, children: patchWbsNode(node.children, nodeId, changes) };
+        }
+        return node;
+    });
+}
+function treeContainsNode(nodes, nodeId) {
+    for (const node of nodes) {
+        if (node.id === nodeId)
+            return true;
+        if (node.children?.length && treeContainsNode(node.children, nodeId)) {
+            return true;
+        }
+    }
+    return false;
+}
+function findWbsNode(nodes, nodeId) {
+    for (const node of nodes) {
+        if (node.id === nodeId)
+            return node;
+        if (node.children?.length) {
+            const found = findWbsNode(node.children, nodeId);
+            if (found)
+                return found;
+        }
+    }
+    return null;
+}return _jsx(Auth, {});
     }
     const storedOrganizationId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
     const hasStoredOrganization = Boolean(selectedOrganizationId || storedOrganizationId);

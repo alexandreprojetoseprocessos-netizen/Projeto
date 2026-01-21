@@ -18,6 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Accordion,
   AccordionContent,
@@ -27,6 +28,7 @@ import {
 
 const Landing = () => {
   const navigate = useNavigate();
+  const { status, token } = useAuth();
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly");
 
   const plans = [
@@ -191,6 +193,17 @@ const Landing = () => {
   ];
 
   const goLogin = () => navigate("/auth");
+  const handlePlanSelect = (planCode: string) => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("gp:selectedPlan", planCode);
+    }
+    if (status === "authenticated" && token) {
+      navigate("/checkout");
+      return;
+    }
+    navigate(`/auth?plan=${planCode}`);
+  };
+
   const goStart = () => navigate("/auth?plan=START");
   const goDemo = () => navigate("/dashboard");
 
@@ -432,7 +445,7 @@ const Landing = () => {
                       </li>
                     ))}
                   </ul>
-                  <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-md" onClick={() => navigate(`/auth?plan=${plan.badge}`)}>
+                  <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-md" onClick={() => handlePlanSelect(plan.badge)}>
                     Escolher plano
                   </Button>
                 </CardContent>

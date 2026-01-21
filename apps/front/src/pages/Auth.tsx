@@ -91,7 +91,7 @@ function usePlanFromQuery(): PlanParam {
 }
 
 const inputClassName =
-  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none";
+  "w-full h-11 rounded-lg border border-slate-200 bg-[#eef5ff] px-3 text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -313,14 +313,14 @@ const Auth = () => {
   const documentPlaceholder = documentType === "CPF" ? "000.000.000-00" : "00.000.000/0000-00";
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-600 via-blue-700 to-blue-900 flex items-center justify-center p-4">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#0b1b4d] via-[#1238a8] to-[#2f5fe0] flex items-center justify-center p-4">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-blue-200/30 mix-blend-multiply blur-3xl opacity-30 animate-pulse" />
         <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-emerald-300/30 mix-blend-multiply blur-3xl opacity-20 animate-pulse" />
         <div className="absolute left-1/2 top-1/2 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-400/30 mix-blend-multiply blur-3xl opacity-20" />
       </div>
 
-      <div className="relative z-10 w-full max-w-md">
+      <div className="relative z-10 w-full max-w-[460px]">
         <Link to="/" className="flex items-center justify-center gap-3 mb-8">
           <div className="w-11 h-11 bg-white rounded-2xl flex items-center justify-center shadow-lg">
             <span className="text-blue-700 font-extrabold text-sm">G&P</span>
@@ -331,7 +331,7 @@ const Auth = () => {
         <Card className="border-border/20 bg-white shadow-2xl rounded-2xl">
           <CardHeader className="text-center pb-4">
             <h2 className="text-2xl font-semibold text-slate-900">
-              {tab === "login" ? "Bem-vindo de volta" : "Comece em minutos"}
+              Bem-vindo de volta
             </h2>
             <p className="text-sm text-slate-500">
               Entre na sua conta ou crie uma nova
@@ -344,12 +344,14 @@ const Auth = () => {
           </CardHeader>
 
           <CardContent>
-            <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 mb-6">
+            <div className="grid grid-cols-2 gap-2 rounded-full border border-[#E5E7EB] bg-[#F3F4F6] p-[7px] mb-6 shadow-[0_6px_18px_rgba(0,0,0,0.06)]">
               <button
                 type="button"
                 onClick={() => setTab("login")}
-                className={`rounded-lg py-2 text-sm font-semibold transition ${
-                  tab === "login" ? "bg-blue-600 text-white shadow" : "text-slate-600"
+                className={`rounded-full h-10 px-6 text-sm font-semibold transition duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 ${
+                  tab === "login"
+                    ? "bg-blue-600 text-white shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
+                    : "bg-[#F3F4F6] text-slate-500 border border-[#E5E7EB] hover:bg-white/70"
                 }`}
               >
                 Entrar
@@ -357,8 +359,10 @@ const Auth = () => {
               <button
                 type="button"
                 onClick={() => setTab("signup")}
-                className={`rounded-lg py-2 text-sm font-semibold transition ${
-                  tab === "signup" ? "bg-blue-600 text-white shadow" : "text-slate-600"
+                className={`rounded-full h-10 px-6 text-sm font-semibold transition duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 ${
+                  tab === "signup"
+                    ? "bg-blue-600 text-white shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
+                    : "bg-[#F3F4F6] text-slate-500 border border-[#E5E7EB] hover:bg-white/70"
                 }`}
               >
                 Cadastrar
@@ -393,7 +397,7 @@ const Auth = () => {
                     <button
                       type="button"
                       onClick={handleForgotPassword}
-                      className="text-xs text-blue-600 hover:text-blue-700"
+                      className="text-sm text-blue-500 hover:text-blue-600 hover:underline"
                     >
                       Esqueceu a senha?
                     </button>
@@ -413,19 +417,19 @@ const Auth = () => {
                   </div>
                 </div>
 
-                <label className="flex items-center gap-2 text-sm text-slate-500">
+                <label className="flex items-center gap-2 text-sm text-slate-500/80">
                   <input
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(event) => setRememberMe(event.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                    className="h-4 w-4 rounded border-slate-300 text-blue-600 translate-y-[1px]"
                   />
                   Lembrar de mim
                 </label>
 
                 <Button
                   type="submit"
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                  className="w-full h-12 rounded-xl bg-[#0B2B40] hover:bg-[#103652] text-white font-semibold shadow-[0_2px_8px_rgba(2,6,23,0.2)] focus:outline-none focus:ring-2 focus:ring-blue-300 focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-0"
                   disabled={isLoading}
                 >
                   {isLoading ? (
@@ -655,7 +659,7 @@ const Auth = () => {
 
                 <Button
                   type="submit"
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                  className="w-full h-12 rounded-xl bg-[#0B2B40] hover:bg-[#103652] text-white font-semibold shadow-[0_2px_8px_rgba(2,6,23,0.2)] focus:outline-none focus:ring-2 focus:ring-blue-300 focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-0"
                   disabled={isLoading || !acceptedTerms}
                 >
                   {isLoading ? (
@@ -689,26 +693,26 @@ const Auth = () => {
 
             <div className="grid grid-cols-2 gap-3">
               <Button
-                variant="outline"
-                className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                variant="ghost"
+                className="h-12 bg-transparent border-0 text-slate-500 hover:bg-[#F3F4F6] focus-visible:ring-0 flex items-center justify-center gap-2"
                 type="button"
                 onClick={handleGoogle}
                 disabled={isLoading}
               >
-                <span className="mr-2 inline-flex h-4 w-4 items-center justify-center">
+                <span className="inline-flex h-4 w-4 items-center justify-center">
                   <Sparkles className="h-4 w-4 text-blue-600" />
                 </span>
                 Google
               </Button>
 
               <Button
-                variant="outline"
-                className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                variant="ghost"
+                className="h-12 bg-transparent border-0 text-slate-500 hover:bg-[#F3F4F6] focus-visible:ring-0 flex items-center justify-center gap-2"
                 type="button"
                 onClick={handleMicrosoft}
                 disabled={isLoading}
               >
-                <span className="mr-2 inline-grid grid-cols-2 gap-[2px]">
+                <span className="inline-grid grid-cols-2 gap-[2px]">
                   <span className="h-2 w-2 bg-[#F25022]" />
                   <span className="h-2 w-2 bg-[#7FBA00]" />
                   <span className="h-2 w-2 bg-[#00A4EF]" />
