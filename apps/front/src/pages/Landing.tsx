@@ -1,30 +1,31 @@
-import { useState } from "react";
+﻿import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  CheckCircle2,
-  ArrowRight,
-  LayoutDashboard,
-  FolderKanban,
-  ListTree,
-  Users,
-  BarChart3,
-  Shield,
-  Zap,
-  Building2,
-  Rocket,
-  Star,
-  Sparkles,
-} from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  ArrowRight,
+  BarChart3,
+  Building2,
+  CheckCircle2,
+  FolderKanban,
+  LayoutDashboard,
+  ListTree,
+  Rocket,
+  Shield,
+  Sparkles,
+  Star,
+  Users,
+  Zap,
+} from "lucide-react";
 
 const Landing = () => {
   const navigate = useNavigate();
@@ -126,7 +127,7 @@ const Landing = () => {
     },
     {
       icon: LayoutDashboard,
-      label: "Relatorios gerados",
+      label: "Relatórios gerados",
       value: "12k",
     },
     {
@@ -142,52 +143,52 @@ const Landing = () => {
       role: "PMO, Grupo Atlas",
       initials: "MC",
       quote:
-        "Em 3 semanas ja tinhamos visibilidade total do portfolio. O time ganhou ritmo e o board virou referencia diaria.",
+        "Em 3 semanas já tínhamos visibilidade total do portfólio. O time ganhou ritmo e o board virou referência diária.",
     },
     {
       name: "Renato Silva",
-      role: "Head de Operacoes, Nexa",
+      role: "Head de Operações, Nexa",
       initials: "RS",
       quote:
-        "A plataforma simplificou nossa governanca. Conseguimos reduzir atrasos e ganhar previsibilidade nos marcos.",
+        "A plataforma simplificou nossa governança. Conseguimos reduzir atrasos e ganhar previsibilidade nos marcos.",
     },
     {
       name: "Juliana Freitas",
       role: "Consultoria PMO, Elevare",
       initials: "JF",
       quote:
-        "Clientes enxergam o progresso em tempo real. Os relatorios saem prontos e o acompanhamento ficou muito mais leve.",
+        "Clientes enxergam o progresso em tempo real. Os relatórios saem prontos e o acompanhamento ficou muito mais leve.",
     },
   ];
 
   const faqs = [
     {
-      question: "Posso testar antes de assinar?",
+      question: "Posso testar antes de assinar",
       answer:
         "Sim! Oferecemos 14 dias de teste grátis em todos os planos, sem necessidade de cartão de crédito. Você pode explorar todas as funcionalidades antes de decidir.",
     },
     {
-      question: "Como funciona a migração entre planos?",
+      question: "Como funciona a migração entre planos",
       answer:
         "A migração é instantânea e pode ser feita a qualquer momento. Ao fazer upgrade, você terá acesso imediato às novas funcionalidades. Em caso de downgrade, as mudanças entram em vigor no próximo ciclo de faturamento.",
     },
     {
-      question: "Existe limite de usuários?",
+      question: "Existe limite de usuários",
       answer:
         "Não! Todos os planos permitem usuários ilimitados. Você paga apenas pelo plano escolhido, independente do tamanho da sua equipe.",
     },
     {
-      question: "Meus dados estão seguros?",
+      question: "Meus dados estão seguros",
       answer:
         "Absolutamente. Utilizamos criptografia, servidores seguros e realizamos backups automáticos diários. Seus dados são sua propriedade e você pode exportá-los a qualquer momento.",
     },
     {
-      question: "Vocês oferecem suporte?",
+      question: "Vocês oferecem suporte",
       answer:
         "Sim! Todos os planos incluem suporte por email. O plano Enterprise oferece suporte prioritário com tempo de resposta garantido e atendimento via chat.",
     },
     {
-      question: "Posso cancelar a qualquer momento?",
+      question: "Posso cancelar a qualquer momento",
       answer:
         "Sim, você pode cancelar sua assinatura a qualquer momento. Não há multas. Você mantém o acesso até o fim do período pago.",
     },
@@ -210,6 +211,21 @@ const Landing = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <div
+        style={{
+          position: "fixed",
+          top: 8,
+          left: 8,
+          zIndex: 9999,
+          background: "#000",
+          color: "#fff",
+          padding: "4px 8px",
+          borderRadius: 8,
+          fontSize: 12
+        }}
+      >
+        LANDING_NEW_OK {import.meta.env.VITE_BUILD_ID || "dev"}
+      </div>
       {/* Header */}
       <header className="border-b border-border/60 bg-white sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -221,9 +237,15 @@ const Landing = () => {
               <span className="font-semibold text-foreground">Gestão de Projetos</span>
             </div>
             <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-500">
-              <a href="#features" className="hover:text-slate-900 transition-colors">Recursos</a>
-              <a href="#pricing" className="hover:text-slate-900 transition-colors">Preços</a>
-              <a href="#faq" className="hover:text-slate-900 transition-colors">FAQ</a>
+              <a href="#features" className="hover:text-slate-900 transition-colors">
+                Recursos
+              </a>
+              <a href="#pricing" className="hover:text-slate-900 transition-colors">
+                Preços
+              </a>
+              <a href="#faq" className="hover:text-slate-900 transition-colors">
+                FAQ
+              </a>
             </nav>
             <div className="flex items-center gap-3">
               <Button
@@ -245,7 +267,7 @@ const Landing = () => {
       </header>
 
       {/* Hero */}
-      <section className="py-20 lg:py-32 bg-[radial-gradient(ellipse_at_top,_rgba(59,130,246,0.25),_transparent_60%)] relative overflow-hidden">
+      <section className="py-20 lg:py-32 bg-[radial-gradient(ellipse_at_top,_rgba(59,130,246,0.28),_transparent_60%)] relative overflow-hidden">
         <div className="absolute -top-24 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative">
           <Badge className="mb-4 rounded-full bg-blue-100 text-blue-700 border border-blue-200 px-4 py-1 shadow-sm inline-flex items-center gap-2">
@@ -262,15 +284,24 @@ const Landing = () => {
             Dashboard, Kanban, EAP e muito mais em um só lugar.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" onClick={goStart} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md">
+            <Button
+              size="lg"
+              onClick={goStart}
+              className="h-12 rounded-full px-6 gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+            >
               Começar Grátis <ArrowRight className="w-4 h-4" />
             </Button>
-            <Button size="lg" variant="outline" onClick={goDemo} className="bg-white border-slate-200 text-slate-700 shadow-sm hover:bg-slate-50">
+            <Button
+              size="lg"
+              variant="outline"
+              onClick={goDemo}
+              className="h-12 rounded-full px-6 bg-white border-slate-200 text-slate-700 shadow-sm hover:bg-slate-50"
+            >
               Ver Demonstração
             </Button>
           </div>
           <p className="text-sm text-slate-500 mt-4">
-            14 dias grátis ? Sem cartão de crédito ? Cancele quando quiser
+            14 dias grátis • Sem cartão de crédito • Cancele quando quiser
           </p>
         </div>
       </section>
@@ -337,7 +368,7 @@ const Landing = () => {
               Times que confiam na plataforma
             </h2>
             <p className="text-lg text-muted-foreground">
-              Historias reais de equipes que elevaram a execucao.
+              Histórias reais de equipes que elevaram a execução.
             </p>
           </div>
           <div className="grid md:grid-cols-3 gap-6">
@@ -385,20 +416,20 @@ const Landing = () => {
             <div className="inline-flex items-center gap-4 p-1 bg-slate-100 border border-slate-200 rounded-xl shadow-sm">
               <button
                 onClick={() => setBillingPeriod("monthly")}
-                className={`px-5 py-2 rounded-md text-sm font-semibold transition-all bg-white border border-slate-200 ${
+                className={`px-5 py-2 rounded-md text-sm font-semibold transition-all border border-slate-200 ${
                   billingPeriod === "monthly"
                     ? "bg-blue-600 text-white shadow-md border-blue-600"
-                    : "text-slate-500 hover:text-slate-900"
+                    : "bg-white text-slate-500 hover:text-slate-900"
                 }`}
               >
                 Mensal
               </button>
               <button
                 onClick={() => setBillingPeriod("yearly")}
-                className={`px-5 py-2 rounded-md text-sm font-semibold transition-all bg-white border border-slate-200 ${
+                className={`px-5 py-2 rounded-md text-sm font-semibold transition-all border border-slate-200 ${
                   billingPeriod === "yearly"
                     ? "bg-blue-600 text-white shadow-md border-blue-600"
-                    : "text-slate-500 hover:text-slate-900"
+                    : "bg-white text-slate-500 hover:text-slate-900"
                 }`}
               >
                 Anual <Badge variant="secondary" className="ml-2 text-xs">-10%</Badge>
@@ -411,7 +442,9 @@ const Landing = () => {
               <Card
                 key={plan.id}
                 className={`relative overflow-hidden transition-all hover:shadow-xl ${
-                  plan.recommended ? "border-blue-600 shadow-xl scale-[1.05] ring-1 ring-blue-200" : "border-border/50"
+                  plan.recommended
+                    ? "border-blue-600 shadow-xl scale-[1.05] ring-1 ring-blue-200"
+                    : "border-border/50"
                 }`}
               >
                 {plan.recommended && (
@@ -425,8 +458,8 @@ const Landing = () => {
                   <Badge variant="outline" className="w-fit mx-auto mb-3 text-xs font-semibold">
                     {plan.badge}
                   </Badge>
-                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                    <plan.icon className="w-6 h-6 text-primary" />
+                  <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center mx-auto mb-3">
+                    <plan.icon className="w-6 h-6 text-blue-600" />
                   </div>
                   <h3 className="text-xl font-bold text-foreground">{plan.name}</h3>
                   <p className="text-sm text-muted-foreground">{plan.description}</p>
@@ -441,12 +474,15 @@ const Landing = () => {
                   <ul className="space-y-3 mb-6 text-left">
                     {plan.features.map((feature, idx) => (
                       <li key={idx} className="flex items-start gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                        <CheckCircle2 className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                         <span className="text-sm text-muted-foreground">{feature}</span>
                       </li>
                     ))}
                   </ul>
-                  <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-md" onClick={() => handlePlanSelect(plan.badge)}>
+                  <Button
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                    onClick={() => handlePlanSelect(plan.badge)}
+                  >
                     Escolher plano
                   </Button>
                 </CardContent>
@@ -486,17 +522,27 @@ const Landing = () => {
       </section>
 
       {/* CTA */}
-      <section className="py-20 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800">
+      <section className="py-20 md:py-24 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl md:text-4xl font-bold text-primary-foreground mb-4">
-            Pronto para transformar sua gestão de projetos?
+            Pronto para transformar sua gestão de projetos
           </h2>
           <p className="text-lg text-primary-foreground/80 mb-8 max-w-2xl mx-auto">
             Junte-se a equipes que já utilizam a plataforma para entregar projetos no prazo e dentro do orçamento.
           </p>
-          <Button size="lg" onClick={goStart} className="gap-2 bg-white text-blue-600 shadow-md hover:bg-slate-50">
-            Começar Agora <ArrowRight className="w-4 h-4" />
-          </Button>
+          <div className="mx-auto flex w-full max-w-[520px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-center">
+            <input
+              placeholder="Seu melhor email"
+              className="h-12 w-full rounded-xl border border-white/20 bg-white/10 px-4 text-white placeholder:text-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:w-[420px]"
+            />
+            <Button
+              size="lg"
+              onClick={goStart}
+              className="h-12 rounded-xl px-6 gap-2 bg-white text-blue-600 shadow-md hover:bg-slate-50"
+            >
+              Começar Agora <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </section>
 
@@ -523,7 +569,7 @@ const Landing = () => {
               <a href="#faq" className="block text-muted-foreground hover:text-foreground transition-colors">
                 FAQ
               </a>
-              <a href="#" className="block text-muted-foreground hover:text-foreground transition-colors">
+              <a href="#features" className="block text-muted-foreground hover:text-foreground transition-colors">
                 Recursos
               </a>
             </div>
@@ -553,12 +599,12 @@ const Landing = () => {
             </div>
           </div>
           <div className="mt-10 flex flex-col md:flex-row items-center justify-between gap-3 border-t border-border/60 pt-6">
-            <p className="text-xs text-muted-foreground">? 2024 G&P. Todos os direitos reservados.</p>
-        <p className="text-xs text-muted-foreground">Gestão com clareza para equipes modernas.</p>
-      </div>
-      <p className="mt-3 text-[11px] text-muted-foreground/70">build: {buildStamp}</p>
-    </div>
-  </footer>
+            <p className="text-xs text-muted-foreground">© 2024 G&P. Todos os direitos reservados.</p>
+            <p className="text-xs text-muted-foreground">Gestão com clareza para equipes modernas.</p>
+          </div>
+          <p className="mt-4 text-center text-[10px] text-muted-foreground/50">build: {buildStamp}</p>
+        </div>
+      </footer>
     </div>
   );
 };
