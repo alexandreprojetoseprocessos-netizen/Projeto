@@ -287,7 +287,7 @@ const Landing = () => {
             <Button
               size="lg"
               onClick={goStart}
-              className="h-12 rounded-full px-6 gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+              className="h-12 rounded-xl px-6 gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md font-semibold"
             >
               Começar Grátis <ArrowRight className="w-4 h-4" />
             </Button>
@@ -295,7 +295,7 @@ const Landing = () => {
               size="lg"
               variant="outline"
               onClick={goDemo}
-              className="h-12 rounded-full px-6 bg-white border-slate-200 text-slate-700 shadow-sm hover:bg-slate-50"
+              className="h-12 rounded-xl px-6 bg-white border-slate-200 text-slate-700 shadow-sm hover:bg-slate-50 font-semibold"
             >
               Ver Demonstração
             </Button>
@@ -530,17 +530,17 @@ const Landing = () => {
           <p className="text-lg text-primary-foreground/80 mb-8 max-w-2xl mx-auto">
             Junte-se a equipes que já utilizam a plataforma para entregar projetos no prazo e dentro do orçamento.
           </p>
-          <div className="mx-auto flex w-full max-w-[520px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-center">
+          <div className="mx-auto flex w-full max-w-md flex-col gap-3 sm:flex-row sm:items-center sm:justify-center">
             <input
               placeholder="Seu melhor email"
-              className="h-12 w-full rounded-xl border border-white/20 bg-white/10 px-4 text-white placeholder:text-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:w-[420px]"
+              className="h-12 w-full rounded-xl border border-white/20 bg-white/10 px-4 text-white placeholder:text-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             />
             <Button
               size="lg"
               onClick={goStart}
-              className="h-12 rounded-xl px-6 gap-2 bg-white text-blue-600 shadow-md hover:bg-slate-50"
+              className="h-12 rounded-xl px-6 gap-2 bg-white text-blue-600 shadow-md hover:bg-slate-50 font-semibold"
             >
-              Começar Agora <ArrowRight className="w-4 h-4" />
+              Começar Grátis <ArrowRight className="w-4 h-4" />
             </Button>
           </div>
         </div>
