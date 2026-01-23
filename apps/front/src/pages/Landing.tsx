@@ -211,57 +211,43 @@ const Landing = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div
-        style={{
-          position: "fixed",
-          top: 8,
-          left: 8,
-          zIndex: 9999,
-          background: "#000",
-          color: "#fff",
-          padding: "4px 8px",
-          borderRadius: 8,
-          fontSize: 12
-        }}
-      >
-        LANDING_NEW_OK {import.meta.env.VITE_BUILD_ID || "dev"}
-      </div>
       {/* Header */}
-      <header className="border-b border-border/60 bg-white sticky top-0 z-50 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground font-bold text-sm">G&P</span>
-              </div>
-              <span className="font-semibold text-foreground">Gestão de Projetos</span>
-            </div>
-            <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-500">
-              <a href="#features" className="hover:text-slate-900 transition-colors">
-                Recursos
-              </a>
-              <a href="#pricing" className="hover:text-slate-900 transition-colors">
-                Preços
-              </a>
-              <a href="#faq" className="hover:text-slate-900 transition-colors">
-                FAQ
-              </a>
-            </nav>
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                onClick={goLogin}
-                className="bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-              >
-                Entrar
-              </Button>
-              <Button
-                onClick={goStart}
-                className="bg-blue-600 hover:bg-blue-700 text-white shadow-md rounded-full px-5"
-              >
-                Começar Grátis
-              </Button>
-            </div>
+      <header className="sticky top-0 z-50 h-16 border-b border-gray-200 bg-white shadow-sm">
+        <div className="mx-auto flex h-16 max-w-7xl items-center px-6">
+          <div className="flex items-center gap-2">
+            <img
+              src="/logo.png"
+              alt="G&P"
+              className="h-10 w-10 rounded-xl shadow-md object-contain"
+            />
+            <span className="font-semibold text-foreground">Gestão de Projetos</span>
+          </div>
+          <nav className="hidden flex-1 items-center justify-center gap-6 text-sm font-medium text-gray-600 md:flex">
+            <a href="#features" className="no-underline transition-colors hover:text-gray-900">
+              Recursos
+            </a>
+            <a href="#pricing" className="no-underline transition-colors hover:text-gray-900">
+              Preços
+            </a>
+            <a href="#faq" className="no-underline transition-colors hover:text-gray-900">
+              FAQ
+            </a>
+          </nav>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={goLogin}
+              className="h-10 rounded-full border border-gray-300 bg-white px-5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
+            >
+              Entrar
+            </button>
+            <button
+              type="button"
+              onClick={goStart}
+              className="h-10 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-md transition hover:bg-blue-700"
+            >
+              Começar Grátis
+            </button>
           </div>
         </div>
       </header>
@@ -270,10 +256,6 @@ const Landing = () => {
       <section className="py-20 lg:py-32 bg-[radial-gradient(ellipse_at_top,_rgba(59,130,246,0.28),_transparent_60%)] relative overflow-hidden">
         <div className="absolute -top-24 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative">
-          <Badge className="mb-4 rounded-full bg-blue-100 text-blue-700 border border-blue-200 px-4 py-1 shadow-sm inline-flex items-center gap-2">
-            <Sparkles className="w-4 h-4" />
-            Nova versão
-          </Badge>
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight">
             <span className="text-slate-800">Gestão de Projetos</span>
             <br />
@@ -283,22 +265,21 @@ const Landing = () => {
             Planeje, execute e monitore seus projetos com uma plataforma completa.
             Dashboard, Kanban, EAP e muito mais em um só lugar.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button
-              size="lg"
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <button
+              className="h-12 w-full sm:w-auto rounded-xl bg-blue-600 px-8 font-semibold text-white shadow-sm transition hover:bg-blue-700"
+              type="button"
               onClick={goStart}
-              className="h-12 rounded-xl px-6 gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md font-semibold"
             >
-              Começar Grátis <ArrowRight className="w-4 h-4" />
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
+              Começar Grátis
+            </button>
+            <button
+              className="h-12 w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-8 font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50"
+              type="button"
               onClick={goDemo}
-              className="h-12 rounded-xl px-6 bg-white border-slate-200 text-slate-700 shadow-sm hover:bg-slate-50 font-semibold"
             >
               Ver Demonstração
-            </Button>
+            </button>
           </div>
           <p className="text-sm text-slate-500 mt-4">
             14 dias grátis • Sem cartão de crédito • Cancele quando quiser
@@ -441,50 +422,52 @@ const Landing = () => {
             {plans.map((plan) => (
               <Card
                 key={plan.id}
-                className={`relative overflow-hidden transition-all hover:shadow-xl ${
+                className={`relative overflow-hidden rounded-2xl border transition-all hover:shadow-xl ${
                   plan.recommended
-                    ? "border-blue-600 shadow-xl scale-[1.05] ring-1 ring-blue-200"
-                    : "border-border/50"
+                    ? "border-blue-500 shadow-xl scale-[1.03]"
+                    : "border-slate-200 shadow-sm"
                 }`}
               >
                 {plan.recommended && (
-                  <div className="absolute top-0 right-0">
-                    <Badge className="rounded-none rounded-bl-lg bg-blue-600 text-white">
+                  <div className="absolute top-1 right-0 -translate-y-1/4">
+                    <span className="inline-flex items-center rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">
                       Recomendado
-                    </Badge>
+                    </span>
                   </div>
                 )}
                 <CardHeader className="text-center pb-4">
-                  <Badge variant="outline" className="w-fit mx-auto mb-3 text-xs font-semibold">
+                  <Badge variant="outline" className="w-fit mx-auto mb-3 text-xs font-semibold border-slate-300 text-slate-700">
                     {plan.badge}
                   </Badge>
-                  <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center mx-auto mb-3">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center mx-auto mb-3">
                     <plan.icon className="w-6 h-6 text-blue-600" />
                   </div>
                   <h3 className="text-xl font-bold text-foreground">{plan.name}</h3>
                   <p className="text-sm text-muted-foreground">{plan.description}</p>
                 </CardHeader>
                 <CardContent className="text-center">
-                  <div className="mb-6">
-                    <span className="text-4xl font-bold text-foreground">
-                      R$ {plan.price.toFixed(2).replace(".", ",")}
+                  <div className="mb-6 flex items-baseline justify-center gap-2">
+                    <span className="text-sm font-semibold text-slate-500">R$</span>
+                    <span className="text-4xl font-bold text-foreground tracking-tight">
+                      {plan.price.toFixed(2).replace(".", ",")}
                     </span>
-                    <span className="text-muted-foreground"> / mês</span>
+                    <span className="text-sm text-slate-500">/ mês</span>
                   </div>
                   <ul className="space-y-3 mb-6 text-left">
                     {plan.features.map((feature, idx) => (
                       <li key={idx} className="flex items-start gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-                        <span className="text-sm text-muted-foreground">{feature}</span>
+                        <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                        <span className="text-sm text-slate-600">{feature}</span>
                       </li>
                     ))}
                   </ul>
-                  <Button
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                  <button
+                    type="button"
                     onClick={() => handlePlanSelect(plan.badge)}
+                    className="h-11 w-full rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-md transition hover:bg-blue-700"
                   >
-                    Escolher plano
-                  </Button>
+                    Escolher {plan.name}
+                  </button>
                 </CardContent>
               </Card>
             ))}
@@ -522,27 +505,16 @@ const Landing = () => {
       </section>
 
       {/* CTA */}
-      <section className="py-20 md:py-24 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-primary-foreground mb-4">
-            Pronto para transformar sua gestão de projetos
+      <section className="relative overflow-hidden py-20 md:py-24 bg-gradient-to-b from-blue-900 via-blue-800 to-blue-700">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,_rgba(255,255,255,0.18)_1px,_transparent_1px)] [background-size:28px_28px] opacity-25" />
+        <div className="relative mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+          <h2 className="mb-4 text-3xl font-bold text-white md:text-4xl lg:text-5xl">
+            Pronto para transformar sua
+            <span className="block">gestão de projetos</span>
           </h2>
-          <p className="text-lg text-primary-foreground/80 mb-8 max-w-2xl mx-auto">
+          <p className="mx-auto mb-8 max-w-2xl text-base text-white/85 md:text-lg">
             Junte-se a equipes que já utilizam a plataforma para entregar projetos no prazo e dentro do orçamento.
           </p>
-          <div className="mx-auto flex w-full max-w-md flex-col gap-3 sm:flex-row sm:items-center sm:justify-center">
-            <input
-              placeholder="Seu melhor email"
-              className="h-12 w-full rounded-xl border border-white/20 bg-white/10 px-4 text-white placeholder:text-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-            />
-            <Button
-              size="lg"
-              onClick={goStart}
-              className="h-12 rounded-xl px-6 gap-2 bg-white text-blue-600 shadow-md hover:bg-slate-50 font-semibold"
-            >
-              Começar Grátis <ArrowRight className="w-4 h-4" />
-            </Button>
-          </div>
         </div>
       </section>
 
@@ -552,9 +524,11 @@ const Landing = () => {
           <div className="grid gap-8 md:grid-cols-[1.4fr_1fr_1fr_1fr] items-start">
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                  <span className="text-primary-foreground font-bold text-sm">G&P</span>
-                </div>
+                <img
+                  src="/logo.png"
+                  alt="G&P"
+                  className="h-8 w-8 rounded-lg shadow-md object-contain"
+                />
                 <span className="font-semibold text-foreground">Gestão de Projetos</span>
               </div>
               <p className="text-sm text-muted-foreground max-w-xs">

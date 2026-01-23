@@ -1,4 +1,4 @@
-﻿import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { CheckCircle2, MessageCircle, PencilLine } from "lucide-react";
 const activityIcons = [CheckCircle2, PencilLine, MessageCircle];
 export const RecentActivity = ({ items }) => (_jsxs("article", { className: "dashboard-card dashboard-hover", children: [_jsxs("div", { className: "dashboard-card-header", children: [_jsxs("div", { children: [_jsx("h3", { className: "dashboard-card-title", children: "Atividade Recente" }), _jsx("p", { className: "dashboard-muted", children: "Atualizacoes e entregas recentes" })] }), _jsx("span", { className: "dashboard-link", children: "Ver tudo" })] }), _jsx("div", { className: "dashboard-activity-list", children: items.map((item, index) => {

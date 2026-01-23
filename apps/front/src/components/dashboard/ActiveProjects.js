@@ -1,4 +1,4 @@
-﻿import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { ChevronRight } from "lucide-react";
 export const ActiveProjects = ({ projects, onOpenProject }) => (_jsxs("section", { className: "dashboard-card dashboard-hover", children: [_jsxs("div", { className: "dashboard-card-header", children: [_jsxs("div", { children: [_jsx("h3", { className: "dashboard-card-title", children: "Projetos Ativos" }), _jsx("p", { className: "dashboard-muted", children: "Acompanhe os projetos com maior impacto." })] }), _jsx("span", { className: "dashboard-link", children: "Ver todos" })] }), projects.length === 0 ? (_jsx("div", { className: "dashboard-empty", children: "Nenhum projeto ativo encontrado." })) : (_jsx("div", { className: "dashboard-projects-grid", children: projects.map((project) => {
                 const initial = project.name ? project.name.trim().charAt(0).toUpperCase() : "?";

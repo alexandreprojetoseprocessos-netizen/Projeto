@@ -1,5 +1,4 @@
 import { supabase } from "../lib/supabase";
-
 const envBaseUrl = import.meta.env.VITE_API_BASE_URL;
 const resolvedBaseUrl = (() => {
     if (typeof envBaseUrl === "string" && envBaseUrl.trim()) {

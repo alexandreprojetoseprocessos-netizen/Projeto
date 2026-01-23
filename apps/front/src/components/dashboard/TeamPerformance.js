@@ -1,4 +1,4 @@
-﻿import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 export const TeamPerformance = ({ members }) => {
     const topMember = members[0]?.name ?? "Equipe";
     return (_jsxs("article", { className: "dashboard-card dashboard-hover", children: [_jsxs("div", { className: "dashboard-card-header", children: [_jsxs("div", { children: [_jsx("h3", { className: "dashboard-card-title", children: "Desempenho da Equipe" }), _jsx("p", { className: "dashboard-muted", children: "Resumo semanal das entregas" })] }), _jsxs("span", { className: "dashboard-badge", children: ["Top: ", topMember] })] }), _jsx("div", { className: "dashboard-team-list", children: members.map((member) => {

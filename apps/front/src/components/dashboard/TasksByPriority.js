@@ -1,4 +1,4 @@
-﻿import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 export const TasksByPriority = ({ items }) => {
     const total = items.reduce((sum, item) => sum + item.value, 0);
     return (_jsxs("article", { className: "dashboard-card dashboard-hover", children: [_jsx("div", { className: "dashboard-card-header", children: _jsxs("div", { children: [_jsx("h3", { className: "dashboard-card-title", children: "Tarefas por Prioridade" }), _jsx("p", { className: "dashboard-muted", children: "Nivel de urgencia por volume" })] }) }), _jsx("div", { className: "dashboard-priority-list", children: items.map((item) => {

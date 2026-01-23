@@ -1,4 +1,4 @@
-﻿import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 export const UpcomingDeadlines = ({ items }) => (_jsxs("article", { className: "dashboard-card dashboard-hover", children: [_jsxs("div", { className: "dashboard-card-header", children: [_jsxs("div", { children: [_jsx("h3", { className: "dashboard-card-title", children: "Proximos Prazos" }), _jsx("p", { className: "dashboard-muted", children: "Tarefas com vencimento proximo" })] }), _jsx("span", { className: "dashboard-link", children: "Ver todos" })] }), _jsx("div", { className: "dashboard-deadlines", children: items.map((item) => {
                 const priorityTone = item.isLate
                     ? "danger"
