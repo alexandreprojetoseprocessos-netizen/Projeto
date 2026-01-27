@@ -244,7 +244,7 @@ const Landing = () => {
             <button
               type="button"
               onClick={goStart}
-              className="h-10 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-md transition hover:bg-blue-700"
+              className="h-10 rounded-full bg-[#3366a0] px-5 text-sm font-semibold text-white shadow-md transition hover:bg-[#2b5a8c]"
             >
               Começar Grátis
             </button>
@@ -267,7 +267,7 @@ const Landing = () => {
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <button
-              className="h-12 w-full sm:w-auto rounded-xl bg-blue-600 px-8 font-semibold text-white shadow-sm transition hover:bg-blue-700"
+              className="h-12 w-full sm:w-auto rounded-xl bg-[#3366a0] px-8 font-semibold text-white shadow-sm transition hover:bg-[#2b5a8c]"
               type="button"
               onClick={goStart}
             >
@@ -399,7 +399,7 @@ const Landing = () => {
                 onClick={() => setBillingPeriod("monthly")}
                 className={`px-5 py-2 rounded-md text-sm font-semibold transition-all border border-slate-200 ${
                   billingPeriod === "monthly"
-                    ? "bg-blue-600 text-white shadow-md border-blue-600"
+                    ? "bg-[#3366a0] text-white shadow-md border-[#3366a0]"
                     : "bg-white text-slate-500 hover:text-slate-900"
                 }`}
               >
@@ -409,7 +409,7 @@ const Landing = () => {
                 onClick={() => setBillingPeriod("yearly")}
                 className={`px-5 py-2 rounded-md text-sm font-semibold transition-all border border-slate-200 ${
                   billingPeriod === "yearly"
-                    ? "bg-blue-600 text-white shadow-md border-blue-600"
+                    ? "bg-[#3366a0] text-white shadow-md border-[#3366a0]"
                     : "bg-white text-slate-500 hover:text-slate-900"
                 }`}
               >
@@ -464,7 +464,7 @@ const Landing = () => {
                   <button
                     type="button"
                     onClick={() => handlePlanSelect(plan.badge)}
-                    className="h-11 w-full rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-md transition hover:bg-blue-700"
+                    className="h-11 w-full rounded-xl bg-[#3366a0] px-4 text-sm font-semibold text-white shadow-md transition hover:bg-[#2b5a8c]"
                   >
                     Escolher {plan.name}
                   </button>

@@ -1,6 +1,18 @@
 ﻿import { useMemo, useState } from "react";
 
-import { AlertTriangle, CheckCircle2, Folder, PauseCircle, PlayCircle, Star } from "lucide-react";
+import {
+  AlertTriangle,
+  Calendar,
+  CheckCircle2,
+  Folder,
+  ListChecks,
+  Minus,
+  PauseCircle,
+  PlayCircle,
+  Star,
+  TrendingDown,
+  TrendingUp
+} from "lucide-react";
 import type { CreateProjectPayload } from "./DashboardLayout";
 
 export type PortfolioProject = {
@@ -30,11 +42,16 @@ export type PortfolioProject = {
 
 const statusMap: Record<string, { label: string; tone: "success" | "warning" | "danger" | "neutral" }> = {
   PLANNED: { label: "Planejado", tone: "neutral" },
+  PLANNING: { label: "Planejamento", tone: "neutral" },
   IN_PROGRESS: { label: "Em andamento", tone: "warning" },
   ACTIVE: { label: "Em andamento", tone: "warning" },
-  ON_HOLD: { label: "Em espera", tone: "neutral" },
+  ON_HOLD: { label: "Pausado", tone: "neutral" },
+  PAUSED: { label: "Pausado", tone: "neutral" },
   DONE: { label: "Concluído", tone: "success" },
   COMPLETED: { label: "Concluído", tone: "success" },
+  DELAYED: { label: "Atrasado", tone: "danger" },
+  LATE: { label: "Atrasado", tone: "danger" },
+  OVERDUE: { label: "Atrasado", tone: "danger" },
   AT_RISK: { label: "Em risco", tone: "danger" },
   BLOCKED: { label: "Em risco", tone: "danger" },
   CANCELED: { label: "Cancelado", tone: "neutral" }
@@ -48,7 +65,8 @@ const priorityMap: Record<string, { label: string; tone: "neutral" | "warning" |
   HIGH: { label: "Alta", tone: "warning" },
   ALTA: { label: "Alta", tone: "warning" },
   URGENT: { label: "Urgente", tone: "danger" },
-  URGENTE: { label: "Urgente", tone: "danger" }
+  URGENTE: { label: "Urgente", tone: "danger" },
+  CRITICAL: { label: "Urgente", tone: "danger" }
 };
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -57,7 +75,9 @@ const currencyFormatter = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 0
 });
 
-const normalizeStatus = (status?: string | null) => (status ?? "").toUpperCase();
+const normalizeStatus = (status?: string | null) => (status ?? "").trim().toUpperCase();
+
+const MS_IN_DAY = 24 * 60 * 60 * 1000;
 
 const isCompletedStatus = (status?: string | null) => {
   const normalized = normalizeStatus(status);
@@ -69,7 +89,25 @@ const isInProgressStatus = (status?: string | null) => {
   return normalized === "IN_PROGRESS" || normalized === "ACTIVE";
 };
 
-const isPausedStatus = (status?: string | null) => normalizeStatus(status) === "ON_HOLD";
+const isPausedStatus = (status?: string | null) => {
+  const normalized = normalizeStatus(status);
+  return normalized === "ON_HOLD" || normalized === "PAUSED";
+};
+
+const isPlannedStatus = (status?: string | null) => {
+  const normalized = normalizeStatus(status);
+  return normalized === "PLANNED" || normalized === "PLANNING";
+};
+
+const isRiskStatus = (status?: string | null) => {
+  const normalized = normalizeStatus(status);
+  return normalized === "AT_RISK" || normalized === "BLOCKED";
+};
+
+const isLateStatus = (status?: string | null) => {
+  const normalized = normalizeStatus(status);
+  return normalized === "DELAYED" || normalized === "LATE" || normalized === "OVERDUE";
+};
 
 const isCanceledStatus = (status?: string | null) => normalizeStatus(status) === "CANCELED";
 
@@ -87,9 +125,20 @@ const formatCurrency = (value?: number | null) => {
 };
 
 const getPriorityMeta = (priority?: string | null) => {
-  if (!priority) return null;
-  const normalized = priority.trim().toUpperCase();
-  return priorityMap[normalized] ?? { label: priority, tone: "neutral" as const };
+  const normalized = (priority ?? "").trim().toUpperCase();
+  if (!normalized) return priorityMap.MEDIUM;
+  return priorityMap[normalized] ?? { label: priority ?? "Media", tone: "neutral" as const };
+};
+
+type ProjectPriorityKey = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+
+const normalizeProjectPriorityKey = (priority?: string | null): ProjectPriorityKey => {
+  const normalized = (priority ?? "").trim().toUpperCase();
+  if (["URGENT", "URGENTE", "CRITICAL"].includes(normalized)) return "CRITICAL";
+  if (["HIGH", "ALTA"].includes(normalized)) return "HIGH";
+  if (["LOW", "BAIXA"].includes(normalized)) return "LOW";
+  if (["MEDIUM", "MEDIA"].includes(normalized)) return "MEDIUM";
+  return "MEDIUM";
 };
 
 const getOverdueDays = (project: PortfolioProject, todayStart: number) => {
@@ -102,8 +151,17 @@ const getOverdueDays = (project: PortfolioProject, todayStart: number) => {
 };
 
 const isLateProject = (project: PortfolioProject, todayStart: number) => {
+  if (isLateStatus(project.status)) return true;
   const overdue = getOverdueDays(project, todayStart);
   return typeof overdue === "number" && overdue > 0;
+};
+
+const getProjectDurationDays = (project: PortfolioProject) => {
+  const start = project.startDate ? getStartOfDay(project.startDate) : null;
+  const end = project.endDate ? getStartOfDay(project.endDate) : null;
+  if (start === null || end === null) return null;
+  const diff = Math.round((end - start) / MS_IN_DAY);
+  return diff >= 0 ? diff : null;
 };
 
 const getMemberInitials = (value: string) => {
@@ -128,10 +186,12 @@ const getTeamMembers = (project: PortfolioProject) => {
 
 const chipStatusOptions = [
   { id: "all", label: "Todos" },
+  { id: "PLANNED", label: "Planejamento" },
   { id: "IN_PROGRESS", label: "Em andamento" },
   { id: "DONE", label: "Concluídos" },
-  { id: "AT_RISK", label: "Em risco" },
-  { id: "PLANNED", label: "Planejados" }
+  { id: "PAUSED", label: "Pausados" },
+  { id: "LATE", label: "Atrasados" },
+  { id: "AT_RISK", label: "Em risco" }
 ];
 
 const formatDisplayDate = (value?: string | null) => {
@@ -143,10 +203,38 @@ const formatDisplayDate = (value?: string | null) => {
   }
 };
 
+const formatTimelineDate = (value?: string | null) => {
+  if (!value) return "-";
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    const parts = new Intl.DateTimeFormat("pt-BR", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric"
+    }).formatToParts(date);
+    const day = parts.find((part) => part.type === "day")?.value ?? "";
+    const month = (parts.find((part) => part.type === "month")?.value ?? "").replace(".", "");
+    const year = parts.find((part) => part.type === "year")?.value ?? "";
+    return [day, month, year].filter(Boolean).join(" ");
+  } catch {
+    return "-";
+  }
+};
+
 const calcProgress = (done?: number, total?: number) => {
   if (!total || total === 0) return 0;
   if (!done) return 0;
   return Math.min(100, Math.round((done / total) * 100));
+};
+
+const getTimelineProgress = (project: PortfolioProject, todayStart: number) => {
+  const start = project.startDate ? getStartOfDay(project.startDate) : null;
+  const end = project.endDate ? getStartOfDay(project.endDate) : null;
+  if (!start || !end || end <= start) return null;
+  const elapsed = todayStart - start;
+  const total = end - start;
+  return Math.min(1, Math.max(0, elapsed / total));
 };
 
 const renderStatusBadge = (status?: string | null) => {
@@ -237,11 +325,33 @@ export const ProjectPortfolio = ({
     );
   }, [projects, todayStart]);
 
+  const priorityStats = useMemo(
+    () =>
+      projects.reduce(
+        (acc, project) => {
+          const key = normalizeProjectPriorityKey(project.priority);
+          acc[key] += 1;
+          return acc;
+        },
+        { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 } as Record<ProjectPriorityKey, number>
+      ),
+    [projects]
+  );
+
   const filteredProjects = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return projects.filter((project) => {
-      const normalizedStatus = project.status ?? "";
-      const matchesStatus = statusFilter === "all" || normalizedStatus === statusFilter;
+      const normalizedStatus = normalizeStatus(project.status);
+      const matchesStatus = (() => {
+        if (statusFilter === "all") return true;
+        if (statusFilter === "IN_PROGRESS") return isInProgressStatus(normalizedStatus);
+        if (statusFilter === "DONE") return isCompletedStatus(normalizedStatus);
+        if (statusFilter === "PLANNED") return isPlannedStatus(normalizedStatus);
+        if (statusFilter === "PAUSED") return isPausedStatus(normalizedStatus);
+        if (statusFilter === "LATE") return isLateProject(project, todayStart);
+        if (statusFilter === "AT_RISK") return isRiskStatus(normalizedStatus);
+        return normalizedStatus === statusFilter;
+      })();
       const matchesClient = clientFilter === "all" || project.clientName === clientFilter;
       const matchesOwner = ownerFilter === "all" || project.responsibleName === ownerFilter;
       const matchesTag = tagFilter === "all" || (project.tags ?? []).includes(tagFilter);
@@ -295,6 +405,13 @@ export const ProjectPortfolio = ({
     { id: "late", label: "Atrasados", value: kpiStats.late, icon: AlertTriangle, tone: "danger" }
   ];
 
+  const priorityItems = [
+    { id: "critical", label: "Urgente", value: priorityStats.CRITICAL, icon: AlertTriangle, tone: "danger" },
+    { id: "high", label: "Alta", value: priorityStats.HIGH, icon: TrendingUp, tone: "warning" },
+    { id: "medium", label: "Media", value: priorityStats.MEDIUM, icon: Minus, tone: "neutral" },
+    { id: "low", label: "Baixa", value: priorityStats.LOW, icon: TrendingDown, tone: "neutral" }
+  ];
+
   const renderList = () => {
     if (isLoading) {
       return (
@@ -324,7 +441,10 @@ export const ProjectPortfolio = ({
             const tasksTotal = project.tasksTotal ?? 0;
             const tasksDone = project.tasksDone ?? 0;
             const overdueDays = getOverdueDays(project, todayStart);
-            const overdueClass = overdueDays === null ? "is-muted" : overdueDays > 0 ? "is-danger" : "";
+            const overdueSummaryClass = overdueDays === null ? "is-muted" : overdueDays > 0 ? "is-danger" : "";
+            const overdueLabel =
+              overdueDays === null ? "Sem prazo" : overdueDays > 0 ? `${overdueDays}d atrasado` : "No prazo";
+            const tasksLabel = `${tasksDone}/${tasksTotal} tarefa${tasksTotal === 1 ? "" : "s"}`;
             const budgetCandidate = (project as { budget?: number | string | null }).budget;
             const budgetValue =
               typeof budgetCandidate === "number"
@@ -353,7 +473,14 @@ export const ProjectPortfolio = ({
             const extraMembers =
               teamMembers.length > 4 ? teamMembers.length - 4 : membersCount > 4 ? membersCount - 4 : 0;
             const managerName = project.responsibleName ?? "-";
-            const risksOpen = project.risksOpen ?? 0;
+            const durationDays = getProjectDurationDays(project);
+            const durationLabel =
+              typeof durationDays === "number"
+                ? `${durationDays} dia${durationDays === 1 ? "" : "s"}`
+                : "-";
+            const timelineProgress = getTimelineProgress(project, todayStart);
+            const timelinePosition = `${Math.round((timelineProgress ?? 0) * 100)}%`;
+            const timelineHasDates = timelineProgress !== null;
             return (
               <article
                 key={project.projectId}
@@ -376,10 +503,8 @@ export const ProjectPortfolio = ({
                   <header className="project-card-top">
                     <div className="project-card-badges">
                       {renderStatusBadge(project.status)}
-                      <span
-                        className={`project-priority-badge ${priorityMeta ? `is-${priorityMeta.tone}` : "is-muted"}`}
-                      >
-                        {priorityMeta?.label ?? "-"}
+                      <span className={`project-priority-badge is-${priorityMeta.tone}`}>
+                        {priorityMeta.label}
                       </span>
                     </div>
                     <div className="project-card-actions">
@@ -444,37 +569,46 @@ export const ProjectPortfolio = ({
 
                   <div className="project-card-progress">
                     <div className="project-card-progress-header">
-                      <span>Progresso</span>
-                      <span>{progress}%</span>
+                      <div className="project-card-progress-title">
+                        <TrendingUp className="project-card-progress-icon" aria-hidden="true" />
+                        <span>Progresso</span>
+                      </div>
+                      <span className="project-card-progress-value">{progress}%</span>
                     </div>
                     <div className="progress-bar">
                       <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
                     </div>
                   </div>
 
+                  <div className="project-card-summary">
+                    <div className="project-card-summary-item">
+                      <ListChecks className="project-card-summary-icon" aria-hidden="true" />
+                      <span>{tasksLabel}</span>
+                    </div>
+                    <div className={`project-card-summary-item ${overdueSummaryClass}`.trim()}>
+                      <Calendar className="project-card-summary-icon" aria-hidden="true" />
+                      <span>{overdueLabel}</span>
+                    </div>
+                  </div>
+
                   <div className="project-card-metrics">
-                    <div className="project-card-metric">
-                      <span>Tarefas</span>
-                      <strong>
-                        {tasksDone}/{tasksTotal}
-                      </strong>
-                    </div>
-                    <div className="project-card-metric">
-                      <span>Dias de atraso</span>
-                      <strong className={overdueClass}>{overdueDays ?? "-"}</strong>
-                    </div>
                     <div className="project-card-metric">
                       <span>Orcamento</span>
                       <strong className={budgetLabel === "-" ? "is-muted" : ""}>{budgetLabel}</strong>
                     </div>
                     <div className="project-card-metric">
-                      <span>Riscos</span>
-                      <strong>{risksOpen}</strong>
+                      <span>Dias</span>
+                      <strong className={durationLabel === "-" ? "is-muted" : ""}>{durationLabel}</strong>
                     </div>
                   </div>
 
-                  <div className="project-card-dates">
-                    {formatDisplayDate(project.startDate)} - {formatDisplayDate(project.endDate)}
+                  <div className={`project-card-timeline ${timelineHasDates ? "" : "is-empty"}`}>
+                    <span className="timeline-date">{formatTimelineDate(project.startDate)}</span>
+                    <div className="timeline-line">
+                      <span className="timeline-line-fill" style={{ width: timelinePosition }} />
+                      <span className="timeline-dot" style={{ left: timelinePosition }} />
+                    </div>
+                    <span className="timeline-date">{formatTimelineDate(project.endDate)}</span>
                   </div>
 
                   <footer className="project-card-footer">
@@ -546,7 +680,7 @@ export const ProjectPortfolio = ({
                     Responsável: {project.responsibleName ?? "Não definido"}
                   </span>
                   <span className="project-card-meta-label">
-                    {tasksDone}/{tasksTotal} tarefas • {project.risksOpen ?? 0} riscos abertos
+                    {tasksDone}/{tasksTotal} tarefas • {durationLabel} do projeto
                   </span>
                 </div>
 
@@ -585,16 +719,24 @@ export const ProjectPortfolio = ({
                 <th>Cliente</th>
                 <th>Responsável</th>
                 <th>Progresso</th>
-                <th>Riscos</th>
-                <th>Horas</th>
+                <th>Dias</th>
                 <th>Período</th>
               </tr>
             </thead>
             <tbody>
               {filteredProjects.map((project) => {
                 const progress = calcProgress(project.tasksDone, project.tasksTotal);
-                const hoursValue =
-                  typeof project.hoursTracked === "number" ? project.hoursTracked : Number(project.hoursTracked ?? 0);
+                const durationDays = getProjectDurationDays(project);
+                const durationLabel =
+                  typeof durationDays === "number"
+                    ? `${durationDays} dia${durationDays === 1 ? "" : "s"}`
+                    : "-";
+                const priorityCandidate =
+                  project.priority ??
+                  (project as { priorityLevel?: string | null }).priorityLevel ??
+                  (project as { priorityLabel?: string | null }).priorityLabel ??
+                  null;
+                const priorityMeta = getPriorityMeta(priorityCandidate);
                 return (
                   <tr
                     key={project.projectId}
@@ -611,7 +753,7 @@ export const ProjectPortfolio = ({
                   >
                     <td>
                       <strong>{project.projectName}</strong>
-                      <small>{project.tags?.slice(0, 2).join(" • ") || "Sem tags"}</small>
+                      <small>{priorityMeta.label}</small>
                     </td>
                     <td>{renderStatusBadge(project.status)}</td>
                     <td>{project.clientName ?? "-"}</td>
@@ -622,8 +764,7 @@ export const ProjectPortfolio = ({
                       </div>
                       <small>{progress}%</small>
                     </td>
-                    <td>{project.risksOpen ?? 0}</td>
-                    <td>{hoursValue.toFixed(1)}h</td>
+                    <td>{durationLabel}</td>
                     <td>
                       {formatDisplayDate(project.startDate)} - {formatDisplayDate(project.endDate)}
                     </td>
@@ -641,6 +782,25 @@ export const ProjectPortfolio = ({
     <div className="projects-content" aria-label="Listagem de projetos" aria-busy={isLoading}>
       <section className="projects-kpi-grid" aria-label="Resumo do portfolio">
         {kpiItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <article key={item.id} className="projects-kpi-card">
+              <div className={`projects-kpi-icon is-${item.tone}`}>
+                <Icon aria-hidden="true" />
+              </div>
+              <div>
+                <div className="projects-kpi-value">{item.value}</div>
+                <div className="projects-kpi-label">{item.label}</div>
+              </div>
+            </article>
+          );
+        })}
+      </section>
+      <section
+        className="projects-kpi-grid projects-kpi-grid--priority"
+        aria-label="Prioridade dos projetos"
+      >
+        {priorityItems.map((item) => {
           const Icon = item.icon;
           return (
             <article key={item.id} className="projects-kpi-card">

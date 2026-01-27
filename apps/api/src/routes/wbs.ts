@@ -271,6 +271,7 @@ wbsRouter.patch("/:id", async (req: RequestWithUser, res) => {
   const {
     title,
     status,
+    priority,
     startDate,
     endDate,
     estimateHours,
@@ -291,6 +292,20 @@ wbsRouter.patch("/:id", async (req: RequestWithUser, res) => {
   const data: Prisma.WbsNodeUncheckedUpdateInput = {};
   if (title !== undefined) data.title = title;
   if (status !== undefined) data.status = status as any;
+  if (priority !== undefined) {
+    const raw = String(priority ?? "").trim().toUpperCase();
+    const normalized =
+      raw === "URGENTE" || raw === "URGENT" || raw === "CRITICAL"
+        ? "CRITICAL"
+        : raw === "ALTA" || raw === "HIGH"
+        ? "HIGH"
+        : raw === "MEDIA" || raw === "MEDIUM"
+        ? "MEDIUM"
+        : raw === "BAIXA" || raw === "LOW"
+        ? "LOW"
+        : raw;
+    if (normalized) data.priority = normalized as any;
+  }
   if (startDate !== undefined) data.startDate = startDate ? new Date(startDate) : null;
   if (endDate !== undefined) data.endDate = endDate ? new Date(endDate) : null;
   if (estimateHours !== undefined) data.estimateHours = estimateHours ? new Prisma.Decimal(estimateHours) : null;

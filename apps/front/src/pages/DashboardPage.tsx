@@ -1,4 +1,5 @@
-﻿import { AlertTriangle, CheckCircle2, Flame, TrendingUp } from "lucide-react";
+﻿import { useState } from "react";
+import { AlertTriangle, CheckCircle2, Flame, TrendingUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ActiveProjects } from "../components/dashboard/ActiveProjects";
 import { KPICards } from "../components/dashboard/KPICards";
@@ -8,7 +9,7 @@ import { TasksByStatus } from "../components/dashboard/TasksByStatus";
 import { TeamPerformance } from "../components/dashboard/TeamPerformance";
 import { UpcomingDeadlines } from "../components/dashboard/UpcomingDeadlines";
 import { WeeklyProgress } from "../components/dashboard/WeeklyProgress";
-import { useDashboardData } from "../hooks/useDashboardData";
+import { useDashboardData, type ProgressPeriod } from "../hooks/useDashboardData";
 
 const safeNumber = (value: number | null | undefined) =>
   typeof value === "number" && !Number.isNaN(value) ? value : 0;
@@ -162,6 +163,9 @@ export const DashboardPage = () => {
     riskProjectsCount,
     highlightedProjects,
     portfolioSummary,
+    eapStatusSummary,
+    eapProgressSummary,
+    eapPrioritySummary,
     recentActivities,
     projectToast,
     orgError,
@@ -177,6 +181,8 @@ export const DashboardPage = () => {
       )
     : 0;
   const completedTasks = totalTasks > 0 ? Math.round((averageProgress / 100) * totalTasks) : 0;
+
+  const [progressPeriod, setProgressPeriod] = useState<ProgressPeriod>("weekly");
 
   const kpiItems = [
     {
@@ -213,8 +219,13 @@ export const DashboardPage = () => {
     }
   ];
 
-  const statusPayload = buildStatusData(totalTasks, runningCount, overdueCount, averageProgress);
-  const priorityItems = buildPriorityData(totalTasks, overdueCount);
+  const statusPayload =
+    eapStatusSummary.total > 0
+      ? eapStatusSummary
+      : buildStatusData(totalTasks, runningCount, overdueCount, averageProgress);
+  const priorityItems =
+    eapPrioritySummary.total > 0 ? eapPrioritySummary.items : buildPriorityData(totalTasks, overdueCount);
+  const progressSummary = eapProgressSummary[progressPeriod];
   const weeklyData = buildWeeklyData(Math.max(totalTasks, safeNumber(riskProjectsCount)), averageProgress);
   const teamMembers = buildTeamMembers(recentActivities, averageProgress, runningCount);
   const deadlineItems = buildDeadlines(highlightedProjects);
@@ -242,7 +253,12 @@ export const DashboardPage = () => {
           <TasksByStatus data={statusPayload.data} total={statusPayload.total} />
           <TasksByPriority items={priorityItems} />
         </div>
-        <WeeklyProgress data={weeklyData} efficiencyLabel="135% eficiencia" />
+        <WeeklyProgress
+          data={progressSummary?.data ?? weeklyData}
+          efficiencyLabel={progressSummary?.efficiencyLabel ?? "0% eficiencia"}
+          period={progressPeriod}
+          onPeriodChange={setProgressPeriod}
+        />
         <ActiveProjects projects={highlightedProjects} onOpenProject={(projectId) => navigate(`/projects/${projectId}`)} />
         <div className="dashboard-grid-2">
           <TeamPerformance members={teamMembers} />

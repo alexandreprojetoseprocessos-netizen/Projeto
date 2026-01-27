@@ -660,6 +660,9 @@ export const EmptyStateCard = ({ icon: Icon, title, description, actionLabel, on
 
 
 
+export type ProjectStatusValue = "PLANNED" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "CANCELED";
+export type ProjectPriorityValue = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
 export type CreateProjectPayload = {
 
 
@@ -693,6 +696,8 @@ export type CreateProjectPayload = {
 
 
   teamMembers: string[];
+  status?: ProjectStatusValue;
+  priority?: ProjectPriorityValue;
 
 
 
@@ -1178,6 +1183,10 @@ type DashboardLayoutProps = {
 
 
 
+      priority?: string;
+
+
+
       startDate?: string | null;
 
 
@@ -1422,6 +1431,7 @@ export type DashboardOutletContext = {
     changes: {
       title?: string;
       status?: string;
+      priority?: string;
       startDate?: string | null;
       endDate?: string | null;
       description?: string | null;
@@ -1921,6 +1931,7 @@ type WbsTreeViewProps = {
     changes: {
       title?: string;
       status?: string;
+      priority?: string;
       startDate?: string | null;
       endDate?: string | null;
       estimateHours?: number | null;
@@ -2046,7 +2057,6 @@ export const WbsTreeView = ({
 
 
   const [treeNodes, setTreeNodes] = useState(nodes);
-  const [priorityOverrides, setPriorityOverrides] = useState<Record<string, string>>({});
 
 
 
@@ -4426,10 +4436,7 @@ export const WbsTreeView = ({
               const durationInDays = calcDurationInDays(row.node.startDate, row.node.endDate);
               const isStatusPickerOpen = statusPickerId === row.node.id;
               const priorityValue = normalizePriorityValue(
-                priorityOverrides[row.node.id] ??
-                  row.node.priority ??
-                  row.node.prioridade ??
-                  row.node.task_priority
+                row.node.priority ?? row.node.prioridade ?? row.node.task_priority
               );
 
 
@@ -4784,11 +4791,7 @@ export const WbsTreeView = ({
                         onClick={(event) => event.stopPropagation()}
                         onChange={(event) => {
                           event.stopPropagation();
-                          setPriorityOverrides((current) => ({
-                            ...current,
-                            [row.node.id]: event.target.value
-                          }));
-                          // TODO: Persistir prioridade quando o backend aceitar updates no /wbs/:id.
+                          onUpdate(row.node.id, { priority: event.target.value });
                         }}
                         aria-label="Alterar prioridade da tarefa"
                       >

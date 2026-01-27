@@ -1,5 +1,5 @@
 ﻿import { Router } from "express";
-import { Prisma, ProjectRole, AttachmentTargetType, TaskStatus } from "@prisma/client";
+import { Prisma, ProjectRole, AttachmentTargetType, TaskStatus, ProjectStatus, TaskPriority } from "@prisma/client";
 import { prisma } from "@gestao/database";
 import { authMiddleware } from "../middleware/auth";
 import { organizationMiddleware } from "../middleware/organization";
@@ -20,10 +20,14 @@ type FlatWbsNode = {
   description?: string | null;
   type: string;
   status: string;
+  priority?: string;
   order: number;
   level: number;
   startDate: Date | null;
   endDate: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+  deletedAt?: Date | null;
   ownerId: string | null;
   owner?: {
     id: string;
@@ -49,6 +53,22 @@ type FlatWbsNode = {
 };
 
 type WbsTreeNode = FlatWbsNode & { children: WbsTreeNode[] };
+
+const normalizeProjectStatus = (value: unknown): ProjectStatus | null => {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  return (Object.values(ProjectStatus) as string[]).includes(normalized)
+    ? (normalized as ProjectStatus)
+    : null;
+};
+
+const normalizeProjectPriority = (value: unknown): TaskPriority | null => {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  return (Object.values(TaskPriority) as string[]).includes(normalized)
+    ? (normalized as TaskPriority)
+    : null;
+};
 
 const buildWbsTree = (nodes: FlatWbsNode[]): WbsTreeNode[] => {
   const nodeMap = new Map<string, WbsTreeNode>();
@@ -202,7 +222,8 @@ projectsRouter.post("/", async (req, res) => {
     return res.status(403).json({ message: "Voc├¬ n├úo tem permiss├úo para criar projetos nesta organiza├º├úo." });
   }
 
-  const { name, clientName, budget, repositoryUrl, startDate, endDate, description, teamMembers } = req.body ?? {};
+  const { name, clientName, budget, repositoryUrl, startDate, endDate, description, teamMembers, status, priority } =
+    req.body ?? {};
 
   if (!name || typeof name !== "string" || !name.trim()) {
     return res.status(400).json({ message: "Nome do projeto ├® obrigat├│rio." });
@@ -210,6 +231,16 @@ projectsRouter.post("/", async (req, res) => {
 
   if (!clientName || typeof clientName !== "string" || !clientName.trim()) {
     return res.status(400).json({ message: "Cliente respons├ível ├® obrigat├│rio." });
+  }
+
+  const normalizedStatus = normalizeProjectStatus(status);
+  if (status && !normalizedStatus) {
+    return res.status(400).json({ message: "Status do projeto invalido." });
+  }
+
+  const normalizedPriority = normalizeProjectPriority(priority);
+  if (priority && !normalizedPriority) {
+    return res.status(400).json({ message: "Prioridade do projeto invalida." });
   }
 
   const normalizedRepo = typeof repositoryUrl === "string" ? repositoryUrl.trim() : "";
@@ -233,6 +264,8 @@ projectsRouter.post("/", async (req, res) => {
         name: name.trim(),
         clientName: clientName.trim(),
         description: typeof description === "string" ? description.trim() : null,
+        status: normalizedStatus ?? undefined,
+        priority: normalizedPriority ?? undefined,
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
         repositoryUrl: normalizedRepo || undefined,
@@ -304,6 +337,7 @@ projectsRouter.post("/", async (req, res) => {
         clientName: project.clientName,
         repositoryUrl: project.repositoryUrl,
         status: project.status,
+        priority: project.priority,
         startDate: project.startDate,
         endDate: project.endDate
       }
@@ -375,7 +409,7 @@ projectsRouter.put("/:projectId", async (req, res) => {
   const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER]);
   if (!membership) return;
 
-  const { name, clientName, budget, repositoryUrl, startDate, endDate, description } = req.body ?? {};
+  const { name, clientName, budget, repositoryUrl, startDate, endDate, description, status, priority } = req.body ?? {};
 
   if (!name || typeof name !== "string" || !name.trim()) {
     return res.status(400).json({ message: "Nome do projeto ├® obrigat├│rio." });
@@ -383,6 +417,16 @@ projectsRouter.put("/:projectId", async (req, res) => {
 
   if (!clientName || typeof clientName !== "string" || !clientName.trim()) {
     return res.status(400).json({ message: "Cliente respons├ível ├® obrigat├│rio." });
+  }
+
+  const normalizedStatus = normalizeProjectStatus(status);
+  if (status && !normalizedStatus) {
+    return res.status(400).json({ message: "Status do projeto invalido." });
+  }
+
+  const normalizedPriority = normalizeProjectPriority(priority);
+  if (priority && !normalizedPriority) {
+    return res.status(400).json({ message: "Prioridade do projeto invalida." });
   }
 
   const normalizedRepo = typeof repositoryUrl === "string" ? repositoryUrl.trim() : "";
@@ -394,6 +438,8 @@ projectsRouter.put("/:projectId", async (req, res) => {
         name: name.trim(),
         clientName: clientName.trim(),
         description: typeof description === "string" ? description.trim() : null,
+        status: normalizedStatus ?? undefined,
+        priority: normalizedPriority ?? undefined,
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
         repositoryUrl: normalizedRepo || null,
@@ -414,7 +460,13 @@ projectsRouter.put("/:projectId", async (req, res) => {
         action: "PROJECT_UPDATED",
         entity: "PROJECT",
         entityId: project.id,
-        diff: { name, clientName, repositoryUrl: normalizedRepo || null }
+        diff: {
+          name,
+          clientName,
+          repositoryUrl: normalizedRepo || null,
+          status: normalizedStatus ?? undefined,
+          priority: normalizedPriority ?? undefined
+        }
       }
     });
 
@@ -425,6 +477,7 @@ projectsRouter.put("/:projectId", async (req, res) => {
         clientName: project.clientName,
         repositoryUrl: project.repositoryUrl,
         status: project.status,
+        priority: project.priority,
         startDate: project.startDate,
         endDate: project.endDate
       }
@@ -856,6 +909,10 @@ projectsRouter.get("/:projectId/wbs", async (req, res) => {
     description: node.description ?? null,
     type: node.type,
     status: node.status,
+    priority: node.priority,
+    createdAt: node.createdAt,
+    updatedAt: node.updatedAt,
+    deletedAt: node.deletedAt,
     order: node.order,
     level: node.level,
     startDate: node.startDate,
@@ -991,10 +1048,14 @@ projectsRouter.post("/:projectId/wbs", async (req, res) => {
       title: refreshed.title,
       type: refreshed.type,
       status: refreshed.status,
+      priority: refreshed.priority,
       order: refreshed.order,
       level: refreshed.level,
       startDate: refreshed.startDate,
       endDate: refreshed.endDate,
+      createdAt: refreshed.createdAt,
+      updatedAt: refreshed.updatedAt,
+      deletedAt: refreshed.deletedAt,
       ownerId: refreshed.ownerId,
       owner: refreshed.owner
         ? {

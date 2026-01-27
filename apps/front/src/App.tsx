@@ -60,6 +60,7 @@ type WbsNode = {
   title: string;
   type: string;
   status: string;
+  priority?: string | null;
   parentId: string | null;
   children: WbsNode[];
   level?: number;
@@ -81,6 +82,9 @@ type WbsNode = {
   documents?: number | null;
   description?: string | null;
   progress?: number | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  deletedAt?: string | null;
   dependencies?: string[] | null;
   estimateHours?: string | null;
 };
@@ -876,6 +880,10 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
             projectId: createdProject.id,
             projectName: createdProject.name,
             clientName: payload.clientName,
+            status: createdProject.status ?? payload.status ?? "PLANNED",
+            priority: createdProject.priority ?? payload.priority ?? "MEDIUM",
+            startDate: payload.startDate,
+            endDate: payload.endDate,
             hoursTracked: 0,
             tasksTotal: 0,
             tags: []
@@ -940,6 +948,8 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
               ...project,
               projectName: updatedProject.name ?? project.projectName,
               clientName: payload.clientName,
+              status: updatedProject.status ?? payload.status ?? project.status,
+              priority: updatedProject.priority ?? payload.priority ?? project.priority,
               startDate: payload.startDate || project.startDate,
               endDate: payload.endDate || project.endDate
             }
@@ -1079,11 +1089,22 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     }
   };
 
+  const normalizePriority = (value?: string | null) => {
+    const raw = String(value ?? "").trim().toUpperCase();
+    if (!raw) return "MEDIUM";
+    if (raw === "URGENTE" || raw === "URGENT" || raw === "CRITICAL") return "CRITICAL";
+    if (raw === "ALTA" || raw === "HIGH") return "HIGH";
+    if (raw === "MEDIA" || raw === "M?DIA" || raw === "MEDIUM") return "MEDIUM";
+    if (raw === "BAIXA" || raw === "LOW") return "LOW";
+    return "MEDIUM";
+  };
+
   const handleWbsUpdate = async (
     nodeId: string,
     changes: {
       title?: string;
       status?: string;
+      priority?: string;
       startDate?: string | null;
       endDate?: string | null;
       description?: string | null;
@@ -1121,6 +1142,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     // Recalcula serviceHours = hoursBase × multiplier
     const currentNode = findWbsNode(wbsNodes, nodeId);
+    if ("priority" in payload && payload.priority !== undefined && payload.priority !== null) {
+      const normalizedPriority = normalizePriority(payload.priority);
+      payload.priority = normalizedPriority;
+      if (currentNode && "prioridade" in currentNode) payload.prioridade = normalizedPriority;
+      if (currentNode && "task_priority" in currentNode) payload.task_priority = normalizedPriority;
+      if (currentNode && "taskPriority" in currentNode) payload.taskPriority = normalizedPriority;
+    }
     if ("serviceMultiplier" in payload && !("serviceCatalogId" in payload) && currentNode?.serviceCatalogId) {
       payload.serviceCatalogId = currentNode.serviceCatalogId;
     }
@@ -1698,6 +1726,7 @@ function patchWbsNode(
   changes: {
     title?: string;
     status?: string;
+    priority?: string | null;
     startDate?: string | null;
     endDate?: string | null;
     description?: string | null;

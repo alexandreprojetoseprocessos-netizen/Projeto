@@ -50,6 +50,7 @@ const isoFromDateInput = (value: string) => {
 type WbsUpdate = {
   title?: string;
   status?: string;
+  priority?: string;
   startDate?: string | null;
   endDate?: string | null;
   description?: string | null;

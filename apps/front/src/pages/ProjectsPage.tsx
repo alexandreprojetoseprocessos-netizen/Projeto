@@ -1,8 +1,73 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useOutletContext } from "react-router-dom";
 import { ProjectPortfolio, type PortfolioProject } from "../components/ProjectPortfolio";
-import type { DashboardOutletContext } from "../components/DashboardLayout";
+import type { DashboardOutletContext, ProjectPriorityValue, ProjectStatusValue } from "../components/DashboardLayout";
 import { canManageProjects, type OrgRole } from "../components/permissions";
+
+const PROJECT_STATUS_OPTIONS: Array<{ value: ProjectStatusValue; label: string }> = [
+  { value: "PLANNED", label: "Planejamento" },
+  { value: "IN_PROGRESS", label: "Em andamento" },
+  { value: "COMPLETED", label: "Concluido" },
+  { value: "ON_HOLD", label: "Pausado" },
+  { value: "CANCELED", label: "Cancelado" }
+];
+
+const PROJECT_PRIORITY_OPTIONS: Array<{ value: ProjectPriorityValue; label: string }> = [
+  { value: "CRITICAL", label: "Urgente" },
+  { value: "HIGH", label: "Alta" },
+  { value: "MEDIUM", label: "Media" },
+  { value: "LOW", label: "Baixa" }
+];
+
+const normalizeProjectStatus = (value?: string | null): ProjectStatusValue => {
+  const normalized = (value ?? "").trim().toUpperCase();
+
+  switch (normalized) {
+    case "DONE":
+      return "COMPLETED";
+    case "ACTIVE":
+      return "IN_PROGRESS";
+    case "PAUSED":
+      return "ON_HOLD";
+    case "PLANNING":
+      return "PLANNED";
+    case "LATE":
+    case "DELAYED":
+    case "OVERDUE":
+      return "IN_PROGRESS";
+    case "PLANNED":
+    case "IN_PROGRESS":
+    case "ON_HOLD":
+    case "COMPLETED":
+    case "CANCELED":
+      return normalized as ProjectStatusValue;
+    default:
+      return "PLANNED";
+  }
+};
+
+const normalizeProjectPriority = (value?: string | null): ProjectPriorityValue => {
+  const normalized = (value ?? "").trim().toUpperCase();
+
+  switch (normalized) {
+    case "URGENT":
+    case "URGENTE":
+      return "CRITICAL";
+    case "ALTA":
+      return "HIGH";
+    case "MEDIA":
+      return "MEDIUM";
+    case "BAIXA":
+      return "LOW";
+    case "CRITICAL":
+    case "HIGH":
+    case "MEDIUM":
+    case "LOW":
+      return normalized as ProjectPriorityValue;
+    default:
+      return "MEDIUM";
+  }
+};
 
 type FirstProjectPayload = {
   name: string;
@@ -205,7 +270,9 @@ export const ProjectsPage = () => {
     budget: "",
     repositoryUrl: "",
     teamMembers: "",
-    description: ""
+    description: "",
+    status: "PLANNED" as ProjectStatusValue,
+    priority: "MEDIUM" as ProjectPriorityValue
   });
 
   const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
@@ -220,7 +287,9 @@ export const ProjectsPage = () => {
       budget: "",
       repositoryUrl: "",
       teamMembers: "",
-      description: ""
+      description: "",
+      status: "PLANNED",
+      priority: "MEDIUM"
     });
   };
 
@@ -233,7 +302,9 @@ export const ProjectsPage = () => {
       startDate: payload.startDate,
       endDate: payload.endDate,
       description: payload.description,
-      teamMembers: []
+      teamMembers: [],
+      status: "PLANNED",
+      priority: "MEDIUM"
     });
   };
 
@@ -272,7 +343,9 @@ export const ProjectsPage = () => {
       budget: budgetValue,
       repositoryUrl: project.repositoryUrl ?? "",
       teamMembers: members.join(", "),
-      description: project.description ?? ""
+      description: project.description ?? "",
+      status: normalizeProjectStatus(project.status),
+      priority: normalizeProjectPriority(project.priority)
     });
     setEditingProject(project);
     setIsEditModalOpen(true);
@@ -310,6 +383,8 @@ export const ProjectsPage = () => {
       startDate: form.startDate || undefined,
       endDate: form.endDate || undefined,
       description: form.description.trim() || undefined,
+      status: form.status,
+      priority: form.priority,
       teamMembers: form.teamMembers
         .split(",")
         .map((member) => member.trim())
@@ -424,6 +499,42 @@ export const ProjectsPage = () => {
               placeholder="Selecione uma organização no topo"
               readOnly
             />
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="projectStatus">Status do projeto</label>
+            <select
+              id="projectStatus"
+              className="gp-input"
+              value={form.status}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, status: event.target.value as ProjectStatusValue }))
+              }
+            >
+              {PROJECT_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="projectPriority">Prioridade</label>
+            <select
+              id="projectPriority"
+              className="gp-input"
+              value={form.priority}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, priority: event.target.value as ProjectPriorityValue }))
+              }
+            >
+              {PROJECT_PRIORITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="form-field">

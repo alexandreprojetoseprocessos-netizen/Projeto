@@ -129,6 +129,7 @@ model Project {
   clientName       String?
   description      String?
   status           ProjectStatus     @default(PLANNED)
+  priority         TaskPriority      @default(MEDIUM)
   startDate        DateTime?
   endDate          DateTime?
   budgetPlanned    Decimal?          @db.Decimal(14, 2)
