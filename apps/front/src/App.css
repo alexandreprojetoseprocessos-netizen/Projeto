@@ -2847,7 +2847,7 @@ button[type="submit"]:hover {
   position: relative;
   width: 100%;
   min-width: 140px;
-  padding: 6px 32px 6px 12px;
+  padding: 6px 44px 6px 12px;
   border-radius: 999px;
   border: 1px solid #d4d4d8;
   font-size: 12px;
@@ -2857,9 +2857,67 @@ button[type="submit"]:hover {
   color: var(--text-strong);
 }
 
+.wbs-date-input--overdue {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #b91c1c;
+}
+
+.wbs-date-input--warning {
+  background: rgba(249, 115, 22, 0.12);
+  border-color: rgba(249, 115, 22, 0.45);
+  color: #c2410c;
+}
+
 .wbs-date-input:focus {
   border-color: #0ea5e9;
   box-shadow: 0 0 0 2px #bae6fd;
+}
+
+.wbs-date-input--overdue:focus {
+  border-color: rgba(239, 68, 68, 0.7);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+.wbs-date-input--warning:focus {
+  border-color: rgba(249, 115, 22, 0.6);
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2);
+}
+
+.wbs-date-alert {
+  position: absolute;
+  right: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.wbs-date-clock {
+  position: absolute;
+  right: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(249, 115, 22, 0.2);
+  color: #c2410c;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
 }
 
 .wbs-date-input::-webkit-calendar-picker-indicator {
@@ -2928,6 +2986,7 @@ button[type="submit"]:hover {
   font-size: 12px;
   font-weight: 600;
   line-height: 1.25rem;
+  text-align: center;
   cursor: pointer;
   appearance: none;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
@@ -2938,6 +2997,11 @@ button[type="submit"]:hover {
   outline: none;
   border-color: #94a3b8;
   box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.2);
+}
+
+.wbs-status-select option {
+  background: #ffffff;
+  color: #0f172a;
 }
 
 .wbs-priority-select {
@@ -2952,6 +3016,7 @@ button[type="submit"]:hover {
   font-weight: 600;
   line-height: 1.25rem;
   color: #0f172a;
+  text-align: center;
   cursor: pointer;
   appearance: none;
   transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
@@ -2966,6 +3031,35 @@ button[type="submit"]:hover {
   outline: none;
   border-color: #94a3b8;
   box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.2);
+}
+
+.wbs-priority-select.wbs-priority-urgent {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #dc2626;
+}
+
+.wbs-priority-select.wbs-priority-high {
+  background: rgba(249, 115, 22, 0.16);
+  border-color: rgba(249, 115, 22, 0.45);
+  color: #ea580c;
+}
+
+.wbs-priority-select.wbs-priority-medium {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #2563eb;
+}
+
+.wbs-priority-select.wbs-priority-low {
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.45);
+  color: #64748b;
+}
+
+.wbs-priority-select option {
+  background: #ffffff;
+  color: #0f172a;
 }
 
 .wbs-progress-cell {

@@ -1757,13 +1757,13 @@ const STATUS_TONE: Record<Status, StatusTone> = {
 };
 
 const STATUS_CLASS: Record<string, string> = {
-  "Não iniciado": "bg-slate-50 text-slate-700 border-slate-300",
-  "Em andamento": "bg-blue-50 text-blue-700 border-blue-300",
-  "Em atraso": "bg-red-50 text-red-700 border-red-300",
-  "Em risco": "bg-amber-50 text-amber-800 border-amber-300",
-  "Homologação": "bg-indigo-50 text-indigo-800 border-indigo-300",
-  "Finalizado": "bg-emerald-50 text-emerald-700 border-emerald-300",
-  default: "bg-slate-50 text-slate-700 border-slate-300",
+  "Não iniciado": "bg-slate-200 text-slate-700 border-slate-300 font-semibold",
+  "Em andamento": "bg-blue-500 text-white border-blue-500 font-semibold",
+  "Em atraso": "bg-red-500 text-white border-red-500 font-semibold",
+  "Em risco": "bg-amber-400 text-white border-amber-400 font-semibold",
+  "Homologação": "bg-indigo-500 text-white border-indigo-500 font-semibold",
+  "Finalizado": "bg-emerald-500 text-white border-emerald-500 font-semibold",
+  default: "bg-slate-200 text-slate-700 border-slate-300 font-semibold",
 };
 
 const WORKDAY_HOURS = 8;
@@ -1805,7 +1805,12 @@ const formatDateInputValue = (value?: string | null) => {
 
 };
 
-
+const toLocalDateOnly = (value?: string | null) => {
+  const formatted = formatDateInputValue(value);
+  if (!formatted) return null;
+  const date = new Date(`${formatted}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
 
 
 
@@ -4481,11 +4486,29 @@ export const WbsTreeView = ({
 
               const normalizedStatus = normalizeStatus(row.node.status);
               const statusClass = STATUS_CLASS[normalizedStatus] ?? STATUS_CLASS.default;
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const endDateOnly = toLocalDateOnly(row.node.endDate);
+              const daysToEnd = endDateOnly ? Math.round((endDateOnly.getTime() - today.getTime()) / MS_IN_DAY) : null;
+              const isEndDateOverdue = Boolean(
+                endDateOnly && endDateOnly.getTime() < today.getTime() && normalizedStatus !== "Finalizado"
+              );
+              const isEndDateSoon = Boolean(
+                !isEndDateOverdue && (daysToEnd === 1 || daysToEnd === 0) && normalizedStatus !== "Finalizado"
+              );
               const durationInDays = calcDurationInDays(row.node.startDate, row.node.endDate);
               const isStatusPickerOpen = statusPickerId === row.node.id;
               const priorityValue = normalizePriorityValue(
                 row.node.priority ?? row.node.prioridade ?? row.node.task_priority
               );
+              const priorityTone =
+                priorityValue === "CRITICAL"
+                  ? "urgent"
+                  : priorityValue === "HIGH"
+                    ? "high"
+                    : priorityValue === "LOW"
+                      ? "low"
+                      : "medium";
 
 
 
@@ -4834,7 +4857,7 @@ export const WbsTreeView = ({
 
                     <td className="px-3 py-2 align-middle">
                       <select
-                        className="wbs-priority-select"
+                        className={clsx("wbs-priority-select", `wbs-priority-${priorityTone}`)}
                         value={priorityValue}
                         onClick={(event) => event.stopPropagation()}
                         onChange={(event) => {
@@ -4884,8 +4907,14 @@ export const WbsTreeView = ({
                           onChange={(event) => handleDateFieldChange(row.node.id, "endDate", event.target.value)}
                           onClick={(event) => event.stopPropagation()}
                           placeholder="dd/mm/aaaa"
-                          className="wbs-date-input"
+                          className={clsx(
+                            "wbs-date-input",
+                            isEndDateOverdue && "wbs-date-input--overdue",
+                            isEndDateSoon && "wbs-date-input--warning"
+                          )}
                         />
+                        {isEndDateOverdue && <span className="wbs-date-alert">!</span>}
+                        {isEndDateSoon && <span className="wbs-date-clock">⏰</span>}
                       </div>
                     </td>
 

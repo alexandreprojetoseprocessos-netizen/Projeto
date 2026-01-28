@@ -26,7 +26,7 @@ export const createApp = () => {
   app.set("trust proxy", 1);
 
   app.use(helmet());
-  const normalizeOrigin = (value: string) => value.trim().replace(/\/$/, "");
+  const normalizeOrigin = (value: string) => value.trim().replace(/\/$/, "").toLowerCase();
   const allowedOrigins = new Set(
     [
       process.env.FRONTEND_URL,
@@ -39,10 +39,11 @@ export const createApp = () => {
       .map(normalizeOrigin)
   );
   const vercelPreviewRegex = /^https:\/\/.*\.vercel\.app$/i;
+  const meugpRegex = /^https:\/\/([a-z0-9-]+\.)*meugp\.com\.br$/i;
   const isOriginAllowed = (origin?: string | null) => {
     if (!origin) return true;
     const normalized = normalizeOrigin(origin);
-    return allowedOrigins.has(normalized) || vercelPreviewRegex.test(origin);
+    return allowedOrigins.has(normalized) || vercelPreviewRegex.test(origin) || meugpRegex.test(origin);
   };
 
   const corsOptions: CorsOptions = {
