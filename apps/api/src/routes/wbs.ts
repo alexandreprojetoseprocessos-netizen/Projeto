@@ -160,6 +160,76 @@ wbsRouter.post("/:nodeId/comments", async (req: RequestWithUser, res) => {
   }
 });
 
+// PATCH /wbs/:nodeId/comments/:commentId
+wbsRouter.patch("/:nodeId/comments/:commentId", async (req: RequestWithUser, res) => {
+  const { nodeId, commentId } = req.params;
+  const { message } = req.body as { message?: string };
+
+  const access = await assertNodeAccess(req, res, nodeId);
+  if (!access) return;
+
+  const trimmed = message?.trim();
+  if (!trimmed) {
+    return res.status(400).json({ message: "Mensagem obrigatoria" });
+  }
+
+  const existing = await prisma.wbsComment.findUnique({
+    where: { id: commentId },
+    select: { id: true, wbsNodeId: true, authorId: true }
+  });
+
+  if (!existing || existing.wbsNodeId !== nodeId) {
+    return res.status(404).json({ message: "Comentario nao encontrado" });
+  }
+
+  const isAuthor = existing.authorId && existing.authorId === req.user?.id;
+  const isManager = [ProjectRole.MANAGER, ProjectRole.APPROVER].includes(access.membership.role);
+  if (!isAuthor && !isManager) {
+    return res.status(403).json({ message: "Sem permissao para editar" });
+  }
+
+  try {
+    const updated = await prisma.wbsComment.update({
+      where: { id: commentId },
+      data: { message: trimmed }
+    });
+    return res.json(updated);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Erro ao editar comentario" });
+  }
+});
+
+// DELETE /wbs/:nodeId/comments/:commentId
+wbsRouter.delete("/:nodeId/comments/:commentId", async (req: RequestWithUser, res) => {
+  const { nodeId, commentId } = req.params;
+  const access = await assertNodeAccess(req, res, nodeId);
+  if (!access) return;
+
+  const existing = await prisma.wbsComment.findUnique({
+    where: { id: commentId },
+    select: { id: true, wbsNodeId: true, authorId: true }
+  });
+
+  if (!existing || existing.wbsNodeId !== nodeId) {
+    return res.status(404).json({ message: "Comentario nao encontrado" });
+  }
+
+  const isAuthor = existing.authorId && existing.authorId === req.user?.id;
+  const isManager = [ProjectRole.MANAGER, ProjectRole.APPROVER].includes(access.membership.role);
+  if (!isAuthor && !isManager) {
+    return res.status(403).json({ message: "Sem permissao para excluir" });
+  }
+
+  try {
+    await prisma.wbsComment.delete({ where: { id: commentId } });
+    return res.status(204).send();
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Erro ao excluir comentario" });
+  }
+});
+
 // GET /wbs?projectId=...
 wbsRouter.get("/", async (req: RequestWithUser, res) => {
   const { projectId } = req.query as { projectId?: string };

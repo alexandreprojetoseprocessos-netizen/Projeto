@@ -259,6 +259,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       return acc;
     }, {} as Record<TaskStatus, KanbanTask[]>);
 
+    const projectNameMap = new Map(projects.map((project) => [project.id, project.name]));
     const wipLimits: Partial<Record<TaskStatus, number>> = {};
     const statusEntries = Object.entries(STATUS_MAP) as [TaskStatus, string][];
 
@@ -281,9 +282,15 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       }
       (column.tasks ?? []).forEach((rawTask: any) => {
         const matchedStatus = resolveStatus(rawTask.status) ?? columnStatus ?? statusOrder[0];
+        const resolvedProjectName =
+          rawTask.projectName ??
+          rawTask.project?.name ??
+          (rawTask.projectId ? projectNameMap.get(rawTask.projectId) : null) ??
+          (selectedProjectId && selectedProjectId !== "all" ? projectNameMap.get(selectedProjectId) : null);
         grouped[matchedStatus].push({
           ...rawTask,
-          status: matchedStatus
+          status: matchedStatus,
+          projectName: resolvedProjectName ?? undefined
         });
       });
     });
@@ -294,7 +301,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       tasks: grouped[status].sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0)),
       wipLimit: wipLimits[status]
     }));
-  }, [boardColumns]);
+  }, [boardColumns, projects, selectedProjectId]);
 
   useEffect(() => {
     if (status !== "authenticated" || !token) {
@@ -720,7 +727,8 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
               const target = columnMap[taskStatus] ?? columnMap[statusOrder[0]];
               target.tasks.push({
                 ...task,
-                status: taskStatus
+                status: taskStatus,
+                projectName: task.projectName ?? data.projectName
               });
             });
           });
@@ -751,9 +759,15 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         undefined,
         selectedOrganizationId
       );
+      const projectName = projects.find((project) => project.id === activeProjectId)?.name;
       const normalized = (data.columns ?? []).map((column: any) => ({
         ...column,
-        tasks: [...(column.tasks ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        tasks: [...(column.tasks ?? [])]
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          .map((task: any) => ({
+            ...task,
+            projectName: task.projectName ?? projectName
+          }))
       }));
       setBoardColumns(normalized);
       if (normalized.length) {
@@ -813,7 +827,73 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   );
 
   useEffect(() => {
-    if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !selectedOrganizationId) {
+      setGanttTasks([]);
+      setGanttMilestones([]);
+      return;
+    }
+
+    if (selectedProjectId === "all") {
+      if (!projects.length) {
+        setGanttTasks([]);
+        setGanttMilestones([]);
+        return;
+      }
+
+      const loadAllGantt = async () => {
+        try {
+          setGanttError(null);
+          const results = await Promise.allSettled(
+            projects.map((project) =>
+              fetchJson(`/projects/${project.id}/gantt`, token, undefined, selectedOrganizationId).then((data) => ({
+                ...data,
+                projectId: project.id,
+                projectName: project.name
+              }))
+            )
+          );
+
+          const mergedTasks = results.flatMap((result) => {
+            if (result.status !== "fulfilled") return [];
+            const { tasks = [], projectId, projectName } = result.value as {
+              tasks?: any[];
+              projectId?: string;
+              projectName?: string;
+            };
+            return (tasks ?? []).map((task) => ({
+              ...task,
+              projectId,
+              projectName
+            }));
+          });
+
+          const mergedMilestones = results.flatMap((result) => {
+            if (result.status !== "fulfilled") return [];
+            const { milestones = [], projectId, projectName } = result.value as {
+              milestones?: any[];
+              projectId?: string;
+              projectName?: string;
+            };
+            return (milestones ?? []).map((milestone) => ({
+              ...milestone,
+              projectId,
+              projectName
+            }));
+          });
+
+          setGanttTasks(mergedTasks);
+          setGanttMilestones(mergedMilestones);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Erro ao carregar Gantt";
+          setGanttError(message);
+        }
+      };
+
+      loadAllGantt();
+      return;
+    }
+
+    if (!activeProjectId) {
       setGanttTasks([]);
       setGanttMilestones([]);
       return;
@@ -832,7 +912,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     };
 
     loadGantt();
-  }, [status, token, selectedProjectId, selectedOrganizationId]);
+  }, [status, token, selectedProjectId, selectedOrganizationId, activeProjectId, projects]);
 
   useEffect(() => {
     if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {

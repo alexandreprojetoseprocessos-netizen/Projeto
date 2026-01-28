@@ -23,6 +23,15 @@ export const STATUS_MAP: Record<TaskStatus, string> = {
   DONE: "Finalizado",
 };
 
+const STATUS_DOT_CLASS: Record<TaskStatus, string> = {
+  BACKLOG: "kanban-status-dot--backlog",
+  IN_PROGRESS: "kanban-status-dot--progress",
+  DELAYED: "kanban-status-dot--delayed",
+  RISK: "kanban-status-dot--risk",
+  REVIEW: "kanban-status-dot--review",
+  DONE: "kanban-status-dot--done",
+};
+
 export const KANBAN_STATUS_ORDER: TaskStatus[] = [
   "BACKLOG",
   "IN_PROGRESS",
@@ -51,6 +60,7 @@ export type KanbanTask = {
   assignee?: { id: string; name?: string; email?: string; avatar?: string };
   responsible?: { id: string; name?: string; email?: string; avatar?: string };
   tags?: string[];
+  projectName?: string;
   priority?: Priority;
 };
 
@@ -221,6 +231,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
             >
               <div className="kanbanColumnHeader">
                 <div className="kanbanColumnHeaderLeft">
+                  <span className={`kanban-status-dot ${STATUS_DOT_CLASS[column.id] ?? ""}`} />
                   <div className="kanbanColumnTitle">{column.title}</div>
                   <span className="kanbanCountBadge">{taskCount}</span>
                   {column.wipLimit !== undefined && (
@@ -242,14 +253,6 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                     title={`Criar tarefa em ${column.title}`}
                   >
                     + Criar
-                  </button>
-                  <button
-                    className="kanbanMenuBtn"
-                    type="button"
-                    aria-label="Mais ações"
-                    title="Mais ações"
-                  >
-                    ⋯
                   </button>
                 </div>
               </div>
@@ -321,9 +324,17 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                 </span>
                               )}
                               <div className="kanban-card__header">
+                                {priorityBadge && (
+                                  <div className="kanban-card__badges">
+                                    {priorityBadge}
+                                  </div>
+                                )}
                                 <h4 className="kanban-card__title" title={task.title}>
                                   {task.title}
                                 </h4>
+                                {task.projectName && (
+                                  <div className="kanban-card__project">{task.projectName}</div>
+                                )}
                               </div>
                               <div className="kanban-card__meta">
                                 <div className="kanban-card__meta-line">
@@ -387,11 +398,6 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                     )}
                                   </div>
                                 </div>
-                                {priorityBadge && (
-                                  <div className="kanban-card__meta-line">
-                                    {priorityBadge}
-                                  </div>
-                                )}
                               </div>
                             </article>
                           );

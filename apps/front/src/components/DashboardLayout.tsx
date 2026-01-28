@@ -154,6 +154,55 @@ const BriefcaseIcon: KPIIcon = (props) => (
 
 );
 
+const LayoutColumnsIcon: KPIIcon = (props) => (
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+    <rect x="3" y="4" width="7" height="16" rx="2" />
+    <rect x="14" y="4" width="7" height="16" rx="2" />
+  </svg>
+);
+
+const ProjectFolderIcon: KPIIcon = (props) => (
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+    <path d="M4 6h6l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
+  </svg>
+);
+
+const TreeIcon: KPIIcon = (props) => (
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+    <circle cx="6" cy="6" r="2" />
+    <circle cx="18" cy="6" r="2" />
+    <circle cx="12" cy="18" r="2" />
+    <path d="M8 6h8" />
+    <path d="M12 8v6" />
+  </svg>
+);
+
+const CalendarSmallIcon: KPIIcon = (props) => (
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+    <rect x="3" y="4" width="18" height="18" rx="2" />
+    <path d="M16 2v4" />
+    <path d="M8 2v4" />
+    <path d="M3 10h18" />
+  </svg>
+);
+
+const ReportIcon: KPIIcon = (props) => (
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+    <path d="M8 16v-5" />
+    <path d="M12 16v-8" />
+    <path d="M16 16v-3" />
+  </svg>
+);
+
+const PlanIcon: KPIIcon = (props) => (
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+    <rect x="3" y="7" width="18" height="12" rx="2" />
+    <path d="M3 11h18" />
+    <path d="M7 15h4" />
+  </svg>
+);
+
 
 
 
@@ -593,16 +642,16 @@ const MenuDotsIcon: KPIIcon = (props) => (
 
 const sidebarNavigation = [
   { id: "organizacao", label: "Organizacoes", icon: BuildingIcon, path: "/organizacao" },
-  { id: "dashboard", label: "Dashboard", icon: BriefcaseIcon, path: "/dashboard" },
-  { id: "projects", label: "Projetos", icon: ListChecksIcon, path: "/projects" },
-  { id: "edt", label: "EAP", icon: UsersIcon, path: "/EAP" },
-  { id: "board", label: "Kanban", icon: ListChecksIcon, path: "/kanban" },
-  { id: "cronograma", label: "Cronograma", icon: ClockIcon, path: "/cronograma" },
+  { id: "dashboard", label: "Dashboard", icon: InsightIcon, path: "/dashboard" },
+  { id: "projects", label: "Projetos", icon: ProjectFolderIcon, path: "/projects" },
+  { id: "edt", label: "EAP", icon: TreeIcon, path: "/EAP" },
+  { id: "board", label: "Kanban", icon: LayoutColumnsIcon, path: "/kanban" },
+  { id: "cronograma", label: "Cronograma", icon: CalendarSmallIcon, path: "/cronograma" },
   { id: "atividades", label: "Timeline", icon: CommentIcon, path: "/atividades" },
   { id: "documentos", label: "Documentos", icon: FileIcon, path: "/documentos" },
-  { id: "Relatórios", label: "Relatórios", icon: BarChartIcon, path: "/Relatórios" },
+  { id: "Relatórios", label: "Relatórios", icon: ReportIcon, path: "/Relatórios" },
   { id: "equipe", label: "Equipes", icon: UsersIcon, path: "/equipe" },
-  { id: "plano", label: "Meu plano", icon: BriefcaseIcon, path: "/plano" }
+  { id: "plano", label: "Meu plano", icon: PlanIcon, path: "/plano" }
 ];
 
 
@@ -2056,6 +2105,11 @@ export const WbsTreeView = ({
 
   } = useOutletContext<DashboardOutletContext>();
   const { token: authToken, user: currentUser } = useAuth();
+  const currentUserName =
+    (currentUser as { name?: string; email?: string } | null)?.name ??
+    (currentUser as { name?: string; email?: string } | null)?.email ??
+    null;
+  const currentUserId = (currentUser as { id?: string } | null)?.id ?? null;
 
 
 
@@ -2120,6 +2174,20 @@ export const WbsTreeView = ({
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const lastClearKeyRef = useRef<number | undefined>(undefined);
+  const chatEditorRef = useRef<HTMLDivElement | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showTextStyleMenu, setShowTextStyleMenu] = useState(false);
+  const [showTextColorPicker, setShowTextColorPicker] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const editingDraftRef = useRef<string>("");
+  const [pendingDeleteCommentId, setPendingDeleteCommentId] = useState<string | null>(null);
+  const [chatFormatState, setChatFormatState] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    bullets: false,
+    numbered: false
+  });
 
 
 
@@ -2130,10 +2198,275 @@ export const WbsTreeView = ({
   type WbsComment = {
     id: string;
     wbsNodeId: string;
+    authorId?: string | null;
     authorName?: string | null;
     message: string;
     createdAt: string;
   };
+
+  const getInitials = (value?: string | null) => {
+    if (!value) return "?";
+    const parts = value.trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return "?";
+    return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
+  };
+
+  const escapeChatHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const formatChatInline = (value: string) => {
+    let result = value;
+    result = result.replace(/\*([^*]+)\*/g, "<strong>$1</strong>");
+    result = result.replace(/_([^_]+)_/g, "<em>$1</em>");
+    result = result.replace(/\+([^+]+)\+/g, "<u>$1</u>");
+    result = result.replace(/(^|\\s)@([\\w.-]+)/g, '$1<span class="wbs-chat-mention">@$2</span>');
+    result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+    return result;
+  };
+
+  const formatChatMessage = (value: string) => {
+    const escaped = escapeChatHtml(value);
+    const lines = escaped.split(/\r?\n/);
+    let html = "";
+    let inUl = false;
+    let inOl = false;
+    const closeLists = () => {
+      if (inUl) {
+        html += "</ul>";
+        inUl = false;
+      }
+      if (inOl) {
+        html += "</ol>";
+        inOl = false;
+      }
+    };
+    lines.forEach((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) {
+        closeLists();
+        html += "<p></p>";
+        return;
+      }
+      const checklistMatch = line.match(/^- \\[ \\] (.+)/);
+      if (checklistMatch) {
+        if (!inUl) {
+          closeLists();
+          html += '<ul class="wbs-chat-list wbs-chat-list--check">';
+          inUl = true;
+        }
+        html += `<li><span class="wbs-chat-checkbox"></span>${formatChatInline(checklistMatch[1])}</li>`;
+        return;
+      }
+      const bulletMatch = line.match(/^[*•-]\\s+(.+)/);
+      if (bulletMatch) {
+        if (!inUl) {
+          closeLists();
+          html += '<ul class="wbs-chat-list">';
+          inUl = true;
+        }
+        html += `<li>${formatChatInline(bulletMatch[1])}</li>`;
+        return;
+      }
+      const numberMatch = line.match(/^\\d+\\.\\s+(.+)/);
+      if (numberMatch) {
+        if (!inOl) {
+          closeLists();
+          html += "<ol class=\"wbs-chat-list\">";
+          inOl = true;
+        }
+        html += `<li>${formatChatInline(numberMatch[1])}</li>`;
+        return;
+      }
+      closeLists();
+      html += `<p>${formatChatInline(line)}</p>`;
+    });
+    closeLists();
+    return html;
+  };
+
+  const sanitizeChatHtml = (html: string) => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+    const container = doc.body.firstElementChild as HTMLElement | null;
+    if (!container) return "";
+    const allowedTags = new Set([
+      "B",
+      "STRONG",
+      "I",
+      "EM",
+      "U",
+      "A",
+      "UL",
+      "OL",
+      "LI",
+      "P",
+      "BR",
+      "SPAN",
+      "DIV",
+      "FONT"
+    ]);
+    const walk = (node: Element) => {
+      const children = Array.from(node.children);
+      children.forEach((child) => {
+        if (!allowedTags.has(child.tagName)) {
+          child.replaceWith(doc.createTextNode(child.textContent ?? ""));
+          return;
+        }
+        Array.from(child.attributes).forEach((attr) => {
+          const name = attr.name.toLowerCase();
+          if (child.tagName === "A") {
+            if (!["href", "target", "rel"].includes(name)) child.removeAttribute(attr.name);
+          } else if (child.tagName === "SPAN") {
+            if (name === "class") {
+              if (!child.classList.contains("wbs-chat-mention")) child.removeAttribute("class");
+            } else if (name === "style") {
+              const colorMatch = attr.value.match(/color\s*:\s*([^;]+)/i);
+              if (colorMatch) {
+                child.setAttribute("style", `color: ${colorMatch[1].trim()}`);
+              } else {
+                child.removeAttribute("style");
+              }
+            } else {
+              child.removeAttribute(attr.name);
+            }
+          } else if (child.tagName === "FONT") {
+            if (name !== "color") child.removeAttribute(attr.name);
+          } else {
+            child.removeAttribute(attr.name);
+          }
+        });
+        walk(child);
+      });
+    };
+    walk(container);
+    return container.innerHTML;
+  };
+
+  const getPlainTextFromHtml = (html: string) => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+    return doc.body.textContent?.replace(/\u00a0/g, " ").trim() ?? "";
+  };
+
+  const renderChatMessage = (value: string) => {
+    const hasHtml = /<\/?[a-z][\s\S]*>/i.test(value);
+    if (hasHtml) return sanitizeChatHtml(value);
+    return formatChatMessage(value);
+  };
+
+  const handleChatTool = (action: string) => {
+    const editor = chatEditorRef.current;
+    if (!editor) return;
+    editor.focus();
+    switch (action) {
+      case "bold":
+        document.execCommand("bold");
+        break;
+      case "italic":
+        document.execCommand("italic");
+        break;
+      case "underline":
+        document.execCommand("underline");
+        break;
+      case "bullets":
+        document.execCommand("insertUnorderedList");
+        break;
+      case "numbered":
+        document.execCommand("insertOrderedList");
+        break;
+      case "checklist":
+        document.execCommand(
+          "insertHTML",
+          false,
+          '<ul class="wbs-chat-list wbs-chat-list--check"><li><span class="wbs-chat-checkbox"></span>&nbsp;</li></ul>'
+        );
+        break;
+      case "link": {
+        const url = window.prompt("URL do link") ?? "";
+        if (!url) return;
+        document.execCommand("createLink", false, url);
+        break;
+      }
+      case "mention":
+        document.execCommand("insertText", false, "@");
+        break;
+      default:
+        break;
+    }
+    setChatDraft(editor.innerHTML);
+    updateChatFormatState();
+  };
+
+  const applyTextStyle = (style: string) => {
+    const editor = chatEditorRef.current;
+    if (!editor) return;
+    editor.focus();
+    document.execCommand("formatBlock", false, style);
+    setChatDraft(editor.innerHTML);
+    setShowTextStyleMenu(false);
+  };
+
+  const handleChatToolMouseDown = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+  };
+
+  const setTextColor = (color: string) => {
+    const editor = chatEditorRef.current;
+    if (!editor) return;
+    editor.focus();
+    document.execCommand("foreColor", false, color);
+    setChatDraft(editor.innerHTML);
+    setShowTextColorPicker(false);
+    updateChatFormatState();
+  };
+
+  const insertEmoji = (emoji: string) => {
+    const editor = chatEditorRef.current;
+    if (!editor) return;
+    editor.focus();
+    document.execCommand("insertText", false, emoji);
+    setChatDraft(editor.innerHTML);
+    setShowEmojiPicker(false);
+  };
+
+  const updateChatFormatState = () => {
+    const editor = chatEditorRef.current;
+    if (!editor || !editor.contains(document.activeElement)) return;
+    setChatFormatState({
+      bold: document.queryCommandState("bold"),
+      italic: document.queryCommandState("italic"),
+      underline: document.queryCommandState("underline"),
+      bullets: document.queryCommandState("insertUnorderedList"),
+      numbered: document.queryCommandState("insertOrderedList")
+    });
+  };
+
+  useEffect(() => {
+    const handler = () => updateChatFormatState();
+    document.addEventListener("selectionchange", handler);
+    return () => document.removeEventListener("selectionchange", handler);
+  }, []);
+
+  useEffect(() => {
+    if (!openChatTaskId) return;
+    const editor = chatEditorRef.current;
+    if (!editor) return;
+    editor.innerHTML = chatDraft || "";
+  }, [openChatTaskId]);
+
+  const emojiList = [
+    "😀","😁","😂","🤣","😊","😍","😘","😎","🤩","🥳","😇","🙂","😉","😌","😅","😆","😋","😜","🤗","🤔",
+    "😐","🙄","😏","😬","😴","🤤","😷","🤒","🤕","🤢","🤮","🥶","🥵","🤯","😵","😱","😤","😡","🤬","😢",
+    "😭","😥","😓","😪","😮","😲","😳","🥺","🤧","🤫","🤭","🫢","🫣","🤐","🫡","🤝","👏","🙌","👍","👎",
+    "👊","✊","🤞","✌️","🤘","👌","🙏","💪","🧠","👀","👁️","🫶","💙","💜","💚","💛","🧡","❤️","🖤","🤍",
+    "💔","✨","⭐","🔥","💥","💡","🎯","✅","❌","⚠️","⏰","📌","📎","📝","📢","🔔","💼","🧩","🚀","🧪",
+    "🏁","📅","🕒","💬","🗂️","📈","📉","🧾","🧭","🔗","🎉","🎁","🎨","🧷","🛠️","🔧","💻","📱","🖥️","🌐"
+  ];
 
   type Row = {
 
@@ -3407,11 +3740,32 @@ export const WbsTreeView = ({
 
 
   const openChatRow = openChatTaskId ? rowMap.get(openChatTaskId) ?? null : null;
+  const chatStatus = openChatRow ? normalizeStatus(openChatRow.node.status) : null;
+  const chatStatusTone = chatStatus ? STATUS_TONE[chatStatus as Status] ?? "neutral" : "neutral";
+  const chatPriorityValue = openChatRow
+    ? normalizePriorityValue(openChatRow.node.priority ?? openChatRow.node.prioridade ?? openChatRow.node.task_priority)
+    : "MEDIUM";
+  const chatPriorityLabel =
+    PRIORITY_OPTIONS.find((option) => option.value === chatPriorityValue)?.label ?? "Média";
+  const chatPriorityTone =
+    chatPriorityValue === "CRITICAL"
+      ? "urgent"
+      : chatPriorityValue === "HIGH"
+        ? "high"
+        : chatPriorityValue === "LOW"
+          ? "low"
+          : "medium";
 
   useEffect(() => {
     if (!openChatTaskId) {
       setChatMessages([]);
       setChatError(null);
+      setEditingCommentId(null);
+      editingDraftRef.current = "";
+      setShowEmojiPicker(false);
+      setShowTextStyleMenu(false);
+      setShowTextColorPicker(false);
+      setPendingDeleteCommentId(null);
       return;
     }
 
@@ -3457,13 +3811,14 @@ export const WbsTreeView = ({
   const chatMessagesForModal = openChatTaskId ? chatMessages : [];
 
   const handleSendChat = async () => {
-    const trimmed = chatDraft.trim();
+    const trimmed = getPlainTextFromHtml(chatDraft);
     if (!trimmed || !openChatTaskId) return;
     
     setIsChatLoading(true);
     setChatError(null);
     
     try {
+      const sanitizedMessage = sanitizeChatHtml(chatDraft);
       const response = await fetch(apiUrl(`/wbs/${openChatTaskId}/comments`), {
         method: "POST",
         headers: {
@@ -3471,7 +3826,7 @@ export const WbsTreeView = ({
           "Content-Type": "application/json",
           "X-Organization-Id": currentOrganizationId
         },
-        body: JSON.stringify({ message: trimmed, authorName: (currentUser as { name?: string } | null)?.name ?? null })
+        body: JSON.stringify({ message: sanitizedMessage, authorName: (currentUser as { name?: string } | null)?.name ?? null })
       });
       
       if (!response.ok) {
@@ -3484,10 +3839,88 @@ export const WbsTreeView = ({
       setChatMessages((prev) => [...prev, created]);
       setChatCounts((prev) => ({ ...prev, [openChatTaskId]: (prev[openChatTaskId] ?? 0) + 1 }));
       setChatDraft("");
+      if (chatEditorRef.current) chatEditorRef.current.innerHTML = "";
+      setShowEmojiPicker(false);
       setChatError(null);
     } catch (error) {
       console.error("Erro na API de Comentários (POST)", error);
       setChatError("Erro ao enviar comentário");
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+  const handleStartEditComment = (message: WbsComment) => {
+    editingDraftRef.current = message.message;
+    setEditingCommentId(message.id);
+  };
+
+  const handleCancelEditComment = () => {
+    editingDraftRef.current = "";
+    setEditingCommentId(null);
+  };
+
+  const handleSaveEditComment = async () => {
+    if (!openChatTaskId || !editingCommentId) return;
+    const trimmed = getPlainTextFromHtml(editingDraftRef.current);
+    if (!trimmed) return;
+    setIsChatLoading(true);
+    setChatError(null);
+    try {
+      const response = await fetch(apiUrl(`/wbs/${openChatTaskId}/comments/${editingCommentId}`), {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${authToken ?? ""}`,
+          "Content-Type": "application/json",
+          "X-Organization-Id": currentOrganizationId
+        },
+        body: JSON.stringify({ message: sanitizeChatHtml(editingDraftRef.current) })
+      });
+      if (!response.ok) {
+        console.error("Erro na API de Comentários (PATCH)", response.status, await response.text());
+        setChatError("Erro ao editar comentário");
+        return;
+      }
+      const updated = (await response.json()) as WbsComment;
+      setChatMessages((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      handleCancelEditComment();
+    } catch (error) {
+      console.error("Erro na API de Comentários (PATCH)", error);
+      setChatError("Erro ao editar comentário");
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!openChatTaskId) return;
+    setPendingDeleteCommentId(commentId);
+  };
+
+  const confirmDeleteComment = async () => {
+    if (!openChatTaskId || !pendingDeleteCommentId) return;
+    setIsChatLoading(true);
+    setChatError(null);
+    try {
+      const response = await fetch(apiUrl(`/wbs/${openChatTaskId}/comments/${pendingDeleteCommentId}`), {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${authToken ?? ""}`,
+          "X-Organization-Id": currentOrganizationId
+        }
+      });
+      if (!response.ok) {
+        console.error("Erro na API de Comentários (DELETE)", response.status, await response.text());
+        setChatError("Erro ao excluir comentário");
+        return;
+      }
+      setChatMessages((prev) => prev.filter((item) => item.id !== pendingDeleteCommentId));
+      setChatCounts((prev) => ({ ...prev, [openChatTaskId]: Math.max((prev[openChatTaskId] ?? 1) - 1, 0) }));
+      if (editingCommentId === pendingDeleteCommentId) handleCancelEditComment();
+      setPendingDeleteCommentId(null);
+    } catch (error) {
+      console.error("Erro na API de Comentários (DELETE)", error);
+      setChatError("Erro ao excluir comentário");
     } finally {
       setIsChatLoading(false);
     }
@@ -5145,36 +5578,307 @@ export const WbsTreeView = ({
           aria-labelledby="wbs-chat-title"
           onClick={(event) => event.stopPropagation()}
         >
-          <div className="gp-modal-header">
-            <h2 id="wbs-chat-title">
-              Chat da tarefa {openChatRow.node.wbsCode ?? openChatRow.displayId} - {openChatRow.node.title ?? "Tarefa"}
-            </h2>
-            <button type="button" className="gp-modal-close" aria-label="Fechar" onClick={() => setOpenChatTaskId(null)}>
-              X
-            </button>
+          <div className="gp-modal-header wbs-chat-header">
+            <div className="wbs-chat-title-wrapper">
+              <h2 id="wbs-chat-title" className="wbs-chat-title">
+                {openChatRow.node.title ?? "Tarefa"}
+              </h2>
+              <p className="wbs-chat-subtitle">
+                Tarefa {openChatRow.node.wbsCode ?? openChatRow.displayId}
+              </p>
+            </div>
+            <div className="wbs-chat-header-actions">
+              <div className="wbs-chat-pills">
+                <span className={`wbs-chat-pill wbs-chat-pill--${chatStatusTone}`}>
+                  {chatStatus ?? "Status"}
+                </span>
+                <span className={`wbs-chat-pill wbs-chat-pill--${chatPriorityTone}`}>
+                  {chatPriorityLabel}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="gp-modal-close"
+                aria-label="Fechar"
+                onClick={() => setOpenChatTaskId(null)}
+              >
+                X
+              </button>
+            </div>
           </div>
           <div className="gp-modal-body wbs-chat-body">
             <div className="wbs-chat-messages">
-              {isChatLoading && <p className="muted">Carregando Comentários...</p>}
+              {isChatLoading && <p className="wbs-chat-empty">Carregando comentários...</p>}
               {!isChatLoading &&
-                chatMessagesForModal.map((message: WbsComment) => (
-                  <div key={message.id} className="wbs-chat-message">
-                    <div className="wbs-chat-message__meta">
-                      <strong>{message.authorName ?? "Autor"}</strong>
-                      <span>{message.createdAt ? new Date(message.createdAt).toLocaleString("pt-BR") : ""}</span>
+                chatMessagesForModal.map((message: WbsComment) => {
+                  const isAuthor = Boolean(currentUserId && message.authorId && message.authorId === currentUserId);
+                  const isMe =
+                    Boolean(currentUserId && message.authorId && message.authorId === currentUserId) ||
+                    (currentUserName &&
+                      message.authorName &&
+                      message.authorName.trim().toLowerCase() === currentUserName.trim().toLowerCase());
+                  return (
+                  <div
+                    key={message.id}
+                    className={`wbs-chat-message ${isMe ? "is-me" : "is-other"}`}
+                  >
+                    <div className="wbs-chat-avatar">{getInitials(message.authorName ?? "Autor")}</div>
+                    <div className="wbs-chat-bubble">
+                      <div className="wbs-chat-message__meta">
+                        <div className="wbs-chat-meta-left">
+                          <span className="wbs-chat-author">{message.authorName ?? "Autor"}</span>
+                          <span className="wbs-chat-time">
+                            {message.createdAt
+                              ? new Date(message.createdAt).toLocaleString("pt-BR", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit"
+                                })
+                              : ""}
+                          </span>
+                        </div>
+                        {isAuthor && (
+                          <div className="wbs-chat-message-actions">
+                            <button type="button" onClick={() => handleStartEditComment(message)}>
+                              Editar
+                            </button>
+                            <button type="button" onClick={() => handleDeleteComment(message.id)}>
+                              Excluir
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {editingCommentId === message.id ? (
+                        <div className="wbs-chat-edit">
+                          <div
+                            className="wbs-chat-editor wbs-chat-editor--inline"
+                            contentEditable
+                            role="textbox"
+                            aria-multiline="true"
+                            suppressContentEditableWarning
+                            onInput={(event) => {
+                              editingDraftRef.current = (event.target as HTMLDivElement).innerHTML;
+                            }}
+                            dangerouslySetInnerHTML={{ __html: editingDraftRef.current }}
+                          />
+                          <div className="wbs-chat-edit-actions">
+                            <button type="button" className="btn-secondary" onClick={handleCancelEditComment}>
+                              Cancelar
+                            </button>
+                            <button type="button" className="btn-primary" onClick={handleSaveEditComment}>
+                              Salvar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          className="wbs-chat-text"
+                          dangerouslySetInnerHTML={{ __html: renderChatMessage(message.message) }}
+                        />
+                      )}
                     </div>
-                    <p>{message.message}</p>
                   </div>
-                ))}
-              {!isChatLoading && chatMessagesForModal.length === 0 && <p className="muted">Nenhum comentário ainda.</p>}
+                );
+                })}
+              {!isChatLoading && chatMessagesForModal.length === 0 && (
+                <p className="wbs-chat-empty">Nenhum comentário ainda.</p>
+              )}
               {chatError && <p className="error-text">{chatError}</p>}
             </div>
             <div className="wbs-chat-composer">
-              <textarea
-                value={chatDraft}
-                onChange={(event) => setChatDraft(event.target.value)}
-                placeholder="Escreva um comentário… use @ para mencionar alguém"
-                rows={3}
+              <div className="wbs-chat-toolbar">
+                <div className="wbs-chat-textstyle">
+                  <button
+                    type="button"
+                    className="wbs-chat-tool wbs-chat-tool--text"
+                    onMouseDown={handleChatToolMouseDown}
+                    onClick={() => setShowTextStyleMenu((prev) => !prev)}
+                  >
+                    T<span>Texto</span>
+                  </button>
+                  {showTextStyleMenu && (
+                    <div className="wbs-chat-textstyle-menu">
+                      <button
+                        type="button"
+                        onMouseDown={handleChatToolMouseDown}
+                        onClick={() => applyTextStyle("p")}
+                      >
+                        Normal text
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={handleChatToolMouseDown}
+                        onClick={() => applyTextStyle("h1")}
+                      >
+                        Heading 1
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={handleChatToolMouseDown}
+                        onClick={() => applyTextStyle("h2")}
+                      >
+                        Heading 2
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={handleChatToolMouseDown}
+                        onClick={() => applyTextStyle("h3")}
+                      >
+                        Heading 3
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={handleChatToolMouseDown}
+                        onClick={() => applyTextStyle("h4")}
+                      >
+                        Heading 4
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className={`wbs-chat-tool is-bold ${chatFormatState.bold ? "is-active" : ""}`}
+                  onMouseDown={handleChatToolMouseDown}
+                  onClick={() => handleChatTool("bold")}
+                >
+                  B
+                </button>
+                <button
+                  type="button"
+                  className={`wbs-chat-tool is-italic ${chatFormatState.italic ? "is-active" : ""}`}
+                  onMouseDown={handleChatToolMouseDown}
+                  onClick={() => handleChatTool("italic")}
+                >
+                  I
+                </button>
+                <button
+                  type="button"
+                  className={`wbs-chat-tool is-underline ${chatFormatState.underline ? "is-active" : ""}`}
+                  onMouseDown={handleChatToolMouseDown}
+                  onClick={() => handleChatTool("underline")}
+                >
+                  U
+                </button>
+                <span className="wbs-chat-sep" />
+                <button
+                  type="button"
+                  className={`wbs-chat-tool ${chatFormatState.bullets ? "is-active" : ""}`}
+                  onMouseDown={handleChatToolMouseDown}
+                  onClick={() => handleChatTool("bullets")}
+                >
+                  •
+                </button>
+                <button
+                  type="button"
+                  className={`wbs-chat-tool ${chatFormatState.numbered ? "is-active" : ""}`}
+                  onMouseDown={handleChatToolMouseDown}
+                  onClick={() => handleChatTool("numbered")}
+                >
+                  1.
+                </button>
+                <button
+                  type="button"
+                  className="wbs-chat-tool"
+                  onMouseDown={handleChatToolMouseDown}
+                  onClick={() => handleChatTool("checklist")}
+                >
+                  ☑
+                </button>
+                <div className="wbs-chat-textcolor">
+                  <button
+                    type="button"
+                    className="wbs-chat-tool wbs-chat-tool--color"
+                    onMouseDown={handleChatToolMouseDown}
+                    onClick={() => setShowTextColorPicker((prev) => !prev)}
+                  >
+                    A
+                  </button>
+                  {showTextColorPicker && (
+                    <div className="wbs-chat-color-menu">
+                      {[
+                        "#111827",
+                        "#1f3b6d",
+                        "#0f766e",
+                        "#15803d",
+                        "#f59e0b",
+                        "#dc2626",
+                        "#7c3aed",
+                        "#6b7280",
+                        "#2563eb",
+                        "#0891b2",
+                        "#16a34a",
+                        "#f97316",
+                        "#ef4444",
+                        "#9333ea",
+                        "#111827",
+                        "#e2e8f0"
+                      ].map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          className="wbs-chat-color"
+                          style={{ background: color }}
+                          onClick={() => setTextColor(color)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="wbs-chat-tool"
+                  onMouseDown={handleChatToolMouseDown}
+                  onClick={() => handleChatTool("link")}
+                >
+                  🔗
+                </button>
+                <button
+                  type="button"
+                  className="wbs-chat-tool"
+                  onMouseDown={handleChatToolMouseDown}
+                  onClick={() => handleChatTool("mention")}
+                >
+                  @
+                </button>
+                <button
+                  type="button"
+                  className="wbs-chat-tool"
+                  onMouseDown={handleChatToolMouseDown}
+                  onClick={() => setShowEmojiPicker((prev) => !prev)}
+                >
+                  🙂
+                </button>
+              </div>
+              {showEmojiPicker && (
+                <div className="wbs-chat-emoji-picker">
+                  {emojiList.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      className="wbs-chat-emoji"
+                      onClick={() => insertEmoji(emoji)}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div
+                ref={chatEditorRef}
+                className="wbs-chat-editor"
+                contentEditable
+                role="textbox"
+                aria-multiline="true"
+                data-placeholder="Escreva um comentário… use @ para mencionar alguém"
+                onInput={(event) => {
+                  setChatDraft((event.target as HTMLDivElement).innerHTML);
+                  updateChatFormatState();
+                }}
+                onKeyUp={updateChatFormatState}
+                onMouseUp={updateChatFormatState}
               />
               <div className="wbs-chat-actions">
                 <button type="button" className="btn-secondary" onClick={() => setOpenChatTaskId(null)}>
@@ -5184,7 +5888,7 @@ export const WbsTreeView = ({
                   type="button"
                   className="btn-primary"
                   onClick={handleSendChat}
-                  disabled={!chatDraft.trim() || isChatLoading}
+                  disabled={!getPlainTextFromHtml(chatDraft) || isChatLoading}
                 >
                   Enviar
                 </button>
@@ -5194,6 +5898,39 @@ export const WbsTreeView = ({
         </div>
       </div>
   )}
+    {pendingDeleteCommentId && (
+      <div className="gp-modal-backdrop" onClick={() => setPendingDeleteCommentId(null)}>
+        <div
+          className="gp-modal gp-modal--compact"
+          role="dialog"
+          aria-modal="true"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="gp-modal-header">
+            <h2>Excluir comentário</h2>
+            <button
+              type="button"
+              className="gp-modal-close"
+              aria-label="Fechar"
+              onClick={() => setPendingDeleteCommentId(null)}
+            >
+              X
+            </button>
+          </div>
+          <div className="gp-modal-body">
+            <p className="muted">Tem certeza que deseja excluir este comentário? Esta ação não pode ser desfeita.</p>
+            <div className="wbs-chat-confirm-actions">
+              <button type="button" className="btn-secondary" onClick={() => setPendingDeleteCommentId(null)}>
+                Cancelar
+              </button>
+              <button type="button" className="btn-danger" onClick={confirmDeleteComment} disabled={isChatLoading}>
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 
@@ -5201,235 +5938,159 @@ export const WbsTreeView = ({
 
 
 
-export const GanttTimeline = ({ tasks, milestones }: { tasks: any[]; milestones: any[] }) => {
-
-
-
-  if (!tasks.length) return <p className="muted">Nenhuma tarefa com datas definidas.</p>;
-
-
-
-
-
-
-
-  const allDates = [
-
-
-
-    ...tasks.flatMap((task) => [task.startDate, task.endDate]),
-
-
-
-    ...milestones.map((milestone) => milestone.dueDate)
-
-
-
-  ]
-
-
-
-    .filter(Boolean)
-
-
-
-    .map((value) => new Date(value as string));
-
-
-
-
-
-
-
-  if (!allDates.length) {
-
-
-
-    return <p className="muted">Defina datas para visualizar o cronograma.</p>;
-
-
-
-  }
-
-
-
-
-
-
-
-  const minDate = allDates.reduce((acc, date) => (acc.getTime() > date.getTime() ? date : acc), allDates[0]);
-
-
-
-  const maxDate = allDates.reduce((acc, date) => (acc.getTime() < date.getTime() ? date : acc), allDates[0]);
-
-
-
-  const totalDays = Math.max(1, (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
-
-
-
-
-
-
-
-  const offsetPercent = (value?: string | null) => {
-
-
-
-    if (!value) return 0;
-
-
-
-    const diff = new Date(value).getTime() - minDate.getTime();
-
-
-
-    return Math.max(0, (diff / (1000 * 60 * 60 * 24)) / totalDays) * 100;
-
-
-
+export const GanttTimeline = ({ tasks, milestones: _milestones }: { tasks: any[]; milestones: any[] }) => {
+  const [viewDate, setViewDate] = useState(() => new Date());
+
+  const monthStart = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+  const monthEnd = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
+  const daysInMonth = monthEnd.getDate();
+  const dayList = Array.from({ length: daysInMonth }, (_, index) => {
+    const date = new Date(monthStart);
+    date.setDate(index + 1);
+    return date;
+  });
+  const monthLabel = monthStart.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const today = new Date();
+  const todayKey = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const todayIndex = dayList.findIndex((date) => date.getTime() === todayKey);
+
+  const visibleTasks = tasks.filter((task) => {
+    if (!task.startDate && !task.endDate) return false;
+    const startDate = task.startDate ? new Date(task.startDate) : task.endDate ? new Date(task.endDate) : null;
+    const endDate = task.endDate ? new Date(task.endDate) : startDate;
+    if (!startDate || !endDate) return false;
+    return startDate <= monthEnd && endDate >= monthStart;
+  });
+  const hasVisibleTasks = visibleTasks.length > 0;
+
+  const statusTone = (status?: string | null) => {
+    const normalized = normalizeStatus(status ?? "");
+    if (normalized === "Em andamento") return "in-progress";
+    if (normalized === "Finalizado") return "done";
+    if (normalized === "Em atraso") return "late";
+    if (normalized === "Em risco") return "risk";
+    if (normalized === "Homologação") return "review";
+    if (normalized === "Não iniciado") return "not-started";
+    return "not-started";
   };
 
+  const clampIndex = (value: number) => Math.min(Math.max(value, 0), daysInMonth - 1);
 
-
-
-
-
-
-  const widthPercent = (start?: string | null, end?: string | null) => {
-
-
-
-    if (!start || !end) return 5;
-
-
-
-    const diff = new Date(end).getTime() - new Date(start).getTime();
-
-
-
-    return Math.max(5, (diff / (1000 * 60 * 60 * 24)) / totalDays * 100);
-
-
-
+  const getBarStyle = (start?: string | null, end?: string | null) => {
+    const startDate = start ? new Date(start) : end ? new Date(end) : null;
+    const endDate = end ? new Date(end) : startDate;
+    if (!startDate || !endDate) return { left: "0%", width: "0%" };
+    const startIndex = clampIndex(Math.floor((startDate.getTime() - monthStart.getTime()) / 86400000));
+    const endIndex = clampIndex(Math.floor((endDate.getTime() - monthStart.getTime()) / 86400000));
+    const left = (startIndex / daysInMonth) * 100;
+    const width = ((Math.max(endIndex, startIndex) - startIndex + 1) / daysInMonth) * 100;
+    return { left: `${left}%`, width: `${width}%` };
   };
-
-
-
-
-
-
 
   return (
-
-
-
-    <div className="gantt">
-
-
-
-      {tasks.map((task) => (
-
-
-
-        <div key={task.id} className="gantt-row">
-
-
-
-          <div className="gantt-row__label">
-
-
-
-            <strong>{task.title}</strong>
-
-
-
-            <span>{task.status}</span>
-
-
-
-          </div>
-
-
-
-          <div className="gantt-row__bar">
-
-
-
-            <span
-
-
-
-              style={{
-
-
-
-                left: `${offsetPercent(task.startDate)}%`,
-
-
-
-                width: `${widthPercent(task.startDate, task.endDate)}%`
-
-
-
-              }}
-
-
-
-            />
-
-
-
-          </div>
-
-
-
+    <div className="timeline-board">
+      <div className="timeline-toolbar">
+        <div className="timeline-toolbar__nav">
+          <button
+            type="button"
+            className="timeline-btn timeline-btn--icon"
+            onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))}
+            aria-label="Mês anterior"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 18 9 12l6-6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="timeline-btn timeline-btn--icon"
+            onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))}
+            aria-label="Próximo mês"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </button>
+          <button type="button" className="timeline-btn timeline-btn--ghost" onClick={() => setViewDate(new Date())}>
+            Hoje
+          </button>
         </div>
-
-
-
-      ))}
-
-
-
-      <div className="gantt-milestones">
-
-
-
-        <strong>Marcos:</strong>{" "}
-
-
-
-        {milestones.length
-
-
-
-          ? milestones.map((milestone) => `${milestone.name} (${formatDate(milestone.dueDate)})`).join(", ")
-
-
-
-          : "Nenhum marco"}
-
-
-
+        <div className="timeline-toolbar__title">
+          <span className="timeline-toolbar__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <path d="M16 2v4" />
+              <path d="M8 2v4" />
+              <path d="M3 10h18" />
+            </svg>
+          </span>
+          {monthLabel}
+        </div>
+        <div className="timeline-toolbar__legend">
+          <span className="timeline-legend-item is-not-started">Não Iniciado</span>
+          <span className="timeline-legend-item is-in-progress">Em Andamento</span>
+          <span className="timeline-legend-item is-done">Concluído</span>
+          <span className="timeline-legend-item is-late">Atrasado</span>
+          <span className="timeline-legend-item is-risk">Em risco</span>
+          <span className="timeline-legend-item is-review">Homologação</span>
+        </div>
       </div>
 
+      <div
+        className="timeline-grid"
+        style={{
+          ["--days" as any]: daysInMonth,
+          ["--today-index" as any]: Math.max(todayIndex, 0),
+          ["--label-width" as any]: "240px"
+        }}
+      >
+        <div className="timeline-header">
+          <div className="timeline-header__label">Tarefa</div>
+          <div className="timeline-header__days">
+            {dayList.map((date) => {
+              const isToday = date.getTime() === todayKey;
+              const dayName = date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+              return (
+                <div key={date.toISOString()} className={`timeline-day ${isToday ? "is-today" : ""}`}>
+                  <span>{dayName}</span>
+                  <strong>{String(date.getDate()).padStart(2, "0")}</strong>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
-
+        <div className="timeline-body">
+          {todayIndex >= 0 ? <span className="timeline-today-marker" aria-hidden="true" /> : null}
+          {hasVisibleTasks ? (
+            visibleTasks.map((task: any) => (
+              <div key={task.id} className="timeline-row">
+              <div className="timeline-row__label">
+                <strong>{task.title}</strong>
+                <span>{normalizeStatus(task.status ?? "") || "Sem status"}</span>
+                {task.projectName ? <span className="timeline-row__project">{task.projectName}</span> : null}
+              </div>
+                <div className="timeline-row__track">
+                  <div className={`timeline-bar ${statusTone(task.status)}`} style={getBarStyle(task.startDate, task.endDate)}>
+                    <span>{task.title}</span>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="timeline-row timeline-row--empty">
+              <div className="timeline-row__label">
+                <strong>Nenhuma tarefa neste mês</strong>
+                <span>Defina datas para visualizar o cronograma.</span>
+              </div>
+              <div className="timeline-row__track" />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
-
-
-
   );
-
-
-
 };
-
-
-
-
 
 
 
@@ -11093,11 +11754,15 @@ export const DashboardLayout = ({
             <img src="/logo.png" alt="G&P Gesto de Projetos" className="sidebar-logo-img" />
             {!isCollapsed && (
               <div className="sidebar-brand-text">
-                <span className="brand-sigla">G&P</span>
+                <span className="brand-sigla">Meu G&P</span>
                 <span className="brand-subtitle">Gesto de Projetos</span>
               </div>
             )}
-            <span className="sidebar-toggle-icon">{isCollapsed ? "" : ""}</span>
+            <span className={`sidebar-toggle-icon ${isCollapsed ? "is-collapsed" : ""}`}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15 18 9 12l6-6" />
+              </svg>
+            </span>
 </button>
         </div>
 
@@ -11136,20 +11801,6 @@ export const DashboardLayout = ({
           })}
 
         </nav>
-
-        <div className="sidebar-plan">
-
-
-
-          <p>
-
-            Plano Pro · <strong>20/50</strong> projetos
-
-          </p>
-
-        </div>
-
-
 
       </aside>
 

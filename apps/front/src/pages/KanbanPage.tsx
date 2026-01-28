@@ -18,6 +18,8 @@ const KanbanPage: React.FC = () => {
   const {
     wbsNodes,
     members,
+    projects,
+    selectedProjectId,
     wbsError,
     onUpdateWbsNode,
     onReloadWbs,
@@ -41,7 +43,8 @@ const KanbanPage: React.FC = () => {
 
   const [filterText, setFilterText] = useState("");
   const [filterOwner, setFilterOwner] = useState<string>("ALL");
-  const [filterPriority] = useState<string>("ALL");
+  const [filterPriority, setFilterPriority] = useState<string>("ALL");
+  const [filterDue, setFilterDue] = useState<string>("ALL");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   const flattenNodes = (nodes: any[]): any[] => {
@@ -54,9 +57,17 @@ const KanbanPage: React.FC = () => {
   };
 
   const allNodes = useMemo(() => flattenNodes(wbsNodes ?? []), [wbsNodes]);
+  const projectNameMap = useMemo(
+    () => new Map((projects ?? []).map((project: any) => [project.id, project.name])),
+    [projects]
+  );
 
   const filtered = useMemo(() => {
     const q = filterText.trim().toLowerCase();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const soonLimit = new Date(today);
+    soonLimit.setDate(soonLimit.getDate() + 7);
 
     return allNodes.filter((node) => {
       if (node.deletedAt) return false;
@@ -74,6 +85,18 @@ const KanbanPage: React.FC = () => {
         if (pri !== filterPriority) return false;
       }
 
+      if (filterDue !== "ALL") {
+        const rawDate =
+          node.endDate ?? node.dueDate ?? node.endAt ?? node.end ?? null;
+        const date = rawDate ? new Date(rawDate) : null;
+        const valid = date && !Number.isNaN(date.getTime()) ? date : null;
+        if (!valid) return false;
+        const dateOnly = new Date(valid);
+        dateOnly.setHours(0, 0, 0, 0);
+        if (filterDue === "OVERDUE" && dateOnly >= today) return false;
+        if (filterDue === "UPCOMING" && (dateOnly < today || dateOnly > soonLimit)) return false;
+      }
+
       if (!q) return true;
 
       const code = String(node.wbsCode ?? node.code ?? node.displayId ?? "").toLowerCase();
@@ -81,7 +104,7 @@ const KanbanPage: React.FC = () => {
 
       return code.includes(q) || title.includes(q);
     });
-  }, [allNodes, filterOwner, filterPriority, filterText]);
+  }, [allNodes, filterOwner, filterPriority, filterDue, filterText]);
 
   const mapToTaskStatus = useCallback((raw?: string | null): TaskStatus => {
     const normalized = normalizeStatus(raw);
@@ -126,9 +149,16 @@ const KanbanPage: React.FC = () => {
         : undefined;
       grouped[status].push({
         id: node.id,
-        title: `${node.wbsCode ?? node.code ?? ""} ${node.title ?? "Tarefa"}`.trim(),
+        title: `${node.title ?? "Tarefa"}`.trim(),
         code: node.wbsCode ?? node.code ?? "",
         status,
+        projectName:
+          node.projectName ??
+          (node.projectId ? projectNameMap.get(node.projectId) : null) ??
+          (selectedProjectId && selectedProjectId !== "all"
+            ? projectNameMap.get(selectedProjectId)
+            : null) ??
+          undefined,
         dueDate: node.endDate ?? node.dueDate ?? node.endAt ?? node.end ?? undefined,
         startDate: node.startDate ?? node.startAt ?? node.start ?? undefined,
         endDate: node.endDate ?? node.dueDate ?? node.endAt ?? node.end ?? undefined,
@@ -145,7 +175,7 @@ const KanbanPage: React.FC = () => {
       tasks: grouped[status],
       wipLimit: undefined,
     }));
-  }, [filtered, mapToTaskStatus]);
+  }, [filtered, mapToTaskStatus, projectNameMap, selectedProjectId]);
 
   const handleDragEnd = async (result: any) => {
     const { destination, source, draggableId } = result;
@@ -223,8 +253,26 @@ const KanbanPage: React.FC = () => {
             ))}
           </select>
 
-          <select className="gp-input" value={filterPriority} onChange={() => {}}>
+          <select
+            className="gp-input"
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value)}
+          >
             <option value="ALL">Prioridade</option>
+            <option value="CRITICAL">Urgente</option>
+            <option value="HIGH">Alta</option>
+            <option value="MEDIUM">Média</option>
+            <option value="LOW">Baixa</option>
+          </select>
+
+          <select
+            className="gp-input"
+            value={filterDue}
+            onChange={(e) => setFilterDue(e.target.value)}
+          >
+            <option value="ALL">Datas</option>
+            <option value="UPCOMING">A vencer</option>
+            <option value="OVERDUE">Vencidas</option>
           </select>
         </div>
       </header>
