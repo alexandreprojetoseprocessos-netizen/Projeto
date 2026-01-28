@@ -183,7 +183,8 @@ wbsRouter.patch("/:nodeId/comments/:commentId", async (req: RequestWithUser, res
   }
 
   const isAuthor = existing.authorId && existing.authorId === req.user?.id;
-  const isManager = [ProjectRole.MANAGER, ProjectRole.APPROVER].includes(access.membership.role);
+  const managerRoles: ProjectRole[] = [ProjectRole.MANAGER, ProjectRole.APPROVER];
+  const isManager = managerRoles.includes(access.membership.role);
   if (!isAuthor && !isManager) {
     return res.status(403).json({ message: "Sem permissao para editar" });
   }
@@ -216,7 +217,8 @@ wbsRouter.delete("/:nodeId/comments/:commentId", async (req: RequestWithUser, re
   }
 
   const isAuthor = existing.authorId && existing.authorId === req.user?.id;
-  const isManager = [ProjectRole.MANAGER, ProjectRole.APPROVER].includes(access.membership.role);
+  const managerRoles: ProjectRole[] = [ProjectRole.MANAGER, ProjectRole.APPROVER];
+  const isManager = managerRoles.includes(access.membership.role);
   if (!isAuthor && !isManager) {
     return res.status(403).json({ message: "Sem permissao para excluir" });
   }
