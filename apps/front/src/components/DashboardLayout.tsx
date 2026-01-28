@@ -37,6 +37,7 @@ import {
   type HTMLAttributes
 
 } from "react";
+import { LogOut, Search } from "lucide-react";
 
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { normalizeStatus, STATUS_ORDER, type Status } from "../utils/status";
@@ -3085,6 +3086,31 @@ export const WbsTreeView = ({
     return end < now;
   };
 
+  const resolveServiceHours = useCallback(
+    (node: any) => {
+      if (!node) return null;
+      const multiplier = Number(node.serviceMultiplier ?? 1) || 1;
+      const selectedService = serviceCatalog.find((service) => service.id === node.serviceCatalogId) ?? null;
+      const serviceBaseHours =
+        selectedService && selectedService.hoursBase !== undefined
+          ? Number(selectedService.hoursBase ?? 0)
+          : selectedService && selectedService.hours !== undefined
+          ? Number(selectedService.hours ?? 0)
+          : null;
+
+      const computed =
+        typeof node.serviceHours === "number"
+          ? node.serviceHours
+          : serviceBaseHours !== null
+          ? serviceBaseHours * multiplier
+          : null;
+
+      if (computed === null || Number.isNaN(computed)) return null;
+      return computed;
+    },
+    [serviceCatalog]
+  );
+
   const filteredRows = useMemo(() => {
     const q = filterText?.trim().toLowerCase();
     const normalizedFilter = filterStatus && filterStatus !== "ALL" ? normalizeStatus(filterStatus) : null;
@@ -3131,6 +3157,21 @@ export const WbsTreeView = ({
       );
     });
   }, [filterText, filterOverdue, filterOwner, filterService, filterStatus, resolveDisplayCode, visibleRows]);
+
+  const plannedHoursTotal = useMemo(
+    () =>
+      filteredRows.reduce((sum, row) => {
+        const hours = resolveServiceHours(row.node);
+        return sum + (typeof hours === "number" ? hours : 0);
+      }, 0),
+    [filteredRows, resolveServiceHours]
+  );
+
+  const plannedHoursLabel = useMemo(() => {
+    const rounded = Math.round(plannedHoursTotal * 100) / 100;
+    if (!rounded) return "0h";
+    return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(2)}h`;
+  }, [plannedHoursTotal]);
 
   const visibleIds = useMemo(() => filteredRows.map((row) => row.node.id), [filteredRows]);
 
@@ -3208,7 +3249,7 @@ export const WbsTreeView = ({
 
 
 
-      if (!authToken || !selectedProjectId) return;
+      if (!authToken || !selectedProjectId || selectedProjectId === "all") return;
 
 
 
@@ -3977,7 +4018,7 @@ export const WbsTreeView = ({
 
   const moveRow = useCallback(
     async (nodeId: string, direction: "UP" | "DOWN") => {
-      if (!selectedProjectId || !authToken || !currentOrganizationId) return;
+      if (!selectedProjectId || selectedProjectId === "all" || !authToken || !currentOrganizationId) return;
       const row = rowMap.get(nodeId);
       if (!row) return;
 
@@ -4023,7 +4064,7 @@ export const WbsTreeView = ({
   const handleMenuAction = async (event: MouseEvent<HTMLButtonElement>, action: RowAction, node: any) => {
     event.stopPropagation();
 
-    if (!selectedProjectId || !authToken || !currentOrganizationId) {
+    if (!selectedProjectId || selectedProjectId === "all" || !authToken || !currentOrganizationId) {
       setOpenMenuId(null);
       return;
     }
@@ -4131,7 +4172,7 @@ export const WbsTreeView = ({
   };
 
   const handleBulkTrash = async () => {
-    if (!selectedProjectId || !authToken || !currentOrganizationId) return;
+    if (!selectedProjectId || selectedProjectId === "all" || !authToken || !currentOrganizationId) return;
     if (selectedTaskIds.length === 0) return;
     const confirmMove = window.confirm(`Enviar ${selectedTaskIds.length} tarefas para a lixeira?`);
     if (!confirmMove) return;
@@ -4255,7 +4296,7 @@ export const WbsTreeView = ({
             <col style={{ width: "32px" }} />
             <col style={{ width: "50px" }} />
             <col style={{ width: "70px" }} />
-            <col style={{ width: "90px" }} />
+            <col style={{ width: "120px" }} />
             <col style={{ width: "320px" }} />
             <col style={{ width: "170px" }} />
             <col style={{ width: "140px" }} />
@@ -4293,7 +4334,14 @@ export const WbsTreeView = ({
             <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Responsável</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Catálogo de Serviços</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Multiplicador</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">HR</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">
+              <div className="flex flex-col leading-tight">
+                <span>Horas Total Prevista</span>
+                <span className="text-[10px] text-slate-400 font-medium normal-case">
+                  Total {plannedHoursLabel}
+                </span>
+              </div>
+            </th>
             <th className="w-[150px] px-3 py-2 text-left align-middle">Dependncias</th>
             <th className="w-[150px] px-3 py-2 text-center align-middle">Detalhes</th>
           </tr>
@@ -5996,7 +6044,10 @@ export const ProjectDetailsTabs = ({
     if (!value) return "-";
 
     try {
-      return new Date(value).toLocaleDateString("pt-BR", {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "-";
+      const safeDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
+      return safeDate.toLocaleDateString("pt-BR", {
         day: "2-digit",
         month: "short"
       });
@@ -10143,12 +10194,19 @@ export const DashboardLayout = ({
   const projectMeta = (portfolio as PortfolioProject[]).find((project) => project.projectId === selectedProjectId) ?? null;
 
   const location = useLocation();
+  const isEapRoute = location.pathname.toLowerCase().includes("/eap") || location.pathname.toLowerCase().includes("/edt");
 
   const navigate = useNavigate();
 
   const { signOut } = useAuth();
 
   const [isProjectModalOpen, setProjectModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isEapRoute || selectedProjectId !== "all") return;
+    if (!projects?.length) return;
+    onSelectProject(projects[0].id);
+  }, [isEapRoute, selectedProjectId, projects, onSelectProject]);
 
 
 
@@ -11022,7 +11080,7 @@ export const DashboardLayout = ({
           {sidebarNavigation.map((item) => {
             const Icon = item.icon;
             const computedPath =
-              item.id === "edt" && selectedOrganizationId && selectedProjectId
+              item.id === "edt" && selectedOrganizationId && selectedProjectId && selectedProjectId !== "all"
                 ? `/EAP/organizacao/${selectedOrganizationId}/projeto/${selectedProjectId}`
                 : item.path;
 
@@ -11086,7 +11144,14 @@ export const DashboardLayout = ({
         <div className="topbar-inner">
           <div className="topbar-left">
             <div className="header-search-wrapper">
-              <input className="header-search-input" type="search" placeholder="Buscar projetos, tarefas, pessoas..." />
+              <div className="header-search">
+                <Search className="header-search-icon" aria-hidden="true" />
+                <input
+                  className="header-search-input"
+                  type="search"
+                  placeholder="Buscar projetos, tarefas, pessoas..."
+                />
+              </div>
             </div>
           </div>
 
@@ -11103,6 +11168,10 @@ export const DashboardLayout = ({
                   value={selectedProjectId || ""}
                   onChange={(event) => {
                     const newId = event.target.value;
+                    if (newId === "all") {
+                      onSelectProject(newId);
+                      return;
+                    }
                     if (newId) {
                       onSelectProject(newId);
                     }
@@ -11110,6 +11179,7 @@ export const DashboardLayout = ({
                   disabled={!projects?.length}
                 >
                   {!selectedProjectId && <option value="">Selecione um projeto</option>}
+                  {!isEapRoute && projects?.length ? <option value="all">Todos</option> : null}
                   {(projects || []).map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.name}
@@ -11132,6 +11202,7 @@ export const DashboardLayout = ({
                   navigate("/", { replace: true });
                 }}
               >
+                <LogOut className="logout-icon" aria-hidden="true" />
                 Sair
               </button>
             </div>

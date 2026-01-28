@@ -2,7 +2,7 @@
 import { useOutletContext } from "react-router-dom";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
 import type { PortfolioProject } from "../components/ProjectPortfolio";
-import { normalizeStatus, STATUS_ORDER, type Status } from "../utils/status";
+import { normalizeStatus, STATUS_ORDER, toBackendStatus, type BackendTaskStatus, type Status } from "../utils/status";
 
 type StatusTone = "ok" | "risk" | "late";
 
@@ -30,6 +30,57 @@ export type DashboardData = {
   runningTasksCount: number | null;
   riskProjectsCount: number | null;
   loggedHoursLast14Days: number | null;
+  hoursTrackedTotal: number;
+  hoursTrackedThisWeek: number;
+  hoursTrackedPrevWeek: number;
+  hoursTrackedScopeLabel: string;
+  plannedHoursTotal: number;
+  plannedHoursScopeLabel: string;
+  plannedHoursThisWeek: number;
+  plannedHoursPrevWeek: number;
+  plannedHoursThisMonth: number;
+  plannedHoursPrevMonth: number;
+  tasksDoneThisMonth: number;
+  tasksDonePrevMonth: number;
+  taskTotals: {
+    total: number;
+    done: number;
+    inProgress: number;
+  };
+  completionRate: number;
+  completionRateWeekAgo: number;
+  averageProgress: number;
+  completionStreak: number;
+  completionStreakPrevWeek: number;
+  overdueTasksDerived: number;
+  overdueTasksPrevWeek: number;
+  teamPerformanceMembers: Array<{
+    id: string;
+    name: string;
+    done: number;
+    total: number;
+    percent: number;
+  }>;
+  upcomingDeadlines: Array<{
+    id: string;
+    title: string;
+    projectId?: string | null;
+    projectName?: string | null;
+    date: string;
+    priority: string;
+    statusLabel?: string;
+    isLate?: boolean;
+  }>;
+  upcomingDeadlinesMonth: Array<{
+    id: string;
+    title: string;
+    projectId?: string | null;
+    projectName?: string | null;
+    date: string;
+    priority: string;
+    statusLabel?: string;
+    isLate?: boolean;
+  }>;
   highlightedProjects: HighlightedProject[];
   portfolioSummary: {
     activeProjectsCount: number | null;
@@ -168,10 +219,22 @@ const parseDate = (value?: string | number | Date | null) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const isDoneStatus = (status?: string | null) => {
-  const value = String(status ?? "").trim().toUpperCase();
-  return value === "DONE" || value === "COMPLETED";
+const resolveBackendStatus = (status?: string | null) => toBackendStatus(status ?? null);
+
+const isDoneStatus = (status?: string | null) => resolveBackendStatus(status) === "DONE";
+
+const STATUS_LABELS: Record<BackendTaskStatus, string> = {
+  BACKLOG: "Nao iniciado",
+  TODO: "Planejado",
+  IN_PROGRESS: "Em andamento",
+  REVIEW: "Em revisao",
+  DELAYED: "Em atraso",
+  RISK: "Em risco",
+  BLOCKED: "Em risco",
+  DONE: "Finalizado"
 };
+
+const resolveStatusLabel = (status?: string | null) => STATUS_LABELS[resolveBackendStatus(status)] ?? "Nao iniciado";
 
 const formatMonthLabel = (value: Date) =>
   value
@@ -179,8 +242,66 @@ const formatMonthLabel = (value: Date) =>
     .replace(".", "")
     .replace(/^./, (char) => char.toUpperCase());
 
+const resolveResponsibleName = (node: any): string | null => {
+  const candidates = [
+    node?.responsible?.name,
+    node?.responsible?.user?.fullName,
+    node?.responsible?.user?.email,
+    node?.responsible?.email,
+    node?.owner?.name,
+    node?.owner?.fullName,
+    node?.owner?.email,
+    node?.responsibleName,
+    node?.responsibleEmail,
+    node?.assignee?.name,
+    node?.assignee?.fullName,
+    node?.assignee?.email
+  ];
+
+  const matched = candidates.find((value) => typeof value === "string" && value.trim().length > 0);
+  return matched ? matched.trim() : null;
+};
+
+const parseDateForPeriod = (value?: string | number | Date | null) => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === "string" && value.includes("/")) {
+    const [d, m, y] = value.split("/");
+    if (!d || !m || !y) return null;
+    const parsed = new Date(Number(y), Number(m) - 1, Number(d));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return new Date(parsed.getTime() + parsed.getTimezoneOffset() * 60000);
+};
+
+const diffDaysInclusive = (start: Date, end: Date) =>
+  Math.floor((end.getTime() - start.getTime()) / MS_IN_DAY) + 1;
+
+const TASK_TYPES = new Set(["TASK", "SUBTASK", "DELIVERABLE", "ACTIVITY", "MILESTONE"]);
+const NON_TASK_TYPES = new Set(["PHASE", "STAGE", "GROUP", "FOLDER", "SECTION"]);
+
+const isTaskLikeNode = (node: any): boolean => {
+  if (!node || node.deletedAt) return false;
+  const rawType = String(node.type ?? "").trim().toUpperCase();
+  if (rawType) {
+    if (TASK_TYPES.has(rawType)) return true;
+    if (NON_TASK_TYPES.has(rawType)) return false;
+  }
+  return Boolean(
+    node.status ||
+      node.priority ||
+      node.endDate ||
+      node.startDate ||
+      node.responsible ||
+      node.owner
+  );
+};
+
 export const useDashboardData = (): DashboardData => {
   const {
+    selectedProjectId,
     projects,
     kanbanColumns,
     summary,
@@ -190,6 +311,7 @@ export const useDashboardData = (): DashboardData => {
     orgError,
     projectsError,
     comments,
+    serviceCatalog,
     wbsNodes
   } = useOutletContext<DashboardOutletContext>();
 
@@ -203,6 +325,107 @@ export const useDashboardData = (): DashboardData => {
       nodes.flatMap((node) => [node, ...(node?.children ? walk(node.children) : [])]);
     return walk(wbsNodes ?? []);
   }, [wbsNodes]);
+
+  const taskNodes = useMemo(() => {
+    return flattenedWbsNodes.filter((node) => isTaskLikeNode(node));
+  }, [flattenedWbsNodes]);
+
+  const portfolioTotals = useMemo(() => {
+    const base = { total: 0, done: 0, inProgress: 0 };
+    if (!Array.isArray(portfolio) || portfolio.length === 0) return base;
+    return portfolio.reduce(
+      (acc, project) => {
+        acc.total += Number(project.tasksTotal ?? 0);
+        acc.done += Number(project.tasksDone ?? 0);
+        acc.inProgress += Number(project.tasksInProgress ?? 0);
+        return acc;
+      },
+      { ...base }
+    );
+  }, [portfolio]);
+
+  const taskTotals = useMemo(() => {
+    if (portfolioTotals.total > 0) return portfolioTotals;
+    const total = taskNodes.length;
+    const done = taskNodes.filter((node) => isDoneStatus(node?.status)).length;
+    const inProgress = taskNodes.filter((node) => resolveBackendStatus(node?.status) === "IN_PROGRESS").length;
+    return { total, done, inProgress };
+  }, [portfolioTotals, taskNodes]);
+
+  const completionRate = useMemo(
+    () => (taskTotals.total > 0 ? Math.round((taskTotals.done / taskTotals.total) * 100) : 0),
+    [taskTotals]
+  );
+
+  const averageProgress = useMemo(() => {
+    if (Array.isArray(portfolio) && portfolio.length) {
+      const withTotals = portfolio.filter((project) => Number(project.tasksTotal ?? 0) > 0);
+      if (!withTotals.length) return completionRate;
+      const sum = withTotals.reduce(
+        (acc, project) => acc + calcProgress(project.tasksDone, project.tasksTotal),
+        0
+      );
+      return Math.round(sum / withTotals.length);
+    }
+    return completionRate;
+  }, [portfolio, completionRate]);
+
+  const { completionRateWeekAgo, completionStreak, completionStreakPrevWeek, overdueTasksDerived, overdueTasksPrevWeek } =
+    useMemo(() => {
+      const today = startOfDay(new Date());
+      const weekAgo = addDays(today, -7);
+
+      const doneDates = taskNodes
+        .filter((node) => isDoneStatus(node?.status))
+        .map((node) => parseDate(node?.updatedAt ?? node?.completedAt ?? node?.endDate ?? null))
+        .filter(Boolean) as Date[];
+
+      const doneTimestamps = doneDates.map((date) => startOfDay(date).getTime());
+
+      const countCompletedBy = (reference: Date) => {
+        const refTime = reference.getTime();
+        return doneTimestamps.filter((timestamp) => timestamp <= refTime).length;
+      };
+
+      const completionRateWeekAgoValue =
+        taskTotals.total > 0 ? Math.round((countCompletedBy(weekAgo) / taskTotals.total) * 100) : 0;
+
+      const completionDateSet = new Set(doneTimestamps.map((ts) => new Date(ts).toISOString().slice(0, 10)));
+      const getDateKey = (value: Date) => startOfDay(value).toISOString().slice(0, 10);
+
+      const computeStreak = (reference: Date) => {
+        let streak = 0;
+        let cursor = startOfDay(reference);
+        while (completionDateSet.has(getDateKey(cursor))) {
+          streak += 1;
+          cursor = addDays(cursor, -1);
+        }
+        return streak;
+      };
+
+      const countOverdue = (reference: Date) => {
+        const refTime = reference.getTime();
+        return taskNodes.filter((node) => {
+          const endDate = parseDate(node?.endDate ?? null);
+          if (!endDate) return false;
+          if (endDate.getTime() >= refTime) return false;
+          const status = resolveBackendStatus(node?.status);
+          if (status === "DONE") {
+            const completedAt = parseDate(node?.updatedAt ?? node?.completedAt ?? node?.endDate ?? null);
+            if (completedAt && completedAt.getTime() <= refTime) return false;
+          }
+          return true;
+        }).length;
+      };
+
+      return {
+        completionRateWeekAgo: completionRateWeekAgoValue,
+        completionStreak: computeStreak(today),
+        completionStreakPrevWeek: computeStreak(weekAgo),
+        overdueTasksDerived: countOverdue(today),
+        overdueTasksPrevWeek: countOverdue(weekAgo)
+      };
+    }, [taskNodes, taskTotals.total]);
 
   const runningTasksCount = useMemo(() => {
     const boardInProgress = flattenedTasks.filter(
@@ -246,6 +469,189 @@ export const useDashboardData = (): DashboardData => {
     const firstWithHours = (portfolio ?? []).find((project) => typeof project.hoursTracked === "number");
     return typeof firstWithHours?.hoursTracked === "number" ? firstWithHours.hoursTracked : null;
   }, [portfolio, summary]);
+
+  const hoursTrackedTotal = useMemo(() => {
+    if (Array.isArray(portfolio) && portfolio.length) {
+      if (selectedProjectId && selectedProjectId !== "all") {
+        const project = portfolio.find((item) => item.projectId === selectedProjectId) ?? null;
+        if (project && typeof project.hoursTracked === "number") return project.hoursTracked;
+        if (project) return Number(project.hoursTracked ?? 0);
+        return 0;
+      }
+      return portfolio.reduce((acc, project) => acc + Number(project.hoursTracked ?? 0), 0);
+    }
+    if (typeof summary?.hoursTracked === "number") return summary.hoursTracked;
+    return 0;
+  }, [portfolio, summary, selectedProjectId]);
+
+  const { hoursTrackedThisWeek, hoursTrackedPrevWeek } = useMemo(() => {
+    const entries = (summary as any)?.timeEntries;
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return { hoursTrackedThisWeek: 0, hoursTrackedPrevWeek: 0 };
+    }
+
+    const today = new Date();
+    const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+    let current = 0;
+    let previous = 0;
+
+    entries.forEach((entry: any) => {
+      const dateKey = String(entry?.date ?? entry?.entryDate ?? "").slice(0, 10);
+      if (!dateKey) return;
+      const [year, month, day] = dateKey.split("-").map(Number);
+      if (!year || !month || !day) return;
+      const entryUtc = Date.UTC(year, month - 1, day);
+      const diffDays = Math.floor((todayUtc - entryUtc) / MS_IN_DAY);
+      const hours = Number(entry?.hours ?? entry?.totalHours ?? 0);
+      if (Number.isNaN(hours)) return;
+      if (diffDays >= 0 && diffDays < 7) current += hours;
+      else if (diffDays >= 7 && diffDays < 14) previous += hours;
+    });
+
+    const round = (value: number) => Math.round(value * 10) / 10;
+    return { hoursTrackedThisWeek: round(current), hoursTrackedPrevWeek: round(previous) };
+  }, [summary]);
+
+  const hoursTrackedScopeLabel = selectedProjectId === "all" ? "Todos os projetos" : "Projeto atual";
+
+  const plannedHoursTotal = useMemo(() => {
+    if (!taskNodes.length) return 0;
+
+    const serviceIndex = new Map((serviceCatalog ?? []).map((service) => [service.id, service]));
+
+    const resolvePlannedHours = (node: any) => {
+      const rawServiceHours =
+        typeof node?.serviceHours === "number" ? node.serviceHours : Number(node?.serviceHours ?? NaN);
+      if (Number.isFinite(rawServiceHours)) {
+        return Math.max(0, rawServiceHours);
+      }
+
+      const serviceId = node?.serviceCatalogId ?? null;
+      const service = serviceId ? serviceIndex.get(serviceId) ?? null : null;
+      if (!service) return null;
+      const base = service.hoursBase ?? service.hours ?? null;
+      const baseHours = Number(base ?? NaN);
+      if (!Number.isFinite(baseHours)) return null;
+      const multiplier = Number(node?.serviceMultiplier ?? 1) || 1;
+      return Math.max(0, baseHours * multiplier);
+    };
+
+    return taskNodes.reduce((sum, node) => {
+      const hours = resolvePlannedHours(node);
+      return sum + (typeof hours === "number" ? hours : 0);
+    }, 0);
+  }, [taskNodes, serviceCatalog]);
+
+  const plannedHoursScopeLabel = selectedProjectId === "all" ? "Todos os projetos" : "Projeto atual";
+
+  const { plannedHoursThisWeek, plannedHoursPrevWeek, plannedHoursThisMonth, plannedHoursPrevMonth } = useMemo(() => {
+    if (!taskNodes.length) {
+      return {
+        plannedHoursThisWeek: 0,
+        plannedHoursPrevWeek: 0,
+        plannedHoursThisMonth: 0,
+        plannedHoursPrevMonth: 0
+      };
+    }
+
+    const serviceIndex = new Map((serviceCatalog ?? []).map((service) => [service.id, service]));
+
+    const resolvePlannedHours = (node: any) => {
+      const rawServiceHours =
+        typeof node?.serviceHours === "number" ? node.serviceHours : Number(node?.serviceHours ?? NaN);
+      if (Number.isFinite(rawServiceHours)) {
+        return Math.max(0, rawServiceHours);
+      }
+
+      const serviceId = node?.serviceCatalogId ?? null;
+      const service = serviceId ? serviceIndex.get(serviceId) ?? null : null;
+      if (!service) return null;
+      const base = service.hoursBase ?? service.hours ?? null;
+      const baseHours = Number(base ?? NaN);
+      if (!Number.isFinite(baseHours)) return null;
+      const multiplier = Number(node?.serviceMultiplier ?? 1) || 1;
+      return Math.max(0, baseHours * multiplier);
+    };
+
+    const computeHoursForPeriod = (periodStart: Date, periodEndExclusive: Date) => {
+      const periodStartDay = startOfDay(periodStart);
+      const periodEndDay = startOfDay(periodEndExclusive);
+      const periodEndInclusive = addDays(periodEndDay, -1);
+
+      return taskNodes.reduce((sum, node) => {
+        const plannedHours = resolvePlannedHours(node);
+        if (!plannedHours || plannedHours <= 0) return sum;
+
+        const startDate = parseDateForPeriod(node?.startDate ?? null);
+        const endDate = parseDateForPeriod(node?.endDate ?? null);
+        if (!startDate && !endDate) return sum;
+
+        let rangeStart = startDate ?? endDate!;
+        let rangeEnd = endDate ?? startDate!;
+        if (rangeEnd.getTime() < rangeStart.getTime()) {
+          const temp = rangeStart;
+          rangeStart = rangeEnd;
+          rangeEnd = temp;
+        }
+
+        const startDay = startOfDay(rangeStart);
+        const endDay = startOfDay(rangeEnd);
+        const totalDays = Math.max(1, diffDaysInclusive(startDay, endDay));
+
+        const overlapStart = startDay.getTime() > periodStartDay.getTime() ? startDay : periodStartDay;
+        const overlapEnd = endDay.getTime() < periodEndInclusive.getTime() ? endDay : periodEndInclusive;
+        if (overlapEnd.getTime() < overlapStart.getTime()) return sum;
+
+        const overlapDays = Math.max(1, diffDaysInclusive(overlapStart, overlapEnd));
+        const hoursForPeriod = (plannedHours * overlapDays) / totalDays;
+        return sum + hoursForPeriod;
+      }, 0);
+    };
+
+    const today = startOfDay(new Date());
+    const mondayIndex = (today.getDay() + 6) % 7;
+    const weekStart = addDays(today, -mondayIndex);
+    const weekEnd = addDays(weekStart, 7);
+    const prevWeekStart = addDays(weekStart, -7);
+    const prevWeekEnd = weekStart;
+
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const prevMonthEnd = monthStart;
+
+    const round = (value: number) => Math.round(value * 10) / 10;
+
+    return {
+      plannedHoursThisWeek: round(computeHoursForPeriod(weekStart, weekEnd)),
+      plannedHoursPrevWeek: round(computeHoursForPeriod(prevWeekStart, prevWeekEnd)),
+      plannedHoursThisMonth: round(computeHoursForPeriod(monthStart, monthEnd)),
+      plannedHoursPrevMonth: round(computeHoursForPeriod(prevMonthStart, prevMonthEnd))
+    };
+  }, [serviceCatalog, taskNodes]);
+
+  const { tasksDoneThisMonth, tasksDonePrevMonth } = useMemo(() => {
+    if (!taskNodes.length) {
+      return { tasksDoneThisMonth: 0, tasksDonePrevMonth: 0 };
+    }
+    const today = startOfDay(new Date());
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+
+    const initial = { current: 0, previous: 0 };
+
+    const totals = taskNodes.reduce((count, node) => {
+      if (!isDoneStatus(node?.status)) return count;
+      const doneDate = parseDateForPeriod(node?.endDate ?? node?.updatedAt ?? node?.completedAt ?? null);
+      if (!doneDate) return count;
+      if (doneDate >= monthStart && doneDate < nextMonthStart) count.current += 1;
+      else if (doneDate >= prevMonthStart && doneDate < monthStart) count.previous += 1;
+      return count;
+    }, initial);
+
+    return { tasksDoneThisMonth: totals.current, tasksDonePrevMonth: totals.previous };
+  }, [taskNodes]);
 
   const highlightedProjects = useMemo<HighlightedProject[]>(() => {
     const candidates = (portfolio ?? []).map((project) => {
@@ -298,14 +704,172 @@ export const useDashboardData = (): DashboardData => {
       .map(({ endAt, ...project }) => project);
   }, [portfolio]);
 
+  const projectNameMap = useMemo(
+    () => new Map((projects ?? []).map((project) => [project.id, project.name])),
+    [projects]
+  );
+
+  const teamPerformanceMembers = useMemo(() => {
+    if (!taskNodes.length) return [];
+
+    const membersMap = new Map<string, { id: string; name: string; done: number; total: number }>();
+    let unassignedTotal = 0;
+    let unassignedDone = 0;
+
+    taskNodes.forEach((node) => {
+      if (node?.deletedAt) return;
+      const name = resolveResponsibleName(node);
+      const isDone = isDoneStatus(node?.status);
+      if (!name) {
+        unassignedTotal += 1;
+        if (isDone) unassignedDone += 1;
+        return;
+      }
+      const key = name.toLowerCase();
+      const current = membersMap.get(key) ?? {
+        id: `member-${key.replace(/\s+/g, "-")}`,
+        name,
+        done: 0,
+        total: 0
+      };
+      current.total += 1;
+      if (isDone) current.done += 1;
+      membersMap.set(key, current);
+    });
+
+    let members = Array.from(membersMap.values()).map((member) => ({
+      ...member,
+      percent: calcProgress(member.done, member.total)
+    }));
+
+    if (!members.length && unassignedTotal > 0) {
+      return [
+        {
+          id: "member-unassigned",
+          name: "Sem responsavel",
+          done: unassignedDone,
+          total: unassignedTotal,
+          percent: calcProgress(unassignedDone, unassignedTotal)
+        }
+      ];
+    }
+
+    members = members.sort((a, b) => {
+      if (b.done !== a.done) return b.done - a.done;
+      if (b.percent !== a.percent) return b.percent - a.percent;
+      return b.total - a.total;
+    });
+
+    return members.slice(0, 4);
+  }, [taskNodes]);
+
+  const deadlineItems = useMemo(() => {
+    if (!taskNodes.length) return [];
+    const today = startOfDay(new Date());
+
+    const items = taskNodes
+      .map((node) => {
+        if (node?.deletedAt) return null;
+        const endDate = parseDate(node?.endDate ?? null);
+        if (!endDate) return null;
+        const isLate = endDate.getTime() < today.getTime() && !isDoneStatus(node?.status);
+        const priorityRaw =
+          node?.priority ??
+          node?.priorityLabel ??
+          node?.priorityLevel ??
+          node?.task_priority ??
+          node?.taskPriority;
+        const priority = PRIORITY_LABELS[normalizePriorityValue(priorityRaw)];
+        const baseTitle = String(node?.title ?? node?.name ?? "Tarefa");
+        const resolvedProjectId =
+          node?.projectId ?? (selectedProjectId && selectedProjectId !== "all" ? selectedProjectId : null);
+        const projectLabel = String(
+          node?.projectName ?? node?.project?.name ?? (resolvedProjectId ? projectNameMap.get(resolvedProjectId) : "")
+        ).trim();
+        const title = baseTitle;
+        const date = formatDateRange(node?.startDate ?? null, node?.endDate ?? null);
+        const statusLabel = resolveStatusLabel(node?.status);
+
+        return {
+          id: String(node?.id ?? `${title}-${endDate.getTime()}`),
+          title,
+          projectId: resolvedProjectId,
+          projectName: projectLabel || null,
+          date,
+          priority,
+          statusLabel,
+          isLate,
+          endTime: endDate.getTime()
+        };
+      })
+      .filter(Boolean) as Array<{
+      id: string;
+      title: string;
+      projectId?: string | null;
+      projectName?: string | null;
+      date: string;
+      priority: string;
+      statusLabel?: string;
+      isLate?: boolean;
+      endTime: number;
+    }>;
+
+    return items.sort((a, b) => a.endTime - b.endTime);
+  }, [taskNodes, projectNameMap, selectedProjectId]);
+
+  const upcomingDeadlines = useMemo(() => {
+    if (!deadlineItems.length) return [];
+    const limit = 4;
+    const trimEndTime = (list: typeof deadlineItems) => list.slice(0, limit).map(({ endTime, ...item }) => item);
+
+    if (selectedProjectId !== "all") {
+      return trimEndTime(deadlineItems);
+    }
+
+    const pickedKeys = new Set<string>();
+    const pickedIds = new Set<string>();
+    const perProject: typeof deadlineItems = [];
+
+    deadlineItems.forEach((item) => {
+      const key = String(item.projectId ?? item.projectName ?? item.id).toLowerCase();
+      if (!pickedKeys.has(key)) {
+        pickedKeys.add(key);
+        pickedIds.add(item.id);
+        perProject.push(item);
+      }
+    });
+
+    const remaining = deadlineItems.filter((item) => !pickedIds.has(item.id));
+    return trimEndTime([...perProject, ...remaining]);
+  }, [deadlineItems, selectedProjectId]);
+
+  const upcomingDeadlinesMonth = useMemo(() => {
+    if (!deadlineItems.length) return [];
+    const now = startOfDay(new Date());
+    const targetMonth = now.getMonth();
+    const targetYear = now.getFullYear();
+
+    return deadlineItems
+      .filter((item) => {
+        const date = new Date(item.endTime);
+        return date.getMonth() === targetMonth && date.getFullYear() === targetYear;
+      })
+      .map(({ endTime, ...item }) => item);
+  }, [deadlineItems]);
+
   const portfolioSummary = useMemo(
     () => ({
       activeProjectsCount,
       runningTasksCount,
       riskProjectsCount,
-      overdueTasksCount: typeof summary?.overdueTasks === "number" ? summary.overdueTasks : null
+      overdueTasksCount:
+        typeof summary?.overdueTasks === "number"
+          ? summary.overdueTasks
+          : overdueTasksDerived > 0
+            ? overdueTasksDerived
+            : null
     }),
-    [activeProjectsCount, riskProjectsCount, runningTasksCount, summary]
+    [activeProjectsCount, riskProjectsCount, runningTasksCount, summary, overdueTasksDerived]
   );
 
   const eapStatusSummary = useMemo(() => {
@@ -314,8 +878,7 @@ export const useDashboardData = (): DashboardData => {
       {} as Record<Status, number>
     );
 
-    flattenedWbsNodes.forEach((node) => {
-      if (node?.deletedAt) return;
+    taskNodes.forEach((node) => {
       const normalized = normalizeStatus(node?.status);
       counts[normalized] = (counts[normalized] ?? 0) + 1;
     });
@@ -330,7 +893,7 @@ export const useDashboardData = (): DashboardData => {
         color: STATUS_COLORS[status]
       }))
     };
-  }, [flattenedWbsNodes]);
+  }, [taskNodes]);
 
   const eapPrioritySummary = useMemo(() => {
     const counts: Record<PriorityKey, number> = {
@@ -340,8 +903,7 @@ export const useDashboardData = (): DashboardData => {
       LOW: 0
     };
 
-    flattenedWbsNodes.forEach((node) => {
-      if (node?.deletedAt) return;
+    taskNodes.forEach((node) => {
       const priorityRaw =
         node?.priority ??
         node?.priorityLabel ??
@@ -363,7 +925,7 @@ export const useDashboardData = (): DashboardData => {
         color: PRIORITY_COLORS[priority]
       }))
     };
-  }, [flattenedWbsNodes]);
+  }, [taskNodes]);
 
   const eapProgressSummary = useMemo(() => {
     const buildBuckets = (period: ProgressPeriod) => {
@@ -446,26 +1008,47 @@ export const useDashboardData = (): DashboardData => {
   }, [flattenedWbsNodes]);
 
   const recentActivities = useMemo<RecentActivity[]>(() => {
-    const mapped = (comments ?? []).map((comment: any) => {
-      const author = comment?.author?.name ?? comment?.authorName ?? "Usuário";
-      const body = comment?.body ?? comment?.text ?? "Atualizou o projeto";
-      return {
-        id: String(comment?.id ?? `${author}-${comment?.createdAt ?? Math.random()}`),
+    const activityItems: Array<RecentActivity & { timestamp: number }> = [];
+
+    (comments ?? []).forEach((comment: any) => {
+      const author = comment?.author?.name ?? comment?.authorName ?? "Colaborador";
+      const body = comment?.body ?? comment?.text ?? comment?.message ?? "Atualizou o projeto";
+      const createdAt = parseDate(comment?.createdAt ?? null);
+      if (!createdAt) return;
+      activityItems.push({
+        id: String(comment?.id ?? `${author}-${createdAt.getTime()}`),
         description: `${author} • ${body}`,
-        timeAgo: formatTimeAgo(comment?.createdAt)
-      };
+        timeAgo: formatTimeAgo(createdAt),
+        timestamp: createdAt.getTime()
+      });
     });
 
-    if (mapped.length > 0) {
-      return mapped.slice(0, 5);
-    }
+    taskNodes.forEach((node) => {
+      if (node?.deletedAt) return;
+      const updatedAt = parseDate(node?.updatedAt ?? null);
+      const createdAt = parseDate(node?.createdAt ?? null);
+      const stamp = updatedAt ?? createdAt;
+      if (!stamp) return;
+      const author = resolveResponsibleName(node) ?? node?.owner?.name ?? "Equipe";
+      const title = String(node?.title ?? node?.name ?? "Tarefa");
+      const wasCreated =
+        createdAt && updatedAt
+          ? Math.abs(updatedAt.getTime() - createdAt.getTime()) < 60000
+          : Boolean(createdAt && !updatedAt);
+      const action = wasCreated ? "criou a tarefa" : "atualizou a tarefa";
+      activityItems.push({
+        id: String(node?.id ?? `${author}-${title}-${stamp.getTime()}`),
+        description: `${author} • ${action} ${title}`,
+        timeAgo: formatTimeAgo(stamp),
+        timestamp: stamp.getTime()
+      });
+    });
 
-    return [
-      { id: "mock-1", description: "João atualizou o cronograma do projeto 2", timeAgo: "há 3h" },
-      { id: "mock-2", description: "Você criou o projeto 'Nova iniciativa'", timeAgo: "há 1 dia" },
-      { id: "mock-3", description: "Maria concluiu 5 tarefas no projeto 1", timeAgo: "há 2 dias" }
-    ];
-  }, [comments]);
+    return activityItems
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 5)
+      .map(({ timestamp, ...item }) => item);
+  }, [comments, taskNodes]);
 
   const isLoading = portfolioLoading;
 
@@ -474,6 +1057,29 @@ export const useDashboardData = (): DashboardData => {
     runningTasksCount,
     riskProjectsCount,
     loggedHoursLast14Days,
+    hoursTrackedTotal,
+    hoursTrackedThisWeek,
+    hoursTrackedPrevWeek,
+    hoursTrackedScopeLabel,
+    plannedHoursTotal,
+    plannedHoursScopeLabel,
+    plannedHoursThisWeek,
+    plannedHoursPrevWeek,
+    plannedHoursThisMonth,
+    plannedHoursPrevMonth,
+    tasksDoneThisMonth,
+    tasksDonePrevMonth,
+    taskTotals,
+    completionRate,
+    completionRateWeekAgo,
+    averageProgress,
+    completionStreak,
+    completionStreakPrevWeek,
+    overdueTasksDerived,
+    overdueTasksPrevWeek,
+    teamPerformanceMembers,
+    upcomingDeadlines,
+    upcomingDeadlinesMonth,
     highlightedProjects,
     portfolioSummary,
     eapStatusSummary,

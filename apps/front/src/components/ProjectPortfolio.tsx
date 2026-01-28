@@ -114,7 +114,8 @@ const isCanceledStatus = (status?: string | null) => normalizeStatus(status) ===
 const getStartOfDay = (value: string | Date) => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const safeDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
+  return new Date(safeDate.getFullYear(), safeDate.getMonth(), safeDate.getDate()).getTime();
 };
 
 const getTodayStart = () => getStartOfDay(new Date()) ?? Date.now();
@@ -197,7 +198,10 @@ const chipStatusOptions = [
 const formatDisplayDate = (value?: string | null) => {
   if (!value) return "-";
   try {
-    return new Date(value).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    const safeDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
+    return safeDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
   } catch {
     return "-";
   }
@@ -208,11 +212,12 @@ const formatTimelineDate = (value?: string | null) => {
   try {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "-";
+    const safeDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
     const parts = new Intl.DateTimeFormat("pt-BR", {
       day: "2-digit",
       month: "short",
       year: "numeric"
-    }).formatToParts(date);
+    }).formatToParts(safeDate);
     const day = parts.find((part) => part.type === "day")?.value ?? "";
     const month = (parts.find((part) => part.type === "month")?.value ?? "").replace(".", "");
     const year = parts.find((part) => part.type === "year")?.value ?? "";

@@ -16,6 +16,45 @@ const sanitizeCsvValue = (value: string | number) => {
   return stringValue;
 };
 
+const normalizeTaskStatusKey = (value?: string | null) =>
+  (value ?? "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[_\s]+/g, " ");
+
+const resolveTaskStatus = (value?: string | null) => {
+  const key = normalizeTaskStatusKey(value);
+  if (!key) return "BACKLOG";
+  if (["done", "finalizado", "finalizada", "concluido", "concluida", "completed", "finished"].includes(key)) {
+    return "DONE";
+  }
+  if (["in progress", "em andamento", "andamento", "fazendo", "doing", "em progresso", "progresso"].includes(key)) {
+    return "IN_PROGRESS";
+  }
+  if (["delayed", "em atraso", "atrasado", "atrasada", "late", "overdue"].includes(key)) {
+    return "DELAYED";
+  }
+  if (["risk", "em risco", "risco"].includes(key)) {
+    return "RISK";
+  }
+  if (["blocked", "bloqueado", "bloqueada"].includes(key)) {
+    return "BLOCKED";
+  }
+  if (["review", "revisao", "homologacao"].includes(key)) {
+    return "REVIEW";
+  }
+  if (["todo", "a fazer", "afazer", "planejado", "planejamento"].includes(key)) {
+    return "TODO";
+  }
+  if (["backlog", "nao iniciado", "não iniciado"].includes(key)) {
+    return "BACKLOG";
+  }
+  return key.toUpperCase().replace(/ /g, "_");
+};
+
 reportsRouter.get("/portfolio", async (req, res) => {
   if (!req.organization || !req.user) {
     return res.status(401).json({ message: "Authentication required" });
@@ -73,8 +112,8 @@ reportsRouter.get("/portfolio", async (req, res) => {
 
   const rows = projects.map((project) => {
     const tasksTotal = project.wbsNodes.length;
-    const tasksDone = project.wbsNodes.filter((node) => node.status === "DONE").length;
-    const tasksInProgress = project.wbsNodes.filter((node) => node.status === "IN_PROGRESS").length;
+    const tasksDone = project.wbsNodes.filter((node) => resolveTaskStatus(node.status) === "DONE").length;
+    const tasksInProgress = project.wbsNodes.filter((node) => resolveTaskStatus(node.status) === "IN_PROGRESS").length;
     const risksOpen = project.risks.filter((risk) => risk.status !== "CLOSED").length;
     const hoursTracked = project.timeEntries.reduce((acc, entry) => acc + Number(entry.hours), 0);
 
@@ -214,7 +253,7 @@ reportsRouter.get("/metrics", async (req, res) => {
     const day = new Date(startDate);
     day.setDate(startDate.getDate() + index);
     const doneTasks = projects.reduce((acc, project) => {
-      const done = project.wbsNodes.filter((node) => node.status === "DONE").length;
+      const done = project.wbsNodes.filter((node) => resolveTaskStatus(node.status) === "DONE").length;
       const total = project.wbsNodes.length || 1;
       return acc + Math.round((done / total) * 100);
     }, 0);

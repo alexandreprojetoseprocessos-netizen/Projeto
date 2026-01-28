@@ -70,6 +70,45 @@ const normalizeProjectPriority = (value: unknown): TaskPriority | null => {
     : null;
 };
 
+const normalizeTaskStatusKey = (value?: string | null) =>
+  (value ?? "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[_\s]+/g, " ");
+
+const resolveTaskStatus = (value?: string | null) => {
+  const key = normalizeTaskStatusKey(value);
+  if (!key) return "BACKLOG";
+  if (["done", "finalizado", "finalizada", "concluido", "concluida", "completed", "finished"].includes(key)) {
+    return "DONE";
+  }
+  if (["in progress", "em andamento", "andamento", "fazendo", "doing", "em progresso", "progresso"].includes(key)) {
+    return "IN_PROGRESS";
+  }
+  if (["delayed", "em atraso", "atrasado", "atrasada", "late", "overdue"].includes(key)) {
+    return "DELAYED";
+  }
+  if (["risk", "em risco", "risco"].includes(key)) {
+    return "RISK";
+  }
+  if (["blocked", "bloqueado", "bloqueada"].includes(key)) {
+    return "BLOCKED";
+  }
+  if (["review", "revisao", "homologacao"].includes(key)) {
+    return "REVIEW";
+  }
+  if (["todo", "a fazer", "afazer", "planejado", "planejamento"].includes(key)) {
+    return "TODO";
+  }
+  if (["backlog", "nao iniciado", "não iniciado"].includes(key)) {
+    return "BACKLOG";
+  }
+  return key.toUpperCase().replace(/ /g, "_");
+};
+
 const buildWbsTree = (nodes: FlatWbsNode[]): WbsTreeNode[] => {
   const nodeMap = new Map<string, WbsTreeNode>();
   nodes.forEach((node) => {
@@ -556,20 +595,21 @@ projectsRouter.get("/:projectId/summary", async (req, res) => {
     const totals = tasks.reduce(
       (acc, task) => {
         acc.total += 1;
-        if (task.status === "DONE") acc.done += 1;
-        if (task.status === "IN_PROGRESS") acc.inProgress += 1;
-        if (task.status === "BLOCKED" || task.status === "DELAYED" || task.status === "RISK") acc.blocked += 1;
-        if (task.status === "BACKLOG" || task.status === "TODO") acc.backlog += 1;
+        const status = resolveTaskStatus(task.status);
+        if (status === "DONE") acc.done += 1;
+        if (status === "IN_PROGRESS") acc.inProgress += 1;
+        if (status === "BLOCKED" || status === "DELAYED" || status === "RISK") acc.blocked += 1;
+        if (status === "BACKLOG" || status === "TODO") acc.backlog += 1;
         return acc;
       },
       { total: 0, done: 0, inProgress: 0, blocked: 0, backlog: 0 }
     );
 
     const overdueTasks = tasks.filter(
-      (task) => task.endDate && task.endDate < now && task.status !== "DONE"
+      (task) => task.endDate && task.endDate < now && resolveTaskStatus(task.status) !== "DONE"
     ).length;
     const velocity = tasks.filter(
-      (task) => task.status === "DONE" && task.updatedAt >= startRange
+      (task) => resolveTaskStatus(task.status) === "DONE" && task.updatedAt >= startRange
     ).length;
 
     const capacity = members.reduce(
@@ -595,7 +635,7 @@ projectsRouter.get("/:projectId/summary", async (req, res) => {
     const burnDown = Array.from({ length: rangeDays }).map((_, index) => {
       const day = subtractDays(now, rangeDays - 1 - index);
       const completed = tasks.filter(
-        (task) => task.status === "DONE" && task.updatedAt <= endOfDay(day)
+        (task) => resolveTaskStatus(task.status) === "DONE" && task.updatedAt <= endOfDay(day)
       ).length;
       return {
         date: day.toISOString().slice(0, 10),

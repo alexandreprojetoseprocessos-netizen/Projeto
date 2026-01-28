@@ -67,6 +67,8 @@ type WbsNode = {
   wbsCode?: string | null;
   startDate?: string | null;
   endDate?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
   owner?: { id: string; name?: string; email?: string | null } | null;
   responsible?:
     | {
@@ -138,6 +140,7 @@ export const App = () => {
   const [subscription, setSubscription] = useState<any | null>(null);
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [organizationsLoaded, setOrganizationsLoaded] = useState(false);
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return window.localStorage.getItem(SELECTED_ORG_KEY);
@@ -150,6 +153,8 @@ export const App = () => {
     return window.localStorage.getItem(SELECTED_PROJECT_KEY);
   });
   const [projectsError, setProjectsError] = useState<string | null>(null);
+  const isAllProjectsSelected = selectedProjectId === "all";
+  const activeProjectId = isAllProjectsSelected ? null : selectedProjectId;
 
 const [members, setMembers] = useState<any[]>([]);
 const [membersError, setMembersError] = useState<string | null>(null);
@@ -294,12 +299,15 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   useEffect(() => {
     if (status !== "authenticated" || !token) {
       setOrganizations([]);
+      setOrganizationsLoaded(false);
       setSelectedOrganizationId(null);
       setSelectedProjectId(null);
       setOrganizationLimits(null);
       setProjectLimits(null);
       return;
     }
+
+    setOrganizationsLoaded(false);
 
     const loadOrganizations = async () => {
       try {
@@ -325,6 +333,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         }));
         setOrganizations(normalized);
         setOrganizationLimits(data.organizationLimits ?? null);
+        setOrganizationsLoaded(true);
         setSelectedOrganizationId((current) => {
           if (normalized.length === 0) return null;
           if (normalized.length === 1) return normalized[0].id;
@@ -340,6 +349,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         setSelectedOrganizationId((current) => current ?? null);
         setOrganizationLimits(null);
         setProjectLimits(null);
+        setOrganizationsLoaded(true);
       }
     };
 
@@ -378,11 +388,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   useEffect(() => {
     if (status !== "authenticated") return;
     if (subscriptionStatus !== "active") return;
+    if (!organizationsLoaded) return;
+    if (orgError) return;
     const isEapRoute = location.pathname.toLowerCase().startsWith("/eap");
     if (organizations.length === 0 && location.pathname !== "/organizacao" && !isEapRoute) {
       navigate("/organizacao", { replace: true });
     }
-  }, [status, subscriptionStatus, organizations.length, location.pathname, navigate]);
+  }, [status, subscriptionStatus, organizations.length, organizationsLoaded, orgError, location.pathname, navigate]);
 
   const [projectsLoaded, setProjectsLoaded] = useState(false);
 
@@ -458,6 +470,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         setSelectedProjectId((current) => {
           if (list.length === 0) return null;
           const stored = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_PROJECT_KEY) : null;
+          if (current === "all" || stored === "all") return "all";
           const candidate = current || stored || null;
           const exists = candidate && list.some((project) => project.id === candidate);
           return exists ? candidate : list[0].id;
@@ -473,7 +486,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   }, [status, token, selectedOrganizationId]);
 
   useEffect(() => {
-    if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
       setProjectSummary(null);
       return;
     }
@@ -482,7 +495,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       try {
         setSummaryError(null);
         const query = new URLSearchParams({ rangeDays: String(filters.rangeDays) });
-        const data = await fetchJson(`/projects/${selectedProjectId}/summary?${query.toString()}`, token, undefined, selectedOrganizationId);
+        const data = await fetchJson(`/projects/${activeProjectId}/summary?${query.toString()}`, token, undefined, selectedOrganizationId);
         setProjectSummary(data);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro ao carregar resumo";
@@ -495,7 +508,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   }, [status, token, selectedProjectId, selectedOrganizationId, filters.rangeDays, summaryRefresh]);
 
   useEffect(() => {
-    if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
       setMembers([]);
       return;
     }
@@ -503,7 +516,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     const loadMembers = async () => {
       try {
         setMembersError(null);
-        const data = await fetchJson(`/projects/${selectedProjectId}/members`, token, undefined, selectedOrganizationId);
+        const data = await fetchJson(`/projects/${activeProjectId}/members`, token, undefined, selectedOrganizationId);
         setMembers(data.members ?? []);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro ao carregar equipe";
@@ -515,7 +528,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   }, [status, token, selectedProjectId, selectedOrganizationId]);
 
   useEffect(() => {
-    if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
       setServiceCatalog([]);
       return;
     }
@@ -523,7 +536,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     const loadServiceCatalog = async () => {
       try {
         setServiceCatalogError(null);
-        const data = await fetchJson(`/service-catalog?projectId=${selectedProjectId}`, token, undefined, selectedOrganizationId);
+        const data = await fetchJson(`/service-catalog?projectId=${activeProjectId}`, token, undefined, selectedOrganizationId);
         setServiceCatalog(data ?? []);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro ao carregar catálogo de serviços";
@@ -535,7 +548,16 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   }, [status, token, selectedProjectId, selectedOrganizationId, serviceCatalogRefresh]);
 
   useEffect(() => {
-    if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !selectedOrganizationId) {
+      setWbsNodes([]);
+      setSelectedNodeId(null);
+      return;
+    }
+    if (selectedProjectId === "all") {
+      setSelectedNodeId(null);
+      return;
+    }
+    if (!activeProjectId) {
       setWbsNodes([]);
       setSelectedNodeId(null);
       return;
@@ -544,7 +566,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     const loadWbs = async () => {
       try {
         setWbsError(null);
-        const data = await fetchJson(`/projects/${selectedProjectId}/wbs`, token, undefined, selectedOrganizationId);
+        const data = await fetchJson(`/projects/${activeProjectId}/wbs`, token, undefined, selectedOrganizationId);
         const nodes = data.nodes ?? [];
         setWbsNodes(nodes);
         setSelectedNodeId((current) => {
@@ -559,6 +581,60 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     loadWbs();
   }, [status, token, selectedProjectId, selectedOrganizationId, wbsRefresh]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !token || !selectedOrganizationId || selectedProjectId !== "all") {
+      return;
+    }
+    if (!projects.length) {
+      setWbsNodes([]);
+      return;
+    }
+
+    const loadAllWbs = async () => {
+      try {
+        setWbsError(null);
+        const results = await Promise.allSettled(
+          projects.map((project) =>
+            fetchJson(`/projects/${project.id}/wbs`, token, undefined, selectedOrganizationId).then((data) => ({
+              ...data,
+              projectId: project.id,
+              projectName: project.name
+            }))
+          )
+        );
+
+        const attachProjectMeta = (
+          nodes: WbsNode[] = [],
+          meta: { projectId: string; projectName: string }
+        ): WbsNode[] =>
+          nodes.map((node) => ({
+            ...node,
+            projectId: meta.projectId,
+            projectName: meta.projectName,
+            children: attachProjectMeta(node.children ?? [], meta)
+          }));
+
+        const merged = results.flatMap((result) => {
+          if (result.status !== "fulfilled") return [];
+          const { nodes = [], projectId, projectName } = result.value as {
+            nodes?: WbsNode[];
+            projectId?: string;
+            projectName?: string;
+          };
+          if (!projectId || !projectName) return nodes ?? [];
+          return attachProjectMeta(nodes ?? [], { projectId, projectName });
+        });
+
+        setWbsNodes(merged);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao carregar WBS";
+        setWbsError(message);
+      }
+    };
+
+    loadAllWbs();
+  }, [status, token, selectedProjectId, selectedOrganizationId, projects, wbsRefresh]);
 
   useEffect(() => {
     if (!selectedNodeId || status !== "authenticated" || !token || !selectedOrganizationId) {
@@ -582,14 +658,95 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   }, [status, token, selectedNodeId, selectedOrganizationId, commentsRefresh]);
 
   const loadBoardColumns = useCallback(async () => {
-    if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !selectedOrganizationId) {
+      return;
+    }
+
+    if (selectedProjectId === "all") {
+      try {
+        setBoardError(null);
+        if (!projects.length) {
+          setBoardColumns([]);
+          return;
+        }
+
+        const results = await Promise.allSettled(
+          projects.map((project) =>
+            fetchJson<BoardResponse>(
+              `/projects/${project.id}/board`,
+              token,
+              undefined,
+              selectedOrganizationId
+            ).then((data) => ({ ...data, projectId: project.id, projectName: project.name }))
+          )
+        );
+
+        const statusOrder = KANBAN_STATUS_ORDER;
+        const statusEntries = Object.entries(STATUS_MAP) as [TaskStatus, string][];
+        const resolveStatus = (value?: string | null): TaskStatus | undefined => {
+          if (!value) return undefined;
+          const trimmed = value.trim();
+          if (!trimmed) return undefined;
+          const upper = trimmed.toUpperCase();
+          if ((statusOrder as readonly string[]).includes(upper)) return upper as TaskStatus;
+          const matched = statusEntries.find(([, label]) => label.toUpperCase() === upper);
+          return matched ? matched[0] : undefined;
+        };
+
+        const aggregated = statusOrder.map((status, index) => ({
+          id: status,
+          label: STATUS_MAP[status],
+          order: index,
+          status,
+          tasks: [] as KanbanTask[]
+        }));
+
+        const columnMap = aggregated.reduce((acc, column) => {
+          acc[column.id as TaskStatus] = column;
+          return acc;
+        }, {} as Record<TaskStatus, (typeof aggregated)[number]>);
+
+        results.forEach((result) => {
+          if (result.status !== "fulfilled") return;
+          const data = result.value as BoardResponse & { projectId?: string; projectName?: string };
+          (data.columns ?? []).forEach((column: any) => {
+            const columnStatus =
+              resolveStatus(column.status) ??
+              resolveStatus(column.id) ??
+              resolveStatus(column.label) ??
+              statusOrder[0];
+            (column.tasks ?? []).forEach((task: any) => {
+              const taskStatus = resolveStatus(task.status) ?? columnStatus ?? statusOrder[0];
+              const target = columnMap[taskStatus] ?? columnMap[statusOrder[0]];
+              target.tasks.push({
+                ...task,
+                status: taskStatus
+              });
+            });
+          });
+        });
+
+        aggregated.forEach((column) => {
+          column.tasks = [...column.tasks].sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0));
+        });
+
+        setBoardColumns(aggregated);
+        setNewTaskColumn(statusOrder[0]);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao carregar quadro";
+        setBoardError(message);
+      }
+      return;
+    }
+
+    if (!activeProjectId) {
       return;
     }
 
     try {
       setBoardError(null);
       const data = await fetchJson<BoardResponse>(
-        `/projects/${selectedProjectId}/board`,
+        `/projects/${activeProjectId}/board`,
         token,
         undefined,
         selectedOrganizationId
@@ -611,26 +768,30 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       const message = error instanceof Error ? error.message : "Erro ao carregar quadro";
       setBoardError(message);
     }
-  }, [status, token, selectedProjectId, selectedOrganizationId]);
+  }, [status, token, selectedProjectId, selectedOrganizationId, activeProjectId, projects]);
 
   useEffect(() => {
-    if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !selectedOrganizationId) {
+      setBoardColumns([]);
+      return;
+    }
+    if (!activeProjectId && selectedProjectId !== "all") {
       setBoardColumns([]);
       return;
     }
 
     loadBoardColumns();
-  }, [status, token, selectedProjectId, selectedOrganizationId, boardRefresh, loadBoardColumns]);
+  }, [status, token, selectedProjectId, selectedOrganizationId, activeProjectId, boardRefresh, loadBoardColumns]);
 
   const handleImportServiceCatalog = useCallback(
     async (file: File | null) => {
-      if (!file || !token || !selectedProjectId || !selectedOrganizationId) {
+      if (!file || !token || !activeProjectId || !selectedOrganizationId) {
         throw new Error("Arquivo e projeto são obrigatórios.");
       }
       const formData = new FormData();
       formData.append("file", file);
       const response = await fetch(
-        apiUrl(`/service-catalog/import?projectId=${selectedProjectId}`),
+        apiUrl(`/service-catalog/import?projectId=${activeProjectId}`),
         {
           method: "POST",
           headers: {
@@ -652,7 +813,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   );
 
   useEffect(() => {
-    if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
       setGanttTasks([]);
       setGanttMilestones([]);
       return;
@@ -661,7 +822,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     const loadGantt = async () => {
       try {
         setGanttError(null);
-        const data = await fetchJson(`/projects/${selectedProjectId}/gantt`, token, undefined, selectedOrganizationId);
+        const data = await fetchJson(`/projects/${activeProjectId}/gantt`, token, undefined, selectedOrganizationId);
         setGanttTasks(data.tasks ?? []);
         setGanttMilestones(data.milestones ?? []);
       } catch (error) {
@@ -674,7 +835,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   }, [status, token, selectedProjectId, selectedOrganizationId]);
 
   useEffect(() => {
-    if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
       setAttachments([]);
       setAttachmentsLoading(false);
       return;
@@ -685,7 +846,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         setAttachmentsLoading(true);
         setAttachmentsError(null);
         const data = await fetchJson<{ attachments: any[] }>(
-          `/projects/${selectedProjectId}/attachments`,
+          `/projects/${activeProjectId}/attachments`,
           token,
           undefined,
           selectedOrganizationId
@@ -757,13 +918,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!token || !selectedProjectId || !selectedOrganizationId || !newTaskColumn || !newTaskTitle.trim()) {
+    if (!token || !activeProjectId || !selectedOrganizationId || !newTaskColumn || !newTaskTitle.trim()) {
       return false;
     }
 
     try {
       await fetchJson(
-        `/projects/${selectedProjectId}/board/tasks`,
+        `/projects/${activeProjectId}/board/tasks`,
         token,
         {
           method: "POST",
@@ -1027,7 +1188,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     if (
       !destination ||
       !token ||
-      !selectedProjectId ||
+      !activeProjectId ||
       !selectedOrganizationId ||
       (destination.droppableId === source.droppableId && destination.index === source.index)
     ) {
@@ -1043,7 +1204,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     try {
       // Persiste no backend com o novo status
       await fetchJson(
-        `/projects/${selectedProjectId}/board/tasks/${draggableId}`,
+        `/projects/${activeProjectId}/board/tasks/${draggableId}`,
         token,
         {
           method: "PATCH",
@@ -1227,7 +1388,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   };
 
   const handleCreateWbsItem = async (parentId: string | null, data?: Record<string, any>) => {
-    if (!token || !selectedOrganizationId || !selectedProjectId) return;
+    if (!token || !selectedOrganizationId || !activeProjectId) return;
 
     const payload: Record<string, any> = {
       title: data?.title ?? "Nova tarefa",
@@ -1247,7 +1408,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     try {
       setWbsError(null);
       const data = await fetchJson(
-        `/projects/${selectedProjectId}/wbs`,
+        `/projects/${activeProjectId}/wbs`,
         token,
         {
           method: "POST",
@@ -1311,12 +1472,12 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   const handleCreateServiceCatalog = useCallback(
     async (payload: { name: string; hoursBase: number; description?: string | null }) => {
-      if (!token || !selectedProjectId || !selectedOrganizationId) {
+      if (!token || !activeProjectId || !selectedOrganizationId) {
         throw new Error("Projeto selecionado é obrigatório.");
       }
 
       const body = {
-        projectId: selectedProjectId,
+        projectId: activeProjectId,
         name: payload.name,
         description: payload.description ?? null,
         hoursBase: Number(payload.hoursBase)
@@ -1417,11 +1578,16 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     if (!projects.length) return;
     if (!selectedProjectId) {
       const stored = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_PROJECT_KEY) : null;
-      if (stored && projects.some((project) => project.id === stored)) {
+      if (stored === "all") {
+        setSelectedProjectId("all");
+      } else if (stored && projects.some((project) => project.id === stored)) {
         setSelectedProjectId(stored);
       } else if (projects.length === 1) {
         setSelectedProjectId(projects[0].id);
       }
+      return;
+    }
+    if (selectedProjectId === "all") {
       return;
     }
     const exists = projects.some((project) => project.id === selectedProjectId);
@@ -1476,9 +1642,28 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   }
 
   const handleProjectSelection = (projectId: string) => {
+    const currentPath = location.pathname;
+    const lowerPath = currentPath.toLowerCase();
+
+    if (projectId === "all") {
+      setSelectedProjectId("all");
+      setSelectedNodeId(null);
+      return;
+    }
+
     setSelectedProjectId(projectId);
-    if (selectedOrganizationId && projectId) {
-      navigate(`/EAP/organizacao/${selectedOrganizationId}/projeto/${projectId}`, { replace: true });
+    if (!projectId) return;
+
+    if (lowerPath.includes("/eap") || lowerPath.includes("/edt")) {
+      if (selectedOrganizationId) {
+        navigate(`/EAP/organizacao/${selectedOrganizationId}/projeto/${projectId}`, { replace: true });
+      }
+      return;
+    }
+
+    if (lowerPath.startsWith("/projects/")) {
+      const suffix = currentPath.replace(/\/projects\/[^/]+/i, "");
+      navigate(`/projects/${projectId}${suffix}`, { replace: true });
     }
   };
 
@@ -1620,9 +1805,9 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         <Route
           path="EAP"
           element={
-            selectedOrganizationId && selectedProjectId ? (
+            selectedOrganizationId && activeProjectId ? (
               <Navigate
-                to={`/EAP/organizacao/${selectedOrganizationId}/projeto/${selectedProjectId}`}
+                to={`/EAP/organizacao/${selectedOrganizationId}/projeto/${activeProjectId}`}
                 replace
               />
             ) : (

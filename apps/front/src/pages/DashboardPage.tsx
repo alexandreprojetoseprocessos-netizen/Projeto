@@ -1,5 +1,5 @@
 ﻿import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Flame, TrendingUp } from "lucide-react";
+import { Calendar, CalendarDays, CheckCircle2, Hourglass } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ActiveProjects } from "../components/dashboard/ActiveProjects";
 import { KPICards } from "../components/dashboard/KPICards";
@@ -85,82 +85,25 @@ const buildWeeklyData = (base: number, avgProgress: number) => {
   });
 };
 
-const buildTeamMembers = (activities: { description: string }[], avgProgress: number, runningCount: number) => {
-  const names: string[] = [];
-  const fallbackNames = ["Ana", "Bruno", "Carla", "Diego"];
-
-  activities.forEach((activity) => {
-    const raw = activity.description.split("\u0007")[0]?.trim() ?? "";
-    if (!raw) return;
-    const parsed = raw
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .join(" ");
-    if (parsed && !names.includes(parsed)) {
-      names.push(parsed);
-    }
-  });
-
-  while (names.length < 4) {
-    const nextName = fallbackNames[names.length];
-    if (!nextName) break;
-    names.push(nextName);
-  }
-
-  const size = names.length || 1;
-  const baseTotal = Math.max(4, Math.round(runningCount / size) || 4);
-
-  return names.slice(0, 4).map((name, index) => {
-    const total = Math.max(4, baseTotal + (index % 2 === 0 ? 1 : 0));
-    const done = Math.max(0, Math.round((avgProgress / 100) * total) - Math.max(0, index - 1));
-    const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
-    return {
-      id: `member-${index}-${name}`,
-      name,
-      done,
-      total,
-      percent
-    };
-  });
-};
-
-const buildDeadlines = (
-  projects: {
-    id: string;
-    name: string;
-    status: string;
-    period: string;
-  }[]
-) => {
-  if (projects.length === 0) {
-    return [
-      { id: "deadline-1", title: "Projeto Alpha", date: "Sem data", priority: "Media" },
-      { id: "deadline-2", title: "Projeto Beta", date: "Sem data", priority: "Alta" },
-      { id: "deadline-3", title: "Projeto Gamma", date: "Sem data", priority: "Baixa" }
-    ];
-  }
-
-  return projects.map((project, index) => {
-    const isLate = project.status === "late";
-    const priority = isLate ? "Urgente" : project.status === "risk" ? "Alta" : index % 2 === 0 ? "Media" : "Baixa";
-
-    return {
-      id: project.id,
-      title: project.name,
-      date: project.period || "Sem data",
-      priority,
-      isLate
-    };
-  });
-};
-
 export const DashboardPage = () => {
   const navigate = useNavigate();
   const {
-    activeProjectsCount,
     runningTasksCount,
     riskProjectsCount,
+    taskTotals,
+    averageProgress,
+    overdueTasksDerived,
+    plannedHoursTotal,
+    plannedHoursScopeLabel,
+    plannedHoursThisWeek,
+    plannedHoursPrevWeek,
+    plannedHoursThisMonth,
+    plannedHoursPrevMonth,
+    tasksDoneThisMonth,
+    tasksDonePrevMonth,
+    teamPerformanceMembers,
+    upcomingDeadlines,
+    upcomingDeadlinesMonth,
     highlightedProjects,
     portfolioSummary,
     eapStatusSummary,
@@ -172,50 +115,71 @@ export const DashboardPage = () => {
     projectsError
   } = useDashboardData();
 
-  const runningCount = safeNumber(portfolioSummary.runningTasksCount ?? runningTasksCount);
-  const overdueCount = safeNumber(portfolioSummary.overdueTasksCount);
-  const totalTasks = Math.max(0, runningCount + overdueCount);
-  const averageProgress = highlightedProjects.length
-    ? Math.round(
-        highlightedProjects.reduce((sum, project) => sum + safeNumber(project.progress), 0) / highlightedProjects.length
-      )
-    : 0;
-  const completedTasks = totalTasks > 0 ? Math.round((averageProgress / 100) * totalTasks) : 0;
+  const runningCount = safeNumber(portfolioSummary.runningTasksCount ?? taskTotals.inProgress ?? runningTasksCount);
+  const overdueCount = safeNumber(portfolioSummary.overdueTasksCount ?? overdueTasksDerived);
+  const totalTasks = Math.max(0, taskTotals.total);
+
+  const formatDeltaCount = (current: number, previous: number, label: string) => {
+    if (current === 0 && previous === 0) return "Sem histórico";
+    const diff = current - previous;
+    return `${diff >= 0 ? "+" : ""}${diff} vs ${label}`;
+  };
+
+  const formatHours = (value: number) => {
+    const totalMinutes = Math.round(Math.max(0, value) * 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+  };
+
+  const completionDeltaLabel = formatDeltaCount(tasksDoneThisMonth, tasksDonePrevMonth, "mês anterior");
+  const plannedHoursDeltaLabel = plannedHoursTotal > 0 ? "Total previsto" : "Sem histórico";
+
+  const formatDeltaHours = (current: number, previous: number) => {
+    if (current === 0 && previous === 0) return "Sem histórico";
+    const diff = current - previous;
+    const absLabel = formatHours(Math.abs(diff));
+    return `${diff >= 0 ? "+" : "-"}${absLabel} vs período anterior`;
+  };
+
+  const weeklyHoursDeltaLabel = formatDeltaHours(plannedHoursThisWeek, plannedHoursPrevWeek);
+  const monthlyHoursDeltaLabel = formatDeltaHours(plannedHoursThisMonth, plannedHoursPrevMonth);
 
   const [progressPeriod, setProgressPeriod] = useState<ProgressPeriod>("weekly");
 
   const kpiItems = [
     {
       label: "Taxa de conclusao",
-      value: `${averageProgress}%`,
-      subLabel: `${completedTasks} de ${totalTasks} tarefas`,
-      delta: "+12% vs semana anterior",
+      value: `${tasksDoneThisMonth}`,
+      subLabel: `${tasksDoneThisMonth} tarefa${tasksDoneThisMonth === 1 ? "" : "s"} concluída${tasksDoneThisMonth === 1 ? "" : "s"} no mês`,
+      delta: completionDeltaLabel,
       tone: "success" as const,
       icon: CheckCircle2
     },
     {
-      label: "Streak ativo",
-      value: `${safeNumber(activeProjectsCount)} dias`,
-      subLabel: "Conclusoes consecutivas",
-      delta: "+5 vs semana anterior",
+      label: "Horas por semana",
+      value: formatHours(plannedHoursThisWeek),
+      subLabel: "Semana atual",
+      delta: weeklyHoursDeltaLabel,
       tone: "warning" as const,
-      icon: Flame
+      icon: CalendarDays
     },
     {
-      label: "Tarefas urgentes",
-      value: `${overdueCount}`,
-      subLabel: "Precisam de atencao",
-      delta: "-2 vs semana anterior",
+      label: "Horas por mês",
+      value: formatHours(plannedHoursThisMonth),
+      subLabel: "Mês atual",
+      delta: monthlyHoursDeltaLabel,
       tone: "danger" as const,
-      icon: AlertTriangle
+      icon: Calendar
     },
     {
-      label: "Progresso medio",
-      value: `${averageProgress}%`,
-      subLabel: "Todos os projetos",
-      delta: "+8% vs semana anterior",
+      label: "Horas Total Prevista",
+      value: formatHours(plannedHoursTotal),
+      subLabel: plannedHoursScopeLabel,
+      delta: plannedHoursDeltaLabel,
       tone: "info" as const,
-      icon: TrendingUp
+      icon: Hourglass
     }
   ];
 
@@ -227,8 +191,8 @@ export const DashboardPage = () => {
     eapPrioritySummary.total > 0 ? eapPrioritySummary.items : buildPriorityData(totalTasks, overdueCount);
   const progressSummary = eapProgressSummary[progressPeriod];
   const weeklyData = buildWeeklyData(Math.max(totalTasks, safeNumber(riskProjectsCount)), averageProgress);
-  const teamMembers = buildTeamMembers(recentActivities, averageProgress, runningCount);
-  const deadlineItems = buildDeadlines(highlightedProjects);
+  const teamMembers = teamPerformanceMembers;
+  const deadlineItems = upcomingDeadlines;
 
   const alerts = [
     projectToast ? { type: "success-text", message: projectToast } : null,
@@ -248,6 +212,11 @@ export const DashboardPage = () => {
             ))}
           </div>
         )}
+        <div className="dashboard-exec__actions">
+          <button type="button" className="dashboard-print-button" onClick={() => window.print()}>
+            Imprimir
+          </button>
+        </div>
         <KPICards items={kpiItems} />
         <div className="dashboard-grid-2">
           <TasksByStatus data={statusPayload.data} total={statusPayload.total} />
@@ -262,7 +231,7 @@ export const DashboardPage = () => {
         <ActiveProjects projects={highlightedProjects} onOpenProject={(projectId) => navigate(`/projects/${projectId}`)} />
         <div className="dashboard-grid-2">
           <TeamPerformance members={teamMembers} />
-          <UpcomingDeadlines items={deadlineItems} />
+          <UpcomingDeadlines items={deadlineItems} monthItems={upcomingDeadlinesMonth} />
         </div>
         <RecentActivity items={recentActivities} />
       </div>
