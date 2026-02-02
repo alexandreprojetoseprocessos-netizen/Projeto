@@ -18958,186 +18958,48 @@ const Auth = () => {
 
 
 
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        <div className="absolute -top-48 -right-48 h-96 w-96 rounded-full bg-blue-600/10 blur-3xl" />
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        <div className="absolute -bottom-52 -left-52 h-[28rem] w-[28rem] rounded-full bg-indigo-600/10 blur-3xl" />
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+      <div className="auth-bg" aria-hidden="true">
+        <div className="auth-bg__veil" />
+        <div className="auth-bg__item layer-dash">
+          <div className="auth-bg__float">
+          <img className="auth-bg__image" src="/login/dash.png" alt="" />
+          </div>
+        </div>
+        <div className="auth-bg__item layer-cronograma">
+          <div className="auth-bg__float">
+          <img className="auth-bg__image" src="/login/cronograma.png" alt="" />
+          </div>
+        </div>
+        <div className="auth-bg__item layer-kanban">
+          <div className="auth-bg__float">
+          <img className="auth-bg__image" src="/login/kanban.png" alt="" />
+          </div>
+        </div>
+        <div className="auth-bg__item layer-projeto">
+          <div className="auth-bg__float">
+          <img className="auth-bg__image" src="/login/projeto.png" alt="" />
+          </div>
+        </div>
+        <div className="auth-bg__item layer-prioridade">
+          <div className="auth-bg__float">
+          <img className="auth-bg__image" src="/login/prioridade.png" alt="" />
+          </div>
+        </div>
+        <div className="auth-bg__item layer-progresso">
+          <div className="auth-bg__float">
+          <img className="auth-bg__image" src="/login/progresso.png" alt="" />
+          </div>
+        </div>
+        <div className="auth-bg__item layer-orcamento">
+          <div className="auth-bg__float">
+          <img className="auth-bg__image" src="/login/or%C3%A7amento.png" alt="" />
+          </div>
+        </div>
+        <div className="auth-bg__item layer-eap">
+          <div className="auth-bg__float">
+          <img className="auth-bg__image" src="/login/eap.png" alt="" />
+          </div>
+        </div>
       </div>
 
 
@@ -19858,7 +19720,7 @@ const Auth = () => {
 
 
 
-        <Card className="bg-white border border-slate-200 shadow-lg rounded-2xl">
+        <Card className="auth-login-card bg-white border border-slate-200 shadow-lg rounded-2xl">
 
 
 
@@ -21178,7 +21040,7 @@ const Auth = () => {
 
 
 
-                    ? "bg-blue-600 text-white shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
+                    ? "auth-tab-active shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
 
 
 
@@ -21838,7 +21700,7 @@ const Auth = () => {
 
 
 
-                    ? "bg-blue-600 text-white shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
+                    ? "auth-tab-active shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
 
 
 
@@ -23339,66 +23201,7 @@ const Auth = () => {
 
 
                   </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                </div>
+</div>
 
 
 
@@ -23578,67 +23381,7 @@ const Auth = () => {
 
 
 
-                  <div className="flex items-center justify-between">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                    <label htmlFor="password" className="text-sm font-medium text-slate-700">
+                  <label htmlFor="password" className="text-sm font-medium text-slate-700">
 
 
 
@@ -23759,486 +23502,6 @@ const Auth = () => {
 
 
                     </label>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                    <button
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                      type="button"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                      onClick={handleForgotPassword}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                      className="text-sm text-blue-500 hover:text-blue-600 hover:underline"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                    >
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                      Esqueceu a senha?
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                    </button>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                  </div>
 
 
 
@@ -25198,487 +24461,24 @@ const Auth = () => {
 
 
 
-                <label className="flex items-center gap-2 text-sm text-slate-500/80">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                  <input
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                    type="checkbox"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                    checked={rememberMe}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                    onChange={(event) => setRememberMe(event.target.checked)}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                    className="h-4 w-4 rounded border-slate-300 text-blue-600 translate-y-[1px]"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                  />
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                  Lembrar de mim
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                </label>
+                <div className="auth-remember-row">
+  <label className="flex items-center gap-2 text-sm text-slate-500/80">
+    <input
+      type="checkbox"
+      checked={rememberMe}
+      onChange={(event) => setRememberMe(event.target.checked)}
+      className="h-4 w-4 rounded border-slate-300 text-blue-600 translate-y-[1px]"
+    />
+    Lembrar de mim
+  </label>
+  <button
+    type="button"
+    onClick={handleForgotPassword}
+    className="auth-forgot-button"
+  >
+    Esqueceu a senha?
+  </button>
+</div>
 
 
 
@@ -25918,7 +24718,7 @@ const Auth = () => {
 
 
 
-                  className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300 focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-0"
+                  className="w-full h-12 rounded-xl auth-primary-button text-white font-semibold disabled:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300 focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-0"
 
 
 
@@ -35009,7 +33809,7 @@ const Auth = () => {
 
 
 
-                  className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300 focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-0"
+                  className="w-full h-12 rounded-xl auth-primary-button text-white font-semibold disabled:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-300 focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-0"
 
 
 
@@ -38909,7 +37709,7 @@ const Auth = () => {
 
 
 
-        <p className="text-center text-white/70 text-sm mt-6">
+        <p className="text-center text-slate-500 text-sm mt-6">
 
 
 

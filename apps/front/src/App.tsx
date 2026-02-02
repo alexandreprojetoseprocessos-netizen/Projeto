@@ -64,6 +64,8 @@ type WbsNode = {
   parentId: string | null;
   children: WbsNode[];
   level?: number;
+  order?: number | null;
+  sortOrder?: number | null;
   wbsCode?: string | null;
   startDate?: string | null;
   endDate?: string | null;
@@ -574,7 +576,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       try {
         setWbsError(null);
         const data = await fetchJson(`/projects/${activeProjectId}/wbs`, token, undefined, selectedOrganizationId);
-        const nodes = data.nodes ?? [];
+        const nodes = ensureWbsTree(data.nodes ?? []);
         setWbsNodes(nodes);
         setSelectedNodeId((current) => {
           if (!current) return null;
@@ -630,7 +632,8 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
             projectName?: string;
           };
           if (!projectId || !projectName) return nodes ?? [];
-          return attachProjectMeta(nodes ?? [], { projectId, projectName });
+          const tree = ensureWbsTree(nodes ?? []);
+          return attachProjectMeta(tree, { projectId, projectName });
         });
 
         setWbsNodes(merged);
@@ -915,7 +918,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
   }, [status, token, selectedProjectId, selectedOrganizationId, activeProjectId, projects]);
 
   useEffect(() => {
-    if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !selectedOrganizationId) {
       setAttachments([]);
       setAttachmentsLoading(false);
       return;
@@ -925,13 +928,58 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
       try {
         setAttachmentsLoading(true);
         setAttachmentsError(null);
+
+        if (selectedProjectId === "all") {
+          if (!projects.length) {
+            setAttachments([]);
+            return;
+          }
+
+          const responses = await Promise.all(
+            projects.map(async (project) => {
+              const projectId = project.id ?? project.projectId;
+              if (!projectId) return [];
+              const data = await fetchJson<{ attachments: any[] }>(
+                `/projects/${projectId}/attachments`,
+                token,
+                undefined,
+                selectedOrganizationId
+              );
+              const projectName = project.projectName ?? project.name ?? "Projeto";
+              return (data.attachments ?? []).map((attachment) => ({
+                ...attachment,
+                projectId,
+                projectName
+              }));
+            })
+          );
+
+          setAttachments(responses.flat());
+          return;
+        }
+
+        if (!activeProjectId) {
+          setAttachments([]);
+          return;
+        }
+
         const data = await fetchJson<{ attachments: any[] }>(
           `/projects/${activeProjectId}/attachments`,
           token,
           undefined,
           selectedOrganizationId
         );
-        setAttachments(data.attachments ?? []);
+        const projectName =
+          projects.find((project) => (project.id ?? project.projectId) === activeProjectId)?.projectName ??
+          projects.find((project) => (project.id ?? project.projectId) === activeProjectId)?.name ??
+          "Projeto";
+        setAttachments(
+          (data.attachments ?? []).map((attachment) => ({
+            ...attachment,
+            projectId: activeProjectId,
+            projectName
+          }))
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro ao carregar documentos";
         setAttachmentsError(message);
@@ -942,7 +990,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     };
 
     loadAttachments();
-  }, [status, token, selectedProjectId, selectedOrganizationId]);
+  }, [status, token, selectedProjectId, selectedOrganizationId, activeProjectId, projects]);
 
 
   useEffect(() => {
@@ -1940,6 +1988,73 @@ function reorderBoard(
 
   return nextColumns;
 }
+
+function buildWbsTree(nodes: WbsNode[]): WbsNode[] {
+  const codeMap = new Map<string, string>();
+  nodes.forEach((node) => {
+    if (node.wbsCode) {
+      codeMap.set(String(node.wbsCode).toLowerCase(), node.id);
+    }
+  });
+
+  const normalized = nodes.map((node) => {
+    if (!node.parentId && node.wbsCode && String(node.wbsCode).includes(".")) {
+      const parentCode = String(node.wbsCode).split(".").slice(0, -1).join(".");
+      const inferredParentId = codeMap.get(parentCode.toLowerCase()) ?? null;
+      if (inferredParentId) {
+        return { ...node, parentId: inferredParentId };
+      }
+    }
+    return node;
+  });
+
+  const map = new Map<string, WbsNode>();
+  normalized.forEach((node) => {
+    map.set(node.id, { ...node, children: [] });
+  });
+
+  const roots: WbsNode[] = [];
+  normalized.forEach((node) => {
+    const current = map.get(node.id)!;
+    const parentId = current.parentId ?? null;
+    if (parentId && map.has(parentId)) {
+      map.get(parentId)!.children.push(current);
+    } else {
+      roots.push(current);
+    }
+  });
+
+  const sortNodes = (items: WbsNode[]) => {
+    items.sort((a, b) => {
+      const sortA = typeof a.sortOrder === "number" ? a.sortOrder : 0;
+      const sortB = typeof b.sortOrder === "number" ? b.sortOrder : 0;
+      if (sortA != sortB) return sortA - sortB;
+      const orderA = typeof a.order === "number" ? a.order : 0;
+      const orderB = typeof b.order === "number" ? b.order : 0;
+      if (orderA != orderB) return orderA - orderB;
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return timeA - timeB;
+    });
+
+    items.forEach((item) => {
+      if (item.children?.length) {
+        sortNodes(item.children);
+      }
+    });
+  };
+
+  sortNodes(roots);
+
+  return roots;
+}
+function ensureWbsTree(nodes: WbsNode[]): WbsNode[] {
+  if (!Array.isArray(nodes)) return [];
+  const hasChildren = nodes.some((node) => Array.isArray(node.children) && node.children.length > 0);
+  if (hasChildren) return nodes;
+  return buildWbsTree(nodes);
+}
+
 
 function updateNodeParent(nodes: WbsNode[], nodeId: string, parentId: string | null, position: number) {
   const deepClone = (items: WbsNode[]): WbsNode[] =>

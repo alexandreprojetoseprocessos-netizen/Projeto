@@ -5,7 +5,7 @@ import { authMiddleware } from "../middleware/auth";
 import { organizationMiddleware } from "../middleware/organization";
 import { ensureProjectMembership } from "../services/rbac";
 import { logger } from "../config/logger";
-import { uploadAttachment, getPublicUrl } from "../services/storage";
+import { uploadAttachment, getPublicUrl, removeAttachment } from "../services/storage";
 import { recomputeProjectWbsCodes } from "../services/wbsCode";
 import { canManageProjects } from "../services/permissions";
 import { getActiveSubscriptionForUser } from "../services/subscriptions";
@@ -936,7 +936,45 @@ projectsRouter.get("/:projectId/wbs", async (req, res) => {
     });
 
   let nodes = await fetchNodes();
-  if (nodes.some((node) => !node.wbsCode)) {
+  const ids = new Set(nodes.map((node) => node.id));
+  const codeToId = new Map(
+    nodes
+      .filter((node) => node.wbsCode)
+      .map((node) => [String(node.wbsCode).toLowerCase(), node.id])
+  );
+  const parentFixes = nodes
+    .filter((node) => node.wbsCode && String(node.wbsCode).includes("."))
+    .map((node) => {
+      const parentCode = String(node.wbsCode).split(".").slice(0, -1).join(".");
+      const inferredParentId = codeToId.get(parentCode.toLowerCase()) ?? null;
+      if (!inferredParentId) return null;
+      if (node.parentId && ids.has(node.parentId)) return null;
+      return { id: node.id, parentId: inferredParentId };
+    })
+    .filter(Boolean) as Array<{ id: string; parentId: string }>;
+
+  if (parentFixes.length) {
+    await prisma.$transaction(
+      parentFixes.map((fix) =>
+        prisma.wbsNode.update({
+          where: { id: fix.id },
+          data: { parentId: fix.parentId }
+        })
+      )
+    );
+    await recomputeProjectWbsCodes(projectId);
+    nodes = await fetchNodes();
+  }
+
+  const needsRecompute = nodes.some((node) => {
+    if (!node.wbsCode) return true;
+    const expectedLevel = node.wbsCode.split(".").length - 1;
+    if (node.level !== expectedLevel) return true;
+    if (node.parentId && expectedLevel === 0) return true;
+    if (!node.parentId && expectedLevel > 0) return true;
+    return false;
+  });
+  if (needsRecompute) {
     await recomputeProjectWbsCodes(projectId);
     nodes = await fetchNodes();
   }
@@ -1281,5 +1319,33 @@ projectsRouter.post("/:projectId/attachments", async (req, res) => {
   } catch (error) {
     logger.error({ err: error }, "Failed to upload attachment");
     return res.status(500).json({ message: "Falha ao salvar anexo" });
+  }
+});
+
+projectsRouter.delete("/:projectId/attachments/:attachmentId", async (req, res) => {
+  const { projectId, attachmentId } = req.params;
+
+  const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
+  if (!membership) return;
+
+  try {
+    const attachment = await prisma.attachment.findFirst({
+      where: { id: attachmentId, projectId }
+    });
+
+    if (!attachment) {
+      return res.status(404).json({ message: "Arquivo nao encontrado" });
+    }
+
+    if (attachment.fileKey) {
+      await removeAttachment(attachment.fileKey);
+    }
+
+    await prisma.attachment.delete({ where: { id: attachmentId } });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to delete attachment");
+    return res.status(500).json({ message: "Falha ao excluir documento" });
   }
 });

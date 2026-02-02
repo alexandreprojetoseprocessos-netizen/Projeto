@@ -26,9 +26,10 @@ export const recomputeProjectWbsCodes = async (projectId: string) => {
 
   const activeNodes = nodes.filter((node) => node.deletedAt === null);
 
+  const activeIds = new Set(activeNodes.map((node) => node.id));
   const childrenMap = new Map<string | null, LightweightNode[]>();
   for (const node of activeNodes) {
-    const key = node.parentId ?? null;
+    const key = node.parentId && activeIds.has(node.parentId) ? node.parentId : null;
     const group = childrenMap.get(key) ?? [];
     group.push(node);
     childrenMap.set(key, group);

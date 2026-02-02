@@ -154,6 +154,14 @@ const BriefcaseIcon: KPIIcon = (props) => (
 
 );
 
+const BudgetIcon: KPIIcon = (props) => (
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 7.5v9" />
+    <path d="M15 9.5c0-1.1-1.3-2-3-2s-3 .9-3 2 1.3 2 3 2 3 .9 3 2-1.3 2-3 2-3-.9-3-2" />
+  </svg>
+);
+
 const LayoutColumnsIcon: KPIIcon = (props) => (
   <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
     <rect x="3" y="4" width="7" height="16" rx="2" />
@@ -647,9 +655,9 @@ const sidebarNavigation = [
   { id: "edt", label: "EAP", icon: TreeIcon, path: "/EAP" },
   { id: "board", label: "Kanban", icon: LayoutColumnsIcon, path: "/kanban" },
   { id: "cronograma", label: "Cronograma", icon: CalendarSmallIcon, path: "/cronograma" },
-  { id: "atividades", label: "Timeline", icon: CommentIcon, path: "/atividades" },
+  { id: "atividades", label: "Orçamento", icon: BudgetIcon, path: "/atividades" },
   { id: "documentos", label: "Documentos", icon: FileIcon, path: "/documentos" },
-  { id: "Relatórios", label: "Relatórios", icon: ReportIcon, path: "/Relatórios" },
+  { id: "relatorios", label: "Relatórios", icon: ReportIcon, path: "/relatorios" },
   { id: "equipe", label: "Equipes", icon: UsersIcon, path: "/equipe" },
   { id: "plano", label: "Meu plano", icon: PlanIcon, path: "/plano" }
 ];
@@ -3593,7 +3601,7 @@ export const WbsTreeView = ({
 
       try {
 
-        await fetch(apiUrl("/wbs/reorder"), {
+        const response = await fetch(apiUrl("/wbs/reorder"), {
 
           method: "PATCH",
 
@@ -3618,6 +3626,13 @@ export const WbsTreeView = ({
           })
 
         });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(payload?.message ?? "Falha ao reordenar");
+        }
+        if (typeof onReloadWbs === "function") {
+          await onReloadWbs();
+        }
 
       } catch (error) {
 
@@ -4476,7 +4491,7 @@ export const WbsTreeView = ({
       const orderedIds = reordered.map((s) => s.id);
 
       try {
-        await fetch(apiUrl("/wbs/reorder"), {
+        const response = await fetch(apiUrl("/wbs/reorder"), {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -4489,6 +4504,10 @@ export const WbsTreeView = ({
             orderedIds
           })
         });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(payload?.message ?? "Falha ao reordenar");
+        }
         if (typeof onReloadWbs === "function") {
           await onReloadWbs();
         }
@@ -4798,7 +4817,8 @@ export const WbsTreeView = ({
 
 
 
-              const visualLevel = typeof row.node.level === "number" ? row.node.level : row.level;
+              const visualLevel = Number.isFinite(row.level) ? row.level : typeof row.node.level === "number" ? row.node.level : 0;
+              const displayLevel = visualLevel + 1;
 
 
 
@@ -4929,6 +4949,8 @@ export const WbsTreeView = ({
               const isEndDateSoon = Boolean(
                 !isEndDateOverdue && (daysToEnd === 1 || daysToEnd === 0) && normalizedStatus !== "Finalizado"
               );
+              const isDoneStatus = normalizedStatus === "Finalizado";
+              const isInProgressStatus = normalizedStatus === "Em andamento";
               const durationInDays = calcDurationInDays(row.node.startDate, row.node.endDate);
               const isStatusPickerOpen = statusPickerId === row.node.id;
               const priorityValue = normalizePriorityValue(
@@ -4950,7 +4972,7 @@ export const WbsTreeView = ({
 
 
               const isRootLevel = visualLevel === 0;
-              const formattedLevel = `${visualLevel}`;
+              const formattedLevel = `${displayLevel}`;
 
 
 
@@ -5056,7 +5078,7 @@ export const WbsTreeView = ({
                             fontWeight: 600
                           }}
                         >
-                          {row.node.level}
+                          {displayLevel}
                         </span>
                         <button
                           type="button"
@@ -5073,7 +5095,7 @@ export const WbsTreeView = ({
                             fontSize: "14px"
                           }}
                         >
-                          {">"}
+                          {"\u003e"}
                         </button>
                       </div>
                     </td>
@@ -5084,7 +5106,7 @@ export const WbsTreeView = ({
 
 
 
-                      <div className={`flex w-full items-center gap-2 flex-1 min-w-[380px] max-w-none wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""} ${levelClass}`}>
+                      <div className={`flex w-full items-center gap-2 flex-1 min-w-[220px] max-w-none wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""} ${levelClass}`}>
 
 
 
@@ -5120,7 +5142,7 @@ export const WbsTreeView = ({
 
 
 
-                            {isExpanded ? "v" : ">"}
+                            {">"}
 
 
 
@@ -5140,7 +5162,7 @@ export const WbsTreeView = ({
 
 
 
-                        <div className="flex items-center gap-2 flex-1 min-w-[380px] max-w-none">
+                        <div className="flex items-center gap-2 flex-1 min-w-[220px] max-w-none">
 
 
 
@@ -5266,7 +5288,7 @@ export const WbsTreeView = ({
 
 
 
-                    <td className="px-3 py-2 align-middle">
+                    <td className="px-3 py-2 align-middle wbs-status-cell">
                       <select
                         value={normalizeStatus(row.node.status)}
                         onClick={(event) => event.stopPropagation()}
@@ -5343,11 +5365,15 @@ export const WbsTreeView = ({
                           className={clsx(
                             "wbs-date-input",
                             isEndDateOverdue && "wbs-date-input--overdue",
-                            isEndDateSoon && "wbs-date-input--warning"
+                            isEndDateSoon && "wbs-date-input--warning",
+                            isDoneStatus && "wbs-date-input--done",
+                            !isDoneStatus && isInProgressStatus && "wbs-date-input--progress"
                           )}
                         />
                         {isEndDateOverdue && <span className="wbs-date-alert">!</span>}
                         {isEndDateSoon && <span className="wbs-date-clock">⏰</span>}
+                        {isDoneStatus && <span className="wbs-date-check">✓</span>}
+                        {!isDoneStatus && isInProgressStatus && <span className="wbs-date-progress">⏳</span>}
                       </div>
                     </td>
 
@@ -10884,7 +10910,9 @@ export const DashboardLayout = ({
   const projectMeta = (portfolio as PortfolioProject[]).find((project) => project.projectId === selectedProjectId) ?? null;
 
   const location = useLocation();
-  const isEapRoute = location.pathname.toLowerCase().includes("/eap") || location.pathname.toLowerCase().includes("/edt");
+  const lowerPath = location.pathname.toLowerCase();
+  const isEapRoute = lowerPath.includes("/eap") || lowerPath.includes("/edt");
+  const isBudgetRoute = lowerPath.includes("/atividades");
 
   const navigate = useNavigate();
 
@@ -11795,7 +11823,7 @@ export const DashboardLayout = ({
             return (
               <Fragment key={item.id}>
                 {link}
-                {item.id === "atividades" ? <div className="sidebar-divider" /> : null}
+                {item.id === "cronograma" ? <div className="sidebar-divider" /> : null}
               </Fragment>
             );
           })}
@@ -11859,7 +11887,7 @@ export const DashboardLayout = ({
                   disabled={!projects?.length}
                 >
                   {!selectedProjectId && <option value="">Selecione um projeto</option>}
-                  {!isEapRoute && projects?.length ? <option value="all">Todos</option> : null}
+                  {!isEapRoute && !isBudgetRoute && projects?.length ? <option value="all">Todos</option> : null}
                   {(projects || []).map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.name}

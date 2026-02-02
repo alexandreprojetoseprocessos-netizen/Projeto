@@ -61,13 +61,13 @@ export const createApp = () => {
   app.options("*", cors(corsOptions));
   app.use(
     express.json({
-      limit: "1mb",
+      limit: "10mb",
       verify: (req: any, _res, buf) => {
         req.rawBody = buf.toString();
       }
     })
   );
-  app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "10mb" }));
   app.use(morgan("dev"));
 
   app.use("/health", healthRouter);

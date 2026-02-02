@@ -1,4 +1,4 @@
-import { prisma } from "@gestao/database";
+﻿import { prisma } from "@gestao/database";
 import { MembershipRole } from "@prisma/client";
 import type { AuthenticatedUser } from "../types/http";
 
@@ -28,7 +28,14 @@ export const listMembersForOrganization = async (organizationId: string) => {
         select: {
           id: true,
           email: true,
-          fullName: true
+          fullName: true,
+          phone: true,
+          address: true,
+          jobTitle: true,
+          avatarUrl: true,
+          active: true,
+          documentType: true,
+          documentNumber: true
         }
       }
     },
@@ -66,7 +73,14 @@ export const addMemberToOrganization = async (
         select: {
           id: true,
           email: true,
-          fullName: true
+          fullName: true,
+          phone: true,
+          address: true,
+          jobTitle: true,
+          avatarUrl: true,
+          active: true,
+          documentType: true,
+          documentNumber: true
         }
       }
     }
@@ -74,3 +88,4 @@ export const addMemberToOrganization = async (
 
   return membership;
 };
+

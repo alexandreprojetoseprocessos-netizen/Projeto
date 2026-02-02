@@ -31,7 +31,37 @@ const parseDateValue = (value: any): Date | null => {
       return new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
     }
   }
-  const asString = String(value);
+  const asString = String(value).trim();
+  if (!asString) return null;
+
+  if (/^\d+(\.\d+)?$/.test(asString)) {
+    const parsed = XLSX.SSF.parse_date_code(Number(asString));
+    if (parsed) {
+      return new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
+    }
+  }
+
+  const brMatch = asString.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})(?:\s|T|$)/);
+  if (brMatch) {
+    const day = Number(brMatch[1]);
+    const month = Number(brMatch[2]);
+    let year = Number(brMatch[3]);
+    if (year < 100) year += 2000;
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+      return new Date(Date.UTC(year, month - 1, day));
+    }
+  }
+
+  const isoMatch = asString.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s|T|$)/);
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+      return new Date(Date.UTC(year, month - 1, day));
+    }
+  }
+
   const date = new Date(asString);
   return Number.isNaN(date.getTime()) ? null : date;
 };
@@ -280,16 +310,74 @@ wbsRouter.patch("/reorder", async (req: RequestWithUser, res) => {
       id: { in: orderedIds },
       deletedAt: null
     },
-    select: { id: true, parentId: true }
+    select: { id: true, parentId: true, wbsCode: true }
   });
 
-  const invalid = nodes.some((n) => (parentId ?? null) !== (n.parentId ?? null));
-  if (invalid || nodes.length !== orderedIds.length) {
+  const activeParents = new Set(
+    (
+      await prisma.wbsNode.findMany({
+        where: { projectId: projectId!, deletedAt: null },
+        select: { id: true }
+      })
+    ).map((n) => n.id)
+  );
+  const normalizeParent = (value: string | null) => (value && activeParents.has(value) ? value : null);
+
+  let invalid = nodes.some((n) => (parentId ?? null) !== normalizeParent(n.parentId ?? null));
+  if (invalid && parentId) {
+    const allNodes = await prisma.wbsNode.findMany({
+      where: { projectId: projectId!, deletedAt: null },
+      select: { id: true, wbsCode: true }
+    });
+    const codeToId = new Map(
+      allNodes
+        .filter((n) => n.wbsCode)
+        .map((n) => [String(n.wbsCode).toLowerCase(), n.id])
+    );
+    const fixes = nodes
+      .filter((n) => !n.parentId && n.wbsCode && String(n.wbsCode).includes("."))
+      .map((n) => {
+        const parentCode = String(n.wbsCode).split(".").slice(0, -1).join(".");
+        const inferredParentId = codeToId.get(parentCode.toLowerCase()) ?? null;
+        if (inferredParentId && inferredParentId === parentId) {
+          return { id: n.id, parentId: inferredParentId };
+        }
+        return null;
+      })
+      .filter(Boolean) as Array<{ id: string; parentId: string }>;
+
+    if (fixes.length) {
+      await prisma.$transaction(
+        fixes.map((fix) =>
+          prisma.wbsNode.update({
+            where: { id: fix.id },
+            data: { parentId: fix.parentId }
+          })
+        )
+      );
+      const refreshed = await prisma.wbsNode.findMany({
+        where: {
+          projectId: projectId!,
+          id: { in: orderedIds },
+          deletedAt: null
+        },
+        select: { id: true, parentId: true }
+      });
+      invalid = refreshed.some((n) => (parentId ?? null) !== (n.parentId ?? null));
+    }
+  }
+  if (invalid) {
     return res.status(400).json({ message: "Ids must belong to the same parent within the project" });
   }
 
+  const existingIds = new Set(nodes.map((n) => n.id));
+  const normalizedOrderedIds = orderedIds.filter((id) => existingIds.has(id));
+  if (!normalizedOrderedIds.length) {
+    return res.status(400).json({ message: "No valid ids to reorder" });
+  }
+
   await prisma.$transaction(
-    orderedIds.map((id, index) =>
+    normalizedOrderedIds.map((id, index) =>
       prisma.wbsNode.update({
         where: { id },
         data: {
@@ -531,6 +619,7 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
     const parsedRows: Array<{
       code: string;
       parentCode?: string | null;
+      inferredParentCode?: string | null;
       level?: number | null;
       title: string;
       status?: string | null;
@@ -576,27 +665,51 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
         return;
       }
 
-      const code =
-        (normalized["id"] ?? normalized["code"] ?? normalized["codigo"] ?? normalized["wbs"] ?? null)?.toString()?.trim() ||
-        null;
+      const rawCode = normalized["code"] ?? normalized["codigo"] ?? normalized["wbs"] ?? null;
+      const rawId = normalized["id"] ?? null;
+      let code =
+        (rawCode ?? rawId)?.toString()?.trim() || null;
       if (!code) {
         errors.push({ row: index + 2, message: "Missing ID/Code" });
         return;
       }
 
       const explicitParent =
-        (normalized["parentcode"] ?? normalized["pai"] ?? normalized["codigo_pai"] ?? null)?.toString()?.trim() || null;
+        (normalized["parentcode"] ??
+          normalized["parent"] ??
+          normalized["pai"] ??
+          normalized["codigo_pai"] ??
+          null)
+          ?.toString()
+          ?.trim() || null;
       const inferredParent =
         code.includes(".") && code.split(".").length > 1 ? code.split(".").slice(0, -1).join(".") : null;
       const parentCode = explicitParent || inferredParent;
+      if (code && parentCode) {
+        const normalizedCode = code.toString();
+        const normalizedParent = parentCode.toString();
+        if (!normalizedCode.includes(".") && !normalizedCode.startsWith(`${normalizedParent}.`)) {
+          code = `${normalizedParent}.${normalizedCode}`;
+        }
+      }
 
       const level = normalized["nivel"] ?? normalized["level"] ?? null;
       const statusRaw = normalized["situacao"] ?? normalized["status"] ?? null;
       const statusKey = statusRaw ? statusRaw.toString().trim().toLowerCase() : null;
       const status = statusKey ? statusMap[statusKey] ?? null : null;
 
-      const startDate = parseDateValue(normalized["inicio"] ?? normalized["startdate"]);
-      const endDate = parseDateValue(normalized["termino"] ?? normalized["enddate"]);
+      const startDate = parseDateValue(
+        normalized["inicio"] ??
+          normalized["data_inicio"] ??
+          normalized["startdate"] ??
+          normalized["start"]
+      );
+      const endDate = parseDateValue(
+        normalized["termino"] ??
+          normalized["data_termino"] ??
+          normalized["enddate"] ??
+          normalized["end"]
+      );
       const durationDays =
         normalized["duracao"] !== null && normalized["duracao"] !== undefined
           ? Number(normalized["duracao"])
@@ -634,6 +747,7 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
       parsedRows.push({
         code,
         parentCode,
+        inferredParentCode: inferredParent,
         level: level !== null && level !== undefined ? Number(level) : null,
         title,
         status,
@@ -652,6 +766,7 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
       id: string;
       code: string;
       parentCode?: string | null;
+      inferredParentCode?: string | null;
       dependencies?: string[] | null;
     }> = [];
 
@@ -690,6 +805,7 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
             id: createdNode.id,
             code: row.code,
             parentCode: row.parentCode ?? null,
+            inferredParentCode: row.inferredParentCode ?? null,
             dependencies: row.dependencies ?? null
           });
           rowLogs.push({ row: rowIndex + 2, code: row.code, action: "created" });
@@ -715,6 +831,7 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
             id: existing.id,
             code: row.code,
             parentCode: row.parentCode ?? null,
+            inferredParentCode: row.inferredParentCode ?? null,
             dependencies: row.dependencies ?? null
           });
           rowLogs.push({ row: rowIndex + 2, code: row.code, action: "updated" });
@@ -735,14 +852,19 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
     }
 
     for (const row of createdNodes) {
-      if (row.parentCode) {
-        const parentId = codeToId.get(row.parentCode.toLowerCase());
+      if (row.parentCode || row.inferredParentCode) {
+        const candidateCodes = [row.parentCode, row.inferredParentCode].filter(Boolean) as string[];
+        let parentId: string | undefined;
+        for (const candidate of candidateCodes) {
+          parentId = codeToId.get(candidate.toLowerCase());
+          if (parentId) break;
+        }
         if (parentId) {
           await prisma.wbsNode.update({
             where: { id: row.id },
             data: { parentId }
           });
-        } else {
+        } else if (row.parentCode) {
           errors.push({ row: 0, message: `Parent not found for code ${row.parentCode}` });
         }
       }
