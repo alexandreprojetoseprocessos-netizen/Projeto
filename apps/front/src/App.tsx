@@ -53,7 +53,12 @@ type Organization = {
   status?: "ACTIVE" | "DEACTIVATED" | "SOFT_DELETED";
   deletedAt?: string | null;
 };
-type Project = { id: string; name: string };
+type Project = {
+  id: string;
+  name: string;
+  projectId?: string | null;
+  projectName?: string | null;
+};
 type BoardColumn = { id: string; label: string; tasks: any[]; wipLimit?: number };
 type WbsNode = {
   id: string;

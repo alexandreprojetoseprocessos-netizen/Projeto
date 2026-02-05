@@ -12,8 +12,9 @@ const ensureBucket = async () => {
     const { error } = await supabaseAdmin.storage.getBucket(bucket);
     if (!error) return;
 
-    const status = typeof error.status === "number" ? error.status : Number(error.statusCode);
-    if (status !== 404 && error.statusCode !== "404") {
+    const storageError = error as { status?: number; statusCode?: number | string };
+    const status = typeof storageError.status === "number" ? storageError.status : Number(storageError.statusCode);
+    if (status !== 404 && storageError.statusCode !== "404") {
       logger.error({ err: error }, "Failed to fetch storage bucket");
       throw new Error("Falha ao acessar o bucket do storage");
     }

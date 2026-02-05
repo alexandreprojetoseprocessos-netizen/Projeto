@@ -1361,6 +1361,8 @@ type DashboardLayoutProps = {
 
   onExportPortfolio?: () => void;
 
+  onReloadPortfolio?: () => void;
+
 
 
   onCreateProject: (payload: CreateProjectPayload) => Promise<void>;

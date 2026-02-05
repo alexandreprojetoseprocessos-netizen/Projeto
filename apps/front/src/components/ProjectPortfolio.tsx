@@ -18,6 +18,7 @@ import type { CreateProjectPayload } from "./DashboardLayout";
 export type PortfolioProject = {
   projectId: string;
   projectName: string;
+  name?: string | null;
   code?: string | null;
   status?: string | null;
   clientName?: string | null;
