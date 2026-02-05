@@ -12,14 +12,17 @@ interface DependenciesDropdownProps {
   options: DependencyOption[];
   selectedIds: string[];
   onChange: (newSelectedIds: string[]) => void;
+  onApplyDownChain?: () => void;
 }
 
 export const DependenciesDropdown: React.FC<DependenciesDropdownProps> = ({
   options,
   selectedIds,
-  onChange
+  onChange,
+  onApplyDownChain
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number; width: number } | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -56,7 +59,11 @@ export const DependenciesDropdown: React.FC<DependenciesDropdownProps> = ({
       }
     };
 
-    const handleScroll = () => setIsOpen(false);
+    const handleScroll = (event: Event) => {
+      const target = event.target as Node;
+      if (menuRef.current?.contains(target)) return;
+      setIsOpen(false);
+    };
 
     if (isOpen) {
       document.addEventListener("mousedown", handleClickOutside);
@@ -82,6 +89,15 @@ export const DependenciesDropdown: React.FC<DependenciesDropdownProps> = ({
     const rest = selectedCodes.length - 2;
     label = rest > 0 ? `Dep: ${firstTwo} +${rest}` : `Dep: ${firstTwo}`;
   }
+
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredOptions = !normalizedSearch
+    ? options
+    : options.filter((opt) => {
+        const optionCode = opt.displayCode ?? opt.wbsCode ?? opt.id;
+        const haystack = `${optionCode} ${opt.name}`.toLowerCase();
+        return haystack.includes(normalizedSearch);
+      });
 
   return (
     <div className="dependencies-dropdown" ref={containerRef}>
@@ -119,10 +135,30 @@ export const DependenciesDropdown: React.FC<DependenciesDropdownProps> = ({
               <div className="dependencies-dropdown__header">
                 <h4>Selecione predecessoras</h4>
                 <p>Marque as tarefas das quais esta atividade depende.</p>
+                {onApplyDownChain && (
+                  <button
+                    type="button"
+                    className="dependencies-dropdown__chain"
+                    onClick={() => {
+                      onApplyDownChain();
+                      setIsOpen(false);
+                    }}
+                  >
+                    Dependência para baixo
+                  </button>
+                )}
+              </div>
+              <div className="dependencies-dropdown__search">
+                <input
+                  type="search"
+                  placeholder="Pesquisar tarefa..."
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                />
               </div>
 
               <div className="dependencies-dropdown__list">
-                {options.map((opt) => {
+                {filteredOptions.map((opt) => {
                   const optionCode = opt.displayCode ?? opt.wbsCode ?? opt.id;
 
                   return (
@@ -144,7 +180,7 @@ export const DependenciesDropdown: React.FC<DependenciesDropdownProps> = ({
                   );
                 })}
 
-                {options.length === 0 && (
+                {filteredOptions.length === 0 && (
                   <p className="dependencies-dropdown__empty">
                     Não há outras tarefas para selecionar como predecessoras.
                   </p>

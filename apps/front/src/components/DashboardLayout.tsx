@@ -1421,6 +1421,7 @@ export type DashboardOutletContext = {
   portfolioError: string | null;
   portfolioLoading: boolean;
   onExportPortfolio?: () => void;
+  onReloadPortfolio?: () => void;
   handleViewProjectDetails: (projectId: string) => void;
   kanbanColumns: KanbanColumn[];
   summary: any | null;
@@ -4747,23 +4748,23 @@ export const WbsTreeView = ({
 
       <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <div className="edt-horizontal-scroll">
-          <table className="wbs-table w-full border-collapse table-fixed" style={{ borderSpacing: 0 }}>
-<colgroup>
+          <table className="wbs-table w-full table-fixed">
+          <colgroup>
             <col style={{ width: "28px" }} />
             <col style={{ width: "32px" }} />
-            <col style={{ width: "50px" }} />
+            <col style={{ width: "60px" }} />
             <col style={{ width: "70px" }} />
             <col style={{ width: "120px" }} />
             <col style={{ width: "320px" }} />
+            <col style={{ width: "180px" }} />
             <col style={{ width: "170px" }} />
-            <col style={{ width: "140px" }} />
-            <col style={{ width: "85px" }} />
-            <col style={{ width: "180px" }} />
-            <col style={{ width: "180px" }} />
+            <col style={{ width: "240px" }} />
+            <col style={{ width: "240px" }} />
+            <col style={{ width: "120px" }} />
             <col style={{ width: "180px" }} />
             <col style={{ width: "200px" }} />
             <col style={{ width: "110px" }} />
-            <col style={{ width: "90px" }} />
+            <col style={{ width: "120px" }} />
             <col style={{ width: "150px" }} />
             <col style={{ width: "150px" }} />
           </colgroup>
@@ -4781,25 +4782,25 @@ export const WbsTreeView = ({
             </th>
             <th className="px-1 py-2 text-center align-middle">ID</th>
             <th className="px-1 py-2 text-center align-middle" title="Comentários da tarefa">Chat</th>
-            <th className="px-1 py-2 text-center align-middle">Nvel</th>
+            <th className="px-1 py-2 text-center align-middle">Nível</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Nome da tarefa</th>
-            <th className="w-[150px] px-3 py-2 text-left align-middle">Situação</th>
-            <th className="w-[140px] px-3 py-2 text-left align-middle">Prioridade</th>
-            <th className="w-[140px] px-3 py-2 text-left align-middle">Durao</th>
-            <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Incio</th>
-            <th className="w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500">Trmino</th>
+            <th className="w-[180px] px-3 py-2 text-left align-middle wbs-status-col">Status</th>
+            <th className="w-[170px] px-3 py-2 text-left align-middle wbs-priority-col">Prioridade</th>
+            <th className="wbs-date-col wbs-date-col-start w-[240px] px-2 py-2 text-left text-xs font-semibold text-slate-500">Início</th>
+            <th className="wbs-date-col wbs-date-col-end w-[240px] px-2 py-2 text-left text-xs font-semibold text-slate-500">Término</th>
+            <th className="w-[120px] px-2 py-2 text-left align-middle wbs-quantity-col">Quantidade</th>
             <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Responsável</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Catálogo de Serviços</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Multiplicador</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Multi.</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">
               <div className="flex flex-col leading-tight">
-                <span>Horas Total Prevista</span>
+                <span>Horas Prevista</span>
                 <span className="text-[10px] text-slate-400 font-medium normal-case">
                   Total {plannedHoursLabel}
                 </span>
               </div>
             </th>
-            <th className="w-[150px] px-3 py-2 text-left align-middle">Dependncias</th>
+            <th className="w-[150px] px-3 py-2 text-left align-middle">Dependência</th>
             <th className="w-[150px] px-3 py-2 text-center align-middle">Detalhes</th>
           </tr>
         </thead>
@@ -4851,8 +4852,8 @@ export const WbsTreeView = ({
                     name: optionRow.node.title ?? optionRow.node.name ?? "Tarefa sem nome",
                     displayCode: optionDisplayCode,
                     wbsCode: optionRow.node.wbsCode ?? optionRow.displayId
-                  };
-                });
+                };
+              });
 
               const dependencyInfos = dependencyBadges.map((dependencyId: string) => {
                 const dependencyRow = rowMap.get(dependencyId);
@@ -4875,6 +4876,33 @@ export const WbsTreeView = ({
                   row: dependencyRow
                 };
               });
+
+              const applyDependencyDownChain = () => {
+                const baseParentId = row.node.parentId ?? null;
+                const baseLevel = visualLevel;
+                const siblings = allRows.filter((sibling) => {
+                  const siblingLevel = Number.isFinite(sibling.level)
+                    ? sibling.level
+                    : typeof sibling.node.level === "number"
+                    ? sibling.node.level
+                    : 0;
+                  return (sibling.node.parentId ?? null) === baseParentId && siblingLevel === baseLevel;
+                });
+                const startIndex = siblings.findIndex((sibling) => sibling.node.id === row.node.id);
+                if (startIndex < 0) return;
+                let previousId = row.node.id;
+                for (let i = startIndex + 1; i < siblings.length; i += 1) {
+                  const target = siblings[i];
+                  const currentDeps = Array.isArray(target.node.dependencies)
+                    ? target.node.dependencies.map((dep: any) => String(dep))
+                    : [];
+                  if (!currentDeps.includes(previousId)) {
+                    const nextDeps = [...currentDeps, previousId];
+                    onUpdate(target.node.id, { dependencies: nextDeps });
+                  }
+                  previousId = target.node.id;
+                }
+              };
 
 
 
@@ -5310,7 +5338,7 @@ export const WbsTreeView = ({
                       </select>
                     </td>
 
-                    <td className="px-3 py-2 align-middle">
+                    <td className="px-3 py-2 align-middle wbs-priority-cell">
                       <select
                         className={clsx("wbs-priority-select", `wbs-priority-${priorityTone}`)}
                         value={priorityValue}
@@ -5331,15 +5359,7 @@ export const WbsTreeView = ({
 
 
 
-                    <td className="w-[140px] px-3 py-2 align-middle">
-                      <span className="inline-flex items-center whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
-                        {durationInDays} {durationInDays === 1 ? "dia" : "dias"}
-                      </span>
-                    </td>
-
-
-
-                    <td className="px-4 py-2 align-middle w-[220px]">
+                    <td className="wbs-date-col wbs-date-col-start px-2 py-2 align-middle w-[240px]">
                       <div className="wbs-date-input-wrapper">
                         <input
                           type="date"
@@ -5354,7 +5374,7 @@ export const WbsTreeView = ({
 
 
 
-                    <td className="px-4 py-2 align-middle w-[220px]">
+                    <td className="wbs-date-col wbs-date-col-end px-2 py-2 align-middle w-[240px]">
                       <div className="wbs-date-input-wrapper">
                         <input
                           type="date"
@@ -5375,6 +5395,22 @@ export const WbsTreeView = ({
                         {isDoneStatus && <span className="wbs-date-check">✓</span>}
                         {!isDoneStatus && isInProgressStatus && <span className="wbs-date-progress">⏳</span>}
                       </div>
+                    </td>
+
+                    <td
+                      className="w-[120px] px-2 py-2 align-middle wbs-quantity-cell wbs-duration-cell"
+                      data-duration-label={durationInDays === 1 ? "dia" : "dias"}
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={getDurationInputValue(row.node)}
+                        onChange={(event) => handleDurationInputChange(row.node.id, event.target.value)}
+                        onClick={(event) => event.stopPropagation()}
+                        className="wbs-duration-input"
+                        aria-label="Quantidade de dias"
+                      />
                     </td>
 
 
@@ -5493,6 +5529,7 @@ export const WbsTreeView = ({
                         options={dependencyOptionsList}
                         selectedIds={dependencyBadges}
                         onChange={(newSelected) => onUpdate(row.node.id, { dependencies: newSelected })}
+                        onApplyDownChain={applyDependencyDownChain}
                       />
 
                     </td>
@@ -10892,6 +10929,7 @@ export const DashboardLayout = ({
   portfolioLoading,
 
   onExportPortfolio,
+  onReloadPortfolio,
 
   onCreateProject,
 
@@ -10913,6 +10951,7 @@ export const DashboardLayout = ({
   const lowerPath = location.pathname.toLowerCase();
   const isEapRoute = lowerPath.includes("/eap") || lowerPath.includes("/edt");
   const isBudgetRoute = lowerPath.includes("/atividades");
+  const isReportsRoute = lowerPath.includes("/relatorios");
 
   const navigate = useNavigate();
 
@@ -10921,10 +10960,16 @@ export const DashboardLayout = ({
   const [isProjectModalOpen, setProjectModalOpen] = useState(false);
 
   useEffect(() => {
+    if (isReportsRoute) {
+      if (selectedProjectId !== "all") {
+        onSelectProject("all");
+      }
+      return;
+    }
     if (!isEapRoute || selectedProjectId !== "all") return;
     if (!projects?.length) return;
     onSelectProject(projects[0].id);
-  }, [isEapRoute, selectedProjectId, projects, onSelectProject]);
+  }, [isEapRoute, isReportsRoute, selectedProjectId, projects, onSelectProject]);
 
 
 
@@ -11539,6 +11584,7 @@ export const DashboardLayout = ({
   portfolioLoading,
 
   onExportPortfolio,
+  onReloadPortfolio,
 
   handleViewProjectDetails,
 
@@ -11884,15 +11930,21 @@ export const DashboardLayout = ({
                       onSelectProject(newId);
                     }
                   }}
-                  disabled={!projects?.length}
+                  disabled={!projects?.length || isReportsRoute}
                 >
-                  {!selectedProjectId && <option value="">Selecione um projeto</option>}
-                  {!isEapRoute && !isBudgetRoute && projects?.length ? <option value="all">Todos</option> : null}
-                  {(projects || []).map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
+                  {isReportsRoute ? (
+                    <option value="all">Todos</option>
+                  ) : (
+                    <>
+                      {!selectedProjectId && <option value="">Selecione um projeto</option>}
+                      {!isEapRoute && !isBudgetRoute && projects?.length ? <option value="all">Todos</option> : null}
+                      {(projects || []).map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </>
+                  )}
                 </select>
                 {!projects?.length && <small className="muted">Nenhum projeto cadastrado</small>}
               </div>

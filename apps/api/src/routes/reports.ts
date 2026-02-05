@@ -63,6 +63,7 @@ reportsRouter.get("/portfolio", async (req, res) => {
   const projects = await prisma.project.findMany({
     where: {
       organizationId: req.organization.id,
+      archivedAt: null,
       members: {
         some: {
           userId: req.user.id
@@ -74,6 +75,7 @@ reportsRouter.get("/portfolio", async (req, res) => {
       code: true,
       name: true,
       clientName: true,
+      description: true,
       status: true,
       priority: true,
       startDate: true,
@@ -127,6 +129,7 @@ reportsRouter.get("/portfolio", async (req, res) => {
       projectId: project.id,
       code: project.code,
       projectName: project.name,
+      description: project.description ?? null,
       status: project.status,
       priority: project.priority,
       clientName: project.clientName,

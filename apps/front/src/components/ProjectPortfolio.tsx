@@ -42,26 +42,42 @@ export type PortfolioProject = {
 
 const statusMap: Record<string, { label: string; tone: "success" | "warning" | "danger" | "neutral" }> = {
   PLANNED: { label: "Planejado", tone: "neutral" },
+  PLANEJADO: { label: "Planejado", tone: "neutral" },
   PLANNING: { label: "Planejamento", tone: "neutral" },
+  PLANEJAMENTO: { label: "Planejamento", tone: "neutral" },
   IN_PROGRESS: { label: "Em andamento", tone: "warning" },
+  "EM ANDAMENTO": { label: "Em andamento", tone: "warning" },
+  EM_ANDAMENTO: { label: "Em andamento", tone: "warning" },
   ACTIVE: { label: "Em andamento", tone: "warning" },
   ON_HOLD: { label: "Pausado", tone: "neutral" },
+  PAUSADO: { label: "Pausado", tone: "neutral" },
   PAUSED: { label: "Pausado", tone: "neutral" },
+  "NÃO INICIADO": { label: "Não iniciado", tone: "neutral" },
+  "NAO INICIADO": { label: "Não iniciado", tone: "neutral" },
+  NAO_INICIADO: { label: "Não iniciado", tone: "neutral" },
   DONE: { label: "Concluído", tone: "success" },
   COMPLETED: { label: "Concluído", tone: "success" },
+  FINALIZADO: { label: "Concluído", tone: "success" },
+  CONCLUIDO: { label: "Concluído", tone: "success" },
+  "CONCLUÍDO": { label: "Concluído", tone: "success" },
   DELAYED: { label: "Atrasado", tone: "danger" },
   LATE: { label: "Atrasado", tone: "danger" },
   OVERDUE: { label: "Atrasado", tone: "danger" },
+  ATRASADO: { label: "Atrasado", tone: "danger" },
   AT_RISK: { label: "Em risco", tone: "danger" },
   BLOCKED: { label: "Em risco", tone: "danger" },
-  CANCELED: { label: "Cancelado", tone: "neutral" }
+  "EM RISCO": { label: "Em risco", tone: "danger" },
+  RISCO: { label: "Em risco", tone: "danger" },
+  CANCELED: { label: "Cancelado", tone: "neutral" },
+  CANCELADO: { label: "Cancelado", tone: "neutral" }
 };
 
 const priorityMap: Record<string, { label: string; tone: "neutral" | "warning" | "danger" | "info" }> = {
   LOW: { label: "Baixa", tone: "neutral" },
   BAIXA: { label: "Baixa", tone: "neutral" },
-  MEDIUM: { label: "Media", tone: "info" },
-  MEDIA: { label: "Media", tone: "info" },
+  MEDIUM: { label: "Média", tone: "info" },
+  MEDIA: { label: "Média", tone: "info" },
+  "MÉDIA": { label: "Média", tone: "info" },
   HIGH: { label: "Alta", tone: "warning" },
   ALTA: { label: "Alta", tone: "warning" },
   URGENT: { label: "Urgente", tone: "danger" },
@@ -77,39 +93,45 @@ const currencyFormatter = new Intl.NumberFormat("pt-BR", {
 
 const normalizeStatus = (status?: string | null) => (status ?? "").trim().toUpperCase();
 
+const getProjectStatusValue = (project: PortfolioProject) =>
+  project.status ?? (project as { statusLabel?: string | null; projectStatus?: string | null }).statusLabel ?? (project as { projectStatus?: string | null }).projectStatus ?? null;
+
 const MS_IN_DAY = 24 * 60 * 60 * 1000;
 
 const isCompletedStatus = (status?: string | null) => {
   const normalized = normalizeStatus(status);
-  return normalized === "DONE" || normalized === "COMPLETED";
+  return ["DONE", "COMPLETED", "FINALIZADO", "CONCLUIDO", "CONCLUÍDO"].includes(normalized);
 };
 
 const isInProgressStatus = (status?: string | null) => {
   const normalized = normalizeStatus(status);
-  return normalized === "IN_PROGRESS" || normalized === "ACTIVE";
+  return ["IN_PROGRESS", "ACTIVE", "EM ANDAMENTO", "EM_ANDAMENTO"].includes(normalized);
 };
 
 const isPausedStatus = (status?: string | null) => {
   const normalized = normalizeStatus(status);
-  return normalized === "ON_HOLD" || normalized === "PAUSED";
+  return ["ON_HOLD", "PAUSED", "PAUSADO"].includes(normalized);
 };
 
 const isPlannedStatus = (status?: string | null) => {
   const normalized = normalizeStatus(status);
-  return normalized === "PLANNED" || normalized === "PLANNING";
+  return ["PLANNED", "PLANNING", "PLANEJADO", "PLANEJAMENTO", "NAO INICIADO", "NÃO INICIADO", "NAO_INICIADO"].includes(normalized);
 };
 
 const isRiskStatus = (status?: string | null) => {
   const normalized = normalizeStatus(status);
-  return normalized === "AT_RISK" || normalized === "BLOCKED";
+  return ["AT_RISK", "BLOCKED", "EM RISCO", "RISCO"].includes(normalized);
 };
 
 const isLateStatus = (status?: string | null) => {
   const normalized = normalizeStatus(status);
-  return normalized === "DELAYED" || normalized === "LATE" || normalized === "OVERDUE";
+  return ["DELAYED", "LATE", "OVERDUE", "ATRASADO"].includes(normalized);
 };
 
-const isCanceledStatus = (status?: string | null) => normalizeStatus(status) === "CANCELED";
+const isCanceledStatus = (status?: string | null) => {
+  const normalized = normalizeStatus(status);
+  return normalized === "CANCELED" || normalized === "CANCELADO";
+};
 
 const getStartOfDay = (value: string | Date) => {
   const date = value instanceof Date ? value : new Date(value);
@@ -146,13 +168,14 @@ const getOverdueDays = (project: PortfolioProject, todayStart: number) => {
   if (!project.endDate) return null;
   const endStart = getStartOfDay(project.endDate);
   if (!endStart) return null;
-  if (isCompletedStatus(project.status) || isCanceledStatus(project.status)) return 0;
+  const statusValue = getProjectStatusValue(project);
+  if (isCompletedStatus(statusValue) || isCanceledStatus(statusValue)) return 0;
   const diff = Math.floor((todayStart - endStart) / (1000 * 60 * 60 * 24));
   return diff > 0 ? diff : 0;
 };
 
 const isLateProject = (project: PortfolioProject, todayStart: number) => {
-  if (isLateStatus(project.status)) return true;
+  if (isLateStatus(getProjectStatusValue(project))) return true;
   const overdue = getOverdueDays(project, todayStart);
   return typeof overdue === "number" && overdue > 0;
 };
@@ -259,6 +282,7 @@ export type ProjectPortfolioProps = {
   onCreateProject?: (payload: CreateProjectPayload) => void | Promise<void>;
   onViewProjectDetails?: (projectId: string) => void;
   onEditProject?: (project: PortfolioProject) => void;
+  onTrashProject?: (projectId: string) => void | Promise<void>;
 };
 
 export const ProjectPortfolio = ({
@@ -270,7 +294,8 @@ export const ProjectPortfolio = ({
   onSelectProject,
   onCreateProject,
   onViewProjectDetails,
-  onEditProject
+  onEditProject,
+  onTrashProject
 }: ProjectPortfolioProps) => {
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -313,7 +338,7 @@ export const ProjectPortfolio = ({
   const kpiStats = useMemo(() => {
     return projects.reduce(
       (acc, project) => {
-        const status = normalizeStatus(project.status);
+        const status = normalizeStatus(getProjectStatusValue(project));
         if (isInProgressStatus(status)) acc.inProgress += 1;
         if (isCompletedStatus(status)) acc.completed += 1;
         if (isPausedStatus(status)) acc.paused += 1;
@@ -346,7 +371,7 @@ export const ProjectPortfolio = ({
   const filteredProjects = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return projects.filter((project) => {
-      const normalizedStatus = normalizeStatus(project.status);
+      const normalizedStatus = normalizeStatus(getProjectStatusValue(project));
       const matchesStatus = (() => {
         if (statusFilter === "all") return true;
         if (statusFilter === "IN_PROGRESS") return isInProgressStatus(normalizedStatus);
@@ -396,6 +421,10 @@ export const ProjectPortfolio = ({
   const handleEditProject = (project: PortfolioProject) => {
     setOpenMenuId(null);
     onEditProject?.(project);
+  };
+  const handleTrashProject = (projectId: string) => {
+    setOpenMenuId(null);
+    onTrashProject?.(projectId);
   };
 
   const emptyState = showOnlyFavorites
@@ -507,7 +536,7 @@ export const ProjectPortfolio = ({
                 <div className="project-card-layout">
                   <header className="project-card-top">
                     <div className="project-card-badges">
-                      {renderStatusBadge(project.status)}
+                      {renderStatusBadge(getProjectStatusValue(project))}
                       <span className={`project-priority-badge is-${priorityMeta.tone}`}>
                         {priorityMeta.label}
                       </span>
@@ -561,6 +590,16 @@ export const ProjectPortfolio = ({
                             >
                               Editar
                             </button>
+                            {onTrashProject && (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="project-card-menu-item"
+                                onClick={() => handleTrashProject(project.projectId)}
+                              >
+                                Excluir
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -658,7 +697,7 @@ export const ProjectPortfolio = ({
                     </p>
                   </div>
                   <div className="project-card-actions">
-                    {renderStatusBadge(project.status)}
+                    {renderStatusBadge(getProjectStatusValue(project))}
                     <button
                       type="button"
                       className={`favorite-button ${favoriteIds.has(project.projectId) ? "is-active" : ""}`}
@@ -760,7 +799,7 @@ export const ProjectPortfolio = ({
                       <strong>{project.projectName}</strong>
                       <small>{priorityMeta.label}</small>
                     </td>
-                    <td>{renderStatusBadge(project.status)}</td>
+                    <td>{renderStatusBadge(getProjectStatusValue(project))}</td>
                     <td>{project.clientName ?? "-"}</td>
                     <td>{project.responsibleName ?? "-"}</td>
                     <td>

@@ -33,15 +33,24 @@ const parseDateValue = (value: any): Date | null => {
   }
   const asString = String(value).trim();
   if (!asString) return null;
+  const cleaned = asString
+    .replace(
+      /\b(seg(unda)?|ter(ca|ça)?|qua(rta)?|qui(nta)?|sex(ta)?|s[áa]b(ado)?|dom(ingo)?|mon(day)?|tue(sday)?|wed(nesday)?|thu(rsday)?|fri(day)?|sat(urday)?|sun(day)?)\b/gi,
+      ""
+    )
+    .replace(/[.,]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return null;
 
-  if (/^\d+(\.\d+)?$/.test(asString)) {
-    const parsed = XLSX.SSF.parse_date_code(Number(asString));
+  if (/^\d+(\.\d+)?$/.test(cleaned)) {
+    const parsed = XLSX.SSF.parse_date_code(Number(cleaned));
     if (parsed) {
       return new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
     }
   }
 
-  const brMatch = asString.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})(?:\s|T|$)/);
+  const brMatch = cleaned.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})(?:\s|T|$)/);
   if (brMatch) {
     const day = Number(brMatch[1]);
     const month = Number(brMatch[2]);
@@ -52,7 +61,7 @@ const parseDateValue = (value: any): Date | null => {
     }
   }
 
-  const isoMatch = asString.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s|T|$)/);
+  const isoMatch = cleaned.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s|T|$)/);
   if (isoMatch) {
     const year = Number(isoMatch[1]);
     const month = Number(isoMatch[2]);
@@ -62,7 +71,7 @@ const parseDateValue = (value: any): Date | null => {
     }
   }
 
-  const date = new Date(asString);
+  const date = new Date(cleaned);
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
@@ -599,7 +608,65 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null });
+    const rawRows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: null });
+    const headerRow = Array.isArray(rawRows[0]) ? rawRows[0] : [];
+    const normalizedHeaders = headerRow.map((cell) => normalizeHeader(cell));
+    const mapHeaderKey = (key: string) => {
+      if (key.includes("codigo_da_eap")) return "codigo_da_eap";
+      if (key.includes("codigo_do_pai") || key.includes("codigo_pai") || key.includes("parentcode")) return "codigo_do_pai";
+      if (key.includes("nome_da_atividade_entrega")) return "nome_da_atividade_entrega";
+      if (key.includes("nome_da_atividade")) return "nome_da_atividade";
+      if (key.includes("nome_da_tarefa")) return "nome_da_tarefa";
+      if (key.includes("data_de_inicio") || key.includes("data_inicio")) return "data_de_inicio";
+      if (key.includes("data_de_fim") || key.includes("data_fim")) return "data_de_fim";
+      return key;
+    };
+    const mappedHeaders = normalizedHeaders.map((header) => mapHeaderKey(header));
+    const knownHeaders = new Set([
+      "id",
+      "code",
+      "codigo",
+      "codigo_da_eap",
+      "wbs",
+      "parent",
+      "parentcode",
+      "pai",
+      "codigo_pai",
+      "codigo_do_pai",
+      "level",
+      "nivel",
+      "nivel_da_eap",
+      "title",
+      "nome",
+      "tarefa",
+      "atividade",
+      "entrega",
+      "nome_da_tarefa",
+      "nome_da_atividade",
+      "nome_da_atividade_entrega",
+      "data_inicio",
+      "data_de_inicio",
+      "inicio",
+      "startdate",
+      "start",
+      "data_fim",
+      "data_de_fim",
+      "termino",
+      "enddate",
+      "end"
+    ]);
+    const hasHeader = mappedHeaders.some((header) => knownHeaders.has(header));
+    const rows: Array<Record<string, any>> = hasHeader
+      ? XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null })
+      : rawRows.map((row, index) => ({
+          __rowNumber: index + 1,
+          code: row?.[0] ?? null,
+          title: row?.[1] ?? null,
+          start: row?.[2] ?? null,
+          end: row?.[3] ?? null,
+          level: row?.[4] ?? null,
+          parent: row?.[5] ?? null
+        }));
 
     const existingNodes = await prisma.wbsNode.findMany({
       where: { projectId: projectId! },
@@ -617,7 +684,9 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
     const catalogByName = new Map(serviceCatalog.map((c) => [c.name.toLowerCase().trim(), c]));
 
     const parsedRows: Array<{
-      code: string;
+      sequence: number;
+      rowNumber: number;
+      code?: string | null;
       parentCode?: string | null;
       inferredParentCode?: string | null;
       level?: number | null;
@@ -631,6 +700,7 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
       serviceMultiplier?: number | null;
     }> = [];
     const errors: Array<{ row: number; message: string }> = [];
+    const warnings: Array<{ row: number; message: string }> = [];
     const rowLogs: Array<Record<string, any>> = [];
 
     const statusMap: Record<string, string> = {
@@ -651,40 +721,69 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
     rows.forEach((raw, index) => {
       const normalized: Record<string, any> = {};
       Object.entries(raw).forEach(([key, value]) => {
-        normalized[normalizeHeader(key)] = value;
+        if (key === "__rowNumber") return;
+        const normalizedKey = normalizeHeader(key);
+        normalized[mapHeaderKey(normalizedKey)] = value;
       });
 
       const hasData = Object.values(normalized).some(
         (v) => v !== null && v !== undefined && String(v).trim() !== ""
       );
       if (!hasData) return;
+      const rowNumber = Number((raw as any).__rowNumber) || index + (hasHeader ? 2 : 1);
 
-      const title = (normalized["nome_da_tarefa"] ?? normalized["title"] ?? normalized["tarefa"] ?? "").toString().trim();
+      const title = (
+        normalized["nome_da_tarefa"] ??
+        normalized["nome_da_atividade"] ??
+        normalized["nome_da_atividade_entrega"] ??
+        normalized["title"] ??
+        normalized["tarefa"] ??
+        normalized["atividade"] ??
+        normalized["entrega"] ??
+        normalized["nome"] ??
+        ""
+      )
+        .toString()
+        .trim();
       if (!title) {
-        errors.push({ row: index + 2, message: "Missing task title" });
+        errors.push({ row: rowNumber, message: "Coluna Nome da Atividade/Entrega: vazio." });
         return;
       }
 
-      const rawCode = normalized["code"] ?? normalized["codigo"] ?? normalized["wbs"] ?? null;
+      const rawCode =
+        normalized["codigo_da_eap"] ?? normalized["code"] ?? normalized["codigo"] ?? normalized["wbs"] ?? null;
       const rawId = normalized["id"] ?? null;
-      let code =
-        (rawCode ?? rawId)?.toString()?.trim() || null;
-      if (!code) {
-        errors.push({ row: index + 2, message: "Missing ID/Code" });
-        return;
-      }
+      let code = (rawCode ?? rawId)?.toString()?.trim() || null;
 
       const explicitParent =
         (normalized["parentcode"] ??
           normalized["parent"] ??
           normalized["pai"] ??
           normalized["codigo_pai"] ??
+          normalized["codigo_do_pai"] ??
           null)
           ?.toString()
           ?.trim() || null;
       const inferredParent =
-        code.includes(".") && code.split(".").length > 1 ? code.split(".").slice(0, -1).join(".") : null;
+        code && code.includes(".") && code.split(".").length > 1 ? code.split(".").slice(0, -1).join(".") : null;
       const parentCode = explicitParent || inferredParent;
+      const levelValueRaw = normalized["nivel_da_eap"] ?? normalized["nivel"] ?? normalized["level"] ?? null;
+      const levelValue =
+        levelValueRaw !== null && levelValueRaw !== undefined && String(levelValueRaw).trim() !== ""
+          ? Number(levelValueRaw)
+          : null;
+      const level = Number.isFinite(levelValue as number) ? (levelValue as number) : null;
+
+      if (!code && !parentCode && (level === null || Number.isNaN(level))) {
+        errors.push({ row: rowNumber, message: "Coluna Código da EAP/Código do Pai: vazio." });
+        return;
+      }
+      if (!code && !parentCode && level !== null) {
+        warnings.push({
+          row: rowNumber,
+          message: "Código da EAP vazio. Hierarquia será definida pelo Nível."
+        });
+      }
       if (code && parentCode) {
         const normalizedCode = code.toString();
         const normalizedParent = parentCode.toString();
@@ -693,23 +792,44 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
         }
       }
 
-      const level = normalized["nivel"] ?? normalized["level"] ?? null;
       const statusRaw = normalized["situacao"] ?? normalized["status"] ?? null;
       const statusKey = statusRaw ? statusRaw.toString().trim().toLowerCase() : null;
       const status = statusKey ? statusMap[statusKey] ?? null : null;
 
       const startDate = parseDateValue(
-        normalized["inicio"] ??
+        normalized["data_de_inicio"] ??
           normalized["data_inicio"] ??
+          normalized["inicio"] ??
           normalized["startdate"] ??
           normalized["start"]
       );
       const endDate = parseDateValue(
-        normalized["termino"] ??
+        normalized["data_de_fim"] ??
+          normalized["data_fim"] ??
+          normalized["termino"] ??
           normalized["data_termino"] ??
           normalized["enddate"] ??
           normalized["end"]
       );
+      const startRaw =
+        normalized["data_de_inicio"] ??
+        normalized["data_inicio"] ??
+        normalized["inicio"] ??
+        normalized["startdate"] ??
+        normalized["start"];
+      const endRaw =
+        normalized["data_de_fim"] ??
+        normalized["data_fim"] ??
+        normalized["termino"] ??
+        normalized["data_termino"] ??
+        normalized["enddate"] ??
+        normalized["end"];
+      if (startRaw && !startDate) {
+        warnings.push({ row: rowNumber, message: "Coluna Data de início: data inválida. Valor ignorado." });
+      }
+      if (endRaw && !endDate) {
+        warnings.push({ row: rowNumber, message: "Coluna Data de fim: data inválida. Valor ignorado." });
+      }
       const durationDays =
         normalized["duracao"] !== null && normalized["duracao"] !== undefined
           ? Number(normalized["duracao"])
@@ -736,7 +856,10 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
         } else if (catalogByName.has(catalogText.toLowerCase())) {
           serviceCatalogId = catalogByName.get(catalogText.toLowerCase())!.id;
         } else {
-          errors.push({ row: index + 2, message: `Catalog not found: ${catalogText}` });
+          warnings.push({
+            row: rowNumber,
+            message: `Coluna ServiceCatalog: catálogo de serviços não encontrado (${catalogText}).`
+          });
         }
       }
 
@@ -745,10 +868,12 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
         multiplierValue !== null && multiplierValue !== undefined ? Number(multiplierValue) || 1 : null;
 
       parsedRows.push({
+        sequence: parsedRows.length,
+        rowNumber,
         code,
         parentCode,
         inferredParentCode: inferredParent,
-        level: level !== null && level !== undefined ? Number(level) : null,
+        level,
         title,
         status,
         startDate,
@@ -764,16 +889,19 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
     let updated = 0;
     const createdNodes: Array<{
       id: string;
-      code: string;
+      code?: string | null;
       parentCode?: string | null;
       inferredParentCode?: string | null;
       dependencies?: string[] | null;
+      rowNumber?: number;
+      level?: number | null;
+      sequence?: number;
     }> = [];
 
     // Pass A: create/update without parents
-    for (const [rowIndex, row] of parsedRows.entries()) {
-      const codeKey = row.code.toLowerCase();
-      const existing = nodesByCode.get(codeKey);
+    for (const row of parsedRows) {
+      const codeKey = row.code ? row.code.toLowerCase() : null;
+      const existing = codeKey ? nodesByCode.get(codeKey) : null;
 
       const payload: Prisma.WbsNodeUncheckedCreateInput = {
         projectId: projectId!,
@@ -800,15 +928,18 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
         if (!existing) {
           const createdNode = await prisma.wbsNode.create({ data: payload });
           created += 1;
-          nodesByCode.set(codeKey, createdNode);
+          if (codeKey) nodesByCode.set(codeKey, createdNode);
           createdNodes.push({
             id: createdNode.id,
-            code: row.code,
+            code: row.code ?? null,
             parentCode: row.parentCode ?? null,
             inferredParentCode: row.inferredParentCode ?? null,
-            dependencies: row.dependencies ?? null
+            dependencies: row.dependencies ?? null,
+            rowNumber: row.rowNumber,
+            level: row.level ?? null,
+            sequence: row.sequence
           });
-          rowLogs.push({ row: rowIndex + 2, code: row.code, action: "created" });
+          rowLogs.push({ row: row.rowNumber, code: row.code, action: "created" });
         } else {
           await prisma.wbsNode.update({
             where: { id: existing.id },
@@ -829,16 +960,19 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
           updated += 1;
           createdNodes.push({
             id: existing.id,
-            code: row.code,
+            code: row.code ?? null,
             parentCode: row.parentCode ?? null,
             inferredParentCode: row.inferredParentCode ?? null,
-            dependencies: row.dependencies ?? null
+            dependencies: row.dependencies ?? null,
+            rowNumber: row.rowNumber,
+            level: row.level ?? null,
+            sequence: row.sequence
           });
-          rowLogs.push({ row: rowIndex + 2, code: row.code, action: "updated" });
+          rowLogs.push({ row: row.rowNumber, code: row.code, action: "updated" });
         }
       } catch (error: any) {
-        errors.push({ row: rowIndex + 2, message: error?.message ?? "Error saving row" });
-        rowLogs.push({ row: rowIndex + 2, code: row.code, action: "error", message: error?.message });
+        errors.push({ row: row.rowNumber, message: error?.message ?? "Error saving row" });
+        rowLogs.push({ row: row.rowNumber, code: row.code, action: "error", message: error?.message });
       }
     }
 
@@ -848,8 +982,11 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
       if (n.wbsCode) codeToId.set(n.wbsCode.toLowerCase(), n.id);
     }
     for (const n of createdNodes) {
-      codeToId.set(n.code.toLowerCase(), n.id);
+      if (n.code) codeToId.set(n.code.toLowerCase(), n.id);
     }
+
+    const levelOrdered = [...createdNodes].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+    const levelStack: Array<{ id: string; level: number }> = [];
 
     for (const row of createdNodes) {
       if (row.parentCode || row.inferredParentCode) {
@@ -865,7 +1002,10 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
             data: { parentId }
           });
         } else if (row.parentCode) {
-          errors.push({ row: 0, message: `Parent not found for code ${row.parentCode}` });
+          warnings.push({
+            row: row.rowNumber ?? 0,
+            message: `Coluna Código do Pai: pai não encontrado (${row.parentCode}). Importado como raiz.`
+          });
         }
       }
 
@@ -876,9 +1016,32 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
         try {
           await setNodeDependencies(projectId!, row.id, depIds);
         } catch (error: any) {
-          errors.push({ row: 0, message: error?.message ?? "Error saving dependencies" });
+          warnings.push({
+            row: row.rowNumber ?? 0,
+            message: error?.message ?? "Coluna Dependências: erro ao salvar. Dependências ignoradas."
+          });
         }
       }
+    }
+
+    for (const row of levelOrdered) {
+      if (row.level === null || row.level === undefined || Number.isNaN(row.level)) continue;
+
+      while (levelStack.length && levelStack[levelStack.length - 1].level >= row.level) {
+        levelStack.pop();
+      }
+
+      if (!row.parentCode && !row.inferredParentCode) {
+        const parentEntry = row.level > 0 ? levelStack[levelStack.length - 1] : undefined;
+        if (parentEntry?.id) {
+          await prisma.wbsNode.update({
+            where: { id: row.id },
+            data: { parentId: parentEntry.id }
+          });
+        }
+      }
+
+      levelStack.push({ id: row.id, level: row.level });
     }
 
     await recomputeProjectWbsCodes(projectId!);
@@ -889,10 +1052,11 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
       created,
       updated,
       errors: errors.length,
+      warnings: warnings.length,
       rows: rowLogs.slice(0, 50)
     });
 
-    return res.json({ success: true, created, updated, errors });
+    return res.json({ success: true, created, updated, errors, warnings });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Error importing WBS" });

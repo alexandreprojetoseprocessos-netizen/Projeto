@@ -174,6 +174,18 @@ projectsRouter.get("/", async (req, res) => {
     return res.status(401).json({ message: "Authentication required" });
   }
 
+  const { status } = req.query as { status?: string };
+  const statusKey = (status ?? "").toString().trim().toUpperCase();
+  const archivedFilter =
+    statusKey === "ARCHIVED" ? { not: null } : statusKey === "ALL" ? undefined : null;
+  if (statusKey === "ARCHIVED") {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    await prisma.project.deleteMany({
+      where: { organizationId: req.organization.id, archivedAt: { lt: cutoff } }
+    });
+  }
+
   const projects = await prisma.project.findMany({
     where: {
       organizationId: req.organization.id,
@@ -181,7 +193,8 @@ projectsRouter.get("/", async (req, res) => {
         some: {
           userId: req.user.id
         }
-      }
+      },
+      ...(archivedFilter !== undefined ? { archivedAt: archivedFilter } : {})
     },
     select: {
       id: true,
@@ -189,6 +202,7 @@ projectsRouter.get("/", async (req, res) => {
       status: true,
       startDate: true,
       endDate: true,
+      archivedAt: true,
       milestones: {
         select: {
           id: true
@@ -208,10 +222,51 @@ projectsRouter.get("/", async (req, res) => {
       status: project.status,
       startDate: project.startDate,
       endDate: project.endDate,
+      archivedAt: project.archivedAt,
       milestoneCount: project.milestones.length,
       wbsNodeCount: project.wbsNodes.length
     }))
   });
+});
+
+projectsRouter.patch("/:projectId/trash", async (req, res) => {
+  if (!req.organization || !req.user) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+
+  const role = req.organizationMembership?.role as any;
+  if (!canManageProjects(role)) {
+    return res.status(403).json({ message: "Você não tem permissão para enviar projetos para a lixeira." });
+  }
+
+  const { projectId } = req.params;
+
+  try {
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organizationId: req.organization.id }
+    });
+
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    const updated = await prisma.project.update({
+      where: { id: projectId },
+      data: { archivedAt: new Date() }
+    });
+
+    return res.json({
+      project: {
+        id: updated.id,
+        name: updated.name,
+        status: updated.status,
+        archivedAt: updated.archivedAt
+      }
+    });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to send project to trash");
+    return res.status(500).json({ message: "Failed to send project to trash" });
+  }
 });
 
 projectsRouter.get("/:projectId/members", async (req, res) => {
@@ -443,6 +498,44 @@ projectsRouter.patch("/:projectId/restore", async (req, res) => {
   }
 });
 
+projectsRouter.delete("/:projectId", async (req, res) => {
+  if (!req.organization || !req.user) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+
+  const role = req.organizationMembership?.role as any;
+  if (!canManageProjects(role)) {
+    return res.status(403).json({ message: "Você não tem permissão para excluir projetos nesta organização." });
+  }
+
+  const { projectId } = req.params;
+
+  try {
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organizationId: req.organization.id }
+    });
+
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    if (!project.archivedAt) {
+      return res.status(400).json({ message: "Envie o projeto para a lixeira antes de excluir permanentemente." });
+    }
+
+    await prisma.$transaction([
+      prisma.wbsNode.deleteMany({ where: { projectId } }),
+      prisma.serviceCatalog.deleteMany({ where: { projectId } }),
+      prisma.project.delete({ where: { id: projectId } })
+    ]);
+
+    return res.status(204).send();
+  } catch (error) {
+    logger.error({ err: error }, "Failed to delete project");
+    return res.status(500).json({ message: "Failed to delete project" });
+  }
+});
+
 projectsRouter.put("/:projectId", async (req, res) => {
   const { projectId } = req.params;
   const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER]);
@@ -514,6 +607,7 @@ projectsRouter.put("/:projectId", async (req, res) => {
         id: project.id,
         name: project.name,
         clientName: project.clientName,
+        description: project.description ?? null,
         repositoryUrl: project.repositoryUrl,
         status: project.status,
         priority: project.priority,

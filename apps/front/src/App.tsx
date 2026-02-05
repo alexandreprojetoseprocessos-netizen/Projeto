@@ -185,6 +185,7 @@ const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
 
   const [portfolio, setPortfolio] = useState<PortfolioProject[]>([]);
+  const [portfolioRefresh, setPortfolioRefresh] = useState(0);
   const [portfolioError, setPortfolioError] = useState<string | null>(null);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
 const [reportMetrics, setReportMetrics] = useState<any | null>(null);
@@ -492,7 +493,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     };
 
     loadProjects();
-  }, [status, token, selectedOrganizationId]);
+  }, [status, token, selectedOrganizationId, portfolioRefresh]);
 
   useEffect(() => {
     if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
@@ -1017,7 +1018,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     };
 
     loadPortfolio();
-  }, [status, token, selectedOrganizationId]);
+  }, [status, token, selectedOrganizationId, portfolioRefresh]);
 
   useEffect(() => {
     if (status !== "authenticated" || !token || !selectedOrganizationId) {
@@ -1044,7 +1045,9 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
     loadMetrics();
   }, [status, token, selectedOrganizationId]);
 
-  const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
+    const onReloadPortfolio = () => setPortfolioRefresh((value) => value + 1);
+
+const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!token || !activeProjectId || !selectedOrganizationId || !newTaskColumn || !newTaskTitle.trim()) {
       return false;
@@ -1237,6 +1240,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
               ...project,
               projectName: updatedProject.name ?? project.projectName,
               clientName: payload.clientName,
+              description: payload.description !== undefined ? payload.description : updatedProject.description ?? project.description,
               status: updatedProject.status ?? payload.status ?? project.status,
               priority: updatedProject.priority ?? payload.priority ?? project.priority,
               startDate: payload.startDate || project.startDate,

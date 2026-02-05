@@ -1,13 +1,17 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useOutletContext } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 import { ProjectPortfolio, type PortfolioProject } from "../components/ProjectPortfolio";
+import ProjectTrashModal from "../components/ProjectTrashModal";
 import type { DashboardOutletContext, ProjectPriorityValue, ProjectStatusValue } from "../components/DashboardLayout";
 import { canManageProjects, type OrgRole } from "../components/permissions";
+import { Trash2 } from "lucide-react";
+import { apiUrl } from "../config/api";
 
 const PROJECT_STATUS_OPTIONS: Array<{ value: ProjectStatusValue; label: string }> = [
   { value: "PLANNED", label: "Planejamento" },
   { value: "IN_PROGRESS", label: "Em andamento" },
-  { value: "COMPLETED", label: "Concluido" },
+  { value: "COMPLETED", label: "Concluído" },
   { value: "ON_HOLD", label: "Pausado" },
   { value: "CANCELED", label: "Cancelado" }
 ];
@@ -15,7 +19,7 @@ const PROJECT_STATUS_OPTIONS: Array<{ value: ProjectStatusValue; label: string }
 const PROJECT_PRIORITY_OPTIONS: Array<{ value: ProjectPriorityValue; label: string }> = [
   { value: "CRITICAL", label: "Urgente" },
   { value: "HIGH", label: "Alta" },
-  { value: "MEDIUM", label: "Media" },
+  { value: "MEDIUM", label: "Média" },
   { value: "LOW", label: "Baixa" }
 ];
 
@@ -112,52 +116,69 @@ const FirstProjectOnboarding = ({
   };
 
   return (
-    <div className="workspace-empty-card workspace-project-onboarding">
-      <h2>Passo 2 de 3: Crie seu primeiro projeto</h2>
-      <p>
-        Agora que sua organização está criada, vamos configurar o primeiro projeto. Você poderá adicionar tarefas,
-        equipe, cronograma e relatórios depois.
-      </p>
-
-      {error && <p className="error-text">{error}</p>}
-
-      <form className="workspace-form" onSubmit={handleSubmit}>
-        <label className="input-group">
-          <span>Nome do projeto</span>
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Ex.: Implantação do sistema na Clínica X"
-            required
-          />
-        </label>
-
-        <label className="input-group">
-          <span>Descrição (opcional)</span>
-          <textarea
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="Resumo do objetivo do projeto..."
-            rows={3}
-          />
-        </label>
-
-        <div className="workspace-form-row">
-          <label className="input-group">
-            <span>Data de início (opcional)</span>
-            <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
-          </label>
-          <label className="input-group">
-            <span>Data de término (opcional)</span>
-            <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
-          </label>
+    <section className="onboarding-project">
+      <div className="onboarding-project__card">
+        <div className="onboarding-project__intro">
+          <span className="onboarding-project__step">Passo 2 de 3</span>
+          <h2>CRIE SEU PRIMEIRO PROJETO</h2>
+          <p>
+            Agora que sua organização está criada, vamos configurar o primeiro projeto. Você poderá adicionar tarefas,
+            equipe, cronograma e relatórios depois.
+          </p>
+          <div className="onboarding-project__tips">
+            <div>
+              <strong>Comece simples.</strong>
+              <span>Um nome claro e uma descrição curta já ajudam o time.</span>
+            </div>
+            <div>
+              <strong>Datas opcionais.</strong>
+              <span>Você pode ajustar o cronograma a qualquer momento.</span>
+            </div>
+          </div>
         </div>
 
-        <button className="primary-button" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Criando..." : "Criar projeto e continuar"}
-        </button>
-      </form>
-    </div>
+        <div className="onboarding-project__form">
+          {error && <div className="gp-alert-error">{error}</div>}
+          <form className="onboarding-project__grid" onSubmit={handleSubmit}>
+            <label className="onboarding-field">
+              <span>Nome do projeto</span>
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Ex.: Implantação do sistema na Clínica X"
+                required
+              />
+            </label>
+
+            <label className="onboarding-field onboarding-field--full">
+              <span>Descrição (opcional)</span>
+              <textarea
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Resumo do objetivo do projeto..."
+                rows={3}
+              />
+            </label>
+
+            <label className="onboarding-field">
+              <span>Data de início (opcional)</span>
+              <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+            </label>
+            <label className="onboarding-field">
+              <span>Data de término (opcional)</span>
+              <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+            </label>
+
+            <div className="onboarding-project__actions">
+              <button className="primary-button" type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Criando..." : "Criar projeto e continuar"}
+              </button>
+              <span className="onboarding-project__helper">Você pode editar tudo depois.</span>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
   );
 };
 
@@ -166,7 +187,7 @@ const NewProjectModal = ({
   onClose,
   children,
   title = "Novo projeto",
-  subtitle = "Planeje um novo trabalho informando os dados basicos do projeto no portfolio."
+  subtitle = "Planeje um novo trabalho informando os dados básicos do projeto no portfólio."
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -235,12 +256,14 @@ const ProjectLimitModal = ({
 };
 
 export const ProjectsPage = () => {
+  const { token } = useAuth();
   const {
     portfolio,
     portfolioError,
     portfolioLoading,
     projectsError,
     onExportPortfolio,
+    onReloadPortfolio,
     selectedProjectId,
     organizations,
     selectedOrganizationId,
@@ -255,6 +278,8 @@ export const ProjectsPage = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<PortfolioProject | null>(null);
   const [isLimitModalOpen, setIsLimitModalOpen] = useState(false);
+  const [isTrashOpen, setIsTrashOpen] = useState(false);
+  const [trashError, setTrashError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
@@ -312,9 +337,32 @@ export const ProjectsPage = () => {
   const isAtProjectLimit = projectLimits?.remaining === 0;
   const isEditing = Boolean(editingProject);
   const modalTitle = isEditing ? "Editar projeto" : "Novo projeto";
-  const modalSubtitle = isEditing ? "Atualize as informacoes do projeto." : undefined;
-  const modalSubmitLabel = isEditing ? "Salvar alteracoes" : "Criar projeto";
+  const modalSubtitle = isEditing ? "Atualize as informações do projeto." : undefined;
+  const modalSubmitLabel = isEditing ? "Salvar alterações" : "Criar projeto";
   const modalSubmitLoadingLabel = isEditing ? "Salvando..." : "Criando...";
+
+  const handleTrashProject = async (projectId: string) => {
+    if (!token || !selectedOrganizationId) return;
+    if (!window.confirm("Enviar este projeto para a lixeira? Ele fica 30 dias e depois é excluído permanentemente.")) return;
+    try {
+      const response = await fetch(apiUrl(`/projects/${projectId}/trash`), {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "X-Organization-Id": selectedOrganizationId
+        }
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.message || "Erro ao enviar projeto para a lixeira");
+      }
+      setTrashError(null);
+      onReloadPortfolio?.();
+    } catch (error: any) {
+      setTrashError(error?.message || "Erro ao enviar projeto para a lixeira");
+    }
+  };
 
   const handleOpenCreateModal = () => {
     if (isAtProjectLimit) return;
@@ -421,14 +469,24 @@ export const ProjectsPage = () => {
           <h1 className="page-title">Projetos</h1>
           <p className="page-subtitle">Filtros avançados e troca de visualização entre cards e tabela.</p>
         </div>
-        <button
-          className="btn-primary"
-          type="button"
-          onClick={handleOpenCreateModal}
-          disabled={isAtProjectLimit}
-        >
-          + Novo projeto
-        </button>
+        <div className="projects-header-actions">
+          <button
+            className="btn-secondary"
+            type="button"
+            onClick={() => setIsTrashOpen(true)}
+          >
+            <Trash2 size={16} />
+            Lixeira
+          </button>
+          <button
+            className="btn-primary"
+            type="button"
+            onClick={handleOpenCreateModal}
+            disabled={isAtProjectLimit}
+          >
+            + Novo projeto
+          </button>
+        </div>
         {isAtProjectLimit && (
           <div className="projects-limit-hint">
             <div>
@@ -444,6 +502,8 @@ export const ProjectsPage = () => {
       </header>
 
       {projectsError && <p className="error-text">{projectsError}</p>}
+
+      {trashError && <p className="error-text">{trashError}</p>}
 
       {portfolioLoading ? (
         <p className="muted">Carregando projetos...</p>
@@ -463,6 +523,7 @@ export const ProjectsPage = () => {
           onSelectProject={onProjectChange}
           onCreateProject={onCreateProject}
           onEditProject={handleOpenEditModal}
+          onTrashProject={canManageProjects(currentOrgRole as OrgRole) ? handleTrashProject : undefined}
         />
       )}
 
@@ -614,6 +675,13 @@ export const ProjectsPage = () => {
           </div>
         </form>
       </NewProjectModal>
+
+      <ProjectTrashModal
+        open={isTrashOpen}
+        onClose={() => setIsTrashOpen(false)}
+        onReload={onReloadPortfolio}
+        organizationId={selectedOrganizationId}
+      />
 
       <ProjectLimitModal
         isOpen={isLimitModalOpen}

@@ -1,41 +1,126 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
-import { ReportsPanel } from "../components/DashboardLayout";
 import { normalizeStatus } from "../utils/status";
+import { useAuth } from "../contexts/AuthContext";
+import { apiUrl } from "../config/api";
 
 type ProjectTone = "neutral" | "info" | "warning" | "danger" | "success";
 
+type ProjectSummary = {
+  projectId: string;
+  projectName: string;
+  tasksDone?: number;
+  tasksTotal?: number;
+  endDate?: string | null;
+  clientName?: string | null;
+  code?: string | null;
+  responsibleName?: string | null;
+  status?: string | null;
+  priority?: string | null;
+  priorityLevel?: string | null;
+};
+
+type PanelNode = {
+  id: string;
+  title: string;
+  status?: string | null;
+  level?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  progress?: number | null;
+  children?: PanelNode[];
+};
+
+type LevelFilter = "1" | "2" | "1-2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
+
+type ScopeRow = {
+  id: string;
+  title: string;
+  status: string;
+  level: number;
+  progress: number;
+  startDate?: string | null;
+  endDate?: string | null;
+};
+
+type PanelState = {
+  nodes: PanelNode[];
+  loading: boolean;
+  error: string | null;
+};
+
 const projectStatusMap: Record<string, { label: string; tone: ProjectTone }> = {
   PLANNED: { label: "Planejado", tone: "neutral" },
+  PLANEJADO: { label: "Planejado", tone: "neutral" },
   PLANNING: { label: "Planejamento", tone: "neutral" },
+  PLANEJAMENTO: { label: "Planejamento", tone: "neutral" },
   IN_PROGRESS: { label: "Em andamento", tone: "warning" },
+  "EM ANDAMENTO": { label: "Em andamento", tone: "warning" },
+  EM_ANDAMENTO: { label: "Em andamento", tone: "warning" },
   ACTIVE: { label: "Em andamento", tone: "warning" },
   ON_HOLD: { label: "Pausado", tone: "neutral" },
+  PAUSADO: { label: "Pausado", tone: "neutral" },
   PAUSED: { label: "Pausado", tone: "neutral" },
-  DONE: { label: "ConcluÌdo", tone: "success" },
-  COMPLETED: { label: "ConcluÌdo", tone: "success" },
+  "N√ÉO INICIADO": { label: "N√£o iniciado", tone: "neutral" },
+  "NAO INICIADO": { label: "N√£o iniciado", tone: "neutral" },
+  NAO_INICIADO: { label: "N√£o iniciado", tone: "neutral" },
+  DONE: { label: "Conclu√≠do", tone: "success" },
+  COMPLETED: { label: "Conclu√≠do", tone: "success" },
+  FINALIZADO: { label: "Conclu√≠do", tone: "success" },
+  CONCLUIDO: { label: "Conclu√≠do", tone: "success" },
+  "CONCLU√çDO": { label: "Conclu√≠do", tone: "success" },
   DELAYED: { label: "Atrasado", tone: "danger" },
   LATE: { label: "Atrasado", tone: "danger" },
   OVERDUE: { label: "Atrasado", tone: "danger" },
+  ATRASADO: { label: "Atrasado", tone: "danger" },
   AT_RISK: { label: "Em risco", tone: "danger" },
   BLOCKED: { label: "Em risco", tone: "danger" },
-  CANCELED: { label: "Cancelado", tone: "neutral" }
+  "EM RISCO": { label: "Em risco", tone: "danger" },
+  RISCO: { label: "Em risco", tone: "danger" },
+  CANCELED: { label: "Cancelado", tone: "neutral" },
+  CANCELADO: { label: "Cancelado", tone: "neutral" }
 };
 
-const priorityMap: Record<string, { label: string; tone: ProjectTone }> = {
-  LOW: { label: "Baixa", tone: "neutral" },
-  BAIXA: { label: "Baixa", tone: "neutral" },
-  MEDIUM: { label: "MÈdia", tone: "info" },
-  MEDIA: { label: "MÈdia", tone: "info" },
-  HIGH: { label: "Alta", tone: "warning" },
-  ALTA: { label: "Alta", tone: "warning" },
-  URGENT: { label: "Urgente", tone: "danger" },
-  URGENTE: { label: "Urgente", tone: "danger" },
-  CRITICAL: { label: "Urgente", tone: "danger" }
+const priorityMap: Record<string, { label: string; tone: ProjectTone; rank: number }> = {
+  LOW: { label: "Baixa", tone: "neutral", rank: 4 },
+  BAIXA: { label: "Baixa", tone: "neutral", rank: 4 },
+  MEDIUM: { label: "M√©dia", tone: "info", rank: 3 },
+  MEDIA: { label: "M√©dia", tone: "info", rank: 3 },
+  "M√âDIA": { label: "M√©dia", tone: "info", rank: 3 },
+  HIGH: { label: "Alta", tone: "warning", rank: 2 },
+  ALTA: { label: "Alta", tone: "warning", rank: 2 },
+  URGENT: { label: "Urgente", tone: "danger", rank: 1 },
+  URGENTE: { label: "Urgente", tone: "danger", rank: 1 },
+  CRITICAL: { label: "Urgente", tone: "danger", rank: 1 }
 };
 
 const normalizeValue = (value?: string | null) => (value ?? "").trim().toUpperCase();
+
+const getProjectStatusValue = (project: ProjectSummary) =>
+  project.status ??
+  (project as { statusLabel?: string | null; projectStatus?: string | null }).statusLabel ??
+  (project as { projectStatus?: string | null }).projectStatus ??
+  null;
+
+const resolveProjectStatusKey = (status?: string | null) => {
+  const normalized = normalizeValue(status);
+  if (!normalized) return "UNKNOWN";
+  if (["DONE", "COMPLETED", "FINALIZADO", "CONCLUIDO", "CONCLU√çDO"].includes(normalized)) return "COMPLETED";
+  if (["IN_PROGRESS", "ACTIVE", "EM ANDAMENTO", "EM_ANDAMENTO"].includes(normalized)) return "IN_PROGRESS";
+  if (
+    ["PLANNED", "PLANNING", "PLANEJADO", "PLANEJAMENTO", "NAO INICIADO", "N√ÉO INICIADO", "NAO_INICIADO"].includes(
+      normalized
+    )
+  ) {
+    return "PLANNED";
+  }
+  if (["ON_HOLD", "PAUSED", "PAUSADO"].includes(normalized)) return "PAUSED";
+  if (["DELAYED", "LATE", "OVERDUE", "ATRASADO"].includes(normalized)) return "LATE";
+  if (["AT_RISK", "BLOCKED", "EM RISCO", "RISCO"].includes(normalized)) return "RISK";
+  if (["CANCELED", "CANCELADO", "CANCELLED"].includes(normalized)) return "CANCELED";
+  return "UNKNOWN";
+};
 
 const getProjectStatusMeta = (status?: string | null) => {
   if (!status) return { label: "Sem status", tone: "neutral" as const };
@@ -44,9 +129,9 @@ const getProjectStatusMeta = (status?: string | null) => {
 };
 
 const getProjectPriorityMeta = (priority?: string | null) => {
-  if (!priority) return { label: "MÈdia", tone: "info" as const };
+  if (!priority) return { label: "M√©dia", tone: "info" as const, rank: 3 };
   const normalized = normalizeValue(priority);
-  return priorityMap[normalized] ?? { label: priority, tone: "neutral" as const };
+  return priorityMap[normalized] ?? { label: priority, tone: "neutral" as const, rank: 4 };
 };
 
 const formatShortDate = (value?: string | null) => {
@@ -54,7 +139,7 @@ const formatShortDate = (value?: string | null) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   const safeDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
-  return safeDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+  return safeDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 };
 
 const calcProgress = (done?: number, total?: number) => {
@@ -71,13 +156,98 @@ const getScopeTone = (statusLabel: string): ProjectTone => {
   return "neutral";
 };
 
-type ScopeRow = {
-  id: string;
-  title: string;
-  status: string;
-  level: number;
-  projectName: string;
-  progress: number;
+const computeNodeProgress = (node: PanelNode): number => {
+  if (Array.isArray(node.children) && node.children.length) {
+    const total = node.children.reduce((sum, child) => sum + computeNodeProgress(child), 0);
+    return Math.round(total / node.children.length);
+  }
+  const statusLabel = normalizeStatus(node.status);
+  if (statusLabel === "Finalizado") return 100;
+  if (statusLabel === "Em andamento") return 50;
+  if (typeof node.progress === "number" && Number.isFinite(node.progress)) {
+    return Math.max(0, Math.min(100, Math.round(node.progress)));
+  }
+  return 0;
+};
+
+const flattenNodes = (nodes: PanelNode[], levelOffset: number, rows: ScopeRow[]) => {
+  nodes.forEach((node) => {
+    const levelValue = typeof node.level === "number" ? node.level : levelOffset;
+    rows.push({
+      id: node.id,
+      title: node.title?.trim() || "Tarefa sem nome",
+      status: node.status ?? "",
+      level: levelValue,
+      progress: computeNodeProgress(node),
+      startDate: node.startDate ?? null,
+      endDate: node.endDate ?? null
+    });
+    if (Array.isArray(node.children) && node.children.length) {
+      flattenNodes(node.children, levelValue + 1, rows);
+    }
+  });
+};
+
+const ProjectProgressPill = ({ percent, variant }: { percent: number; variant: "success" | "info" | "neutral" }) => (
+  <div className={`reports-progress-pill is-${variant}`}>
+    <span style={{ width: `${percent}%` }} />
+    <strong>{percent}%</strong>
+  </div>
+);
+
+const ProjectMiniCard = ({ project }: { project: ProjectSummary }) => {
+  const progress = calcProgress(project.tasksDone, project.tasksTotal);
+  const priorityMeta = getProjectPriorityMeta(project.priority ?? project.priorityLevel ?? null);
+  const statusMeta = getProjectStatusMeta(getProjectStatusValue(project));
+  const tasksTotal = project.tasksTotal ?? 0;
+  const tasksDone = project.tasksDone ?? 0;
+  const scheduleLabel = project.endDate ? formatShortDate(project.endDate) : "Sem prazo";
+  const clientLabel = project.clientName ?? project.code ?? "Cliente n√£o informado";
+  const responsibleLabel = project.responsibleName ?? "Respons√°vel n√£o definido";
+  return (
+    <article className={`reports-mini-card tone-${priorityMeta.tone}`}>
+      <div className="reports-mini-card__header">
+        <span className={`reports-pill tone-${statusMeta.tone}`}>{statusMeta.label}</span>
+        <span className={`reports-pill tone-${priorityMeta.tone}`}>{priorityMeta.label}</span>
+      </div>
+      <h3>{project.projectName}</h3>
+      <p className="reports-project-subtitle">{clientLabel}</p>
+      <div className="reports-progress-bar">
+        <span style={{ width: `${progress}%` }} />
+      </div>
+      <div className="reports-project-meta">
+        <span>
+          {tasksDone}/{tasksTotal} tarefas
+        </span>
+        <span>Entrega: {scheduleLabel}</span>
+      </div>
+      <div className="reports-project-owner">
+        <span>Respons√°vel</span>
+        <strong>{responsibleLabel}</strong>
+      </div>
+    </article>
+  );
+};
+
+const buildPanelRows = (nodes: PanelNode[], levelFilter: LevelFilter, query: string) => {
+  const rows: ScopeRow[] = [];
+  flattenNodes(nodes, 0, rows);
+  const normalized = rows.map((row) => ({
+    ...row,
+    level: row.level + 1
+  }));
+  const search = query.trim().toLowerCase();
+  return normalized.filter((row) => {
+    if (levelFilter === "1" && row.level !== 1) return false;
+    if (levelFilter === "2" && row.level !== 2) return false;
+    if (levelFilter === "1-2" && row.level > 2) return false;
+    if (levelFilter !== "1" && levelFilter !== "2" && levelFilter !== "1-2") {
+      const target = Number(levelFilter);
+      if (Number.isFinite(target) && row.level !== target) return false;
+    }
+    if (!search) return true;
+    return row.title.toLowerCase().includes(search);
+  });
 };
 
 const ReportsPage = () => {
@@ -85,214 +255,221 @@ const ReportsPage = () => {
     portfolio,
     portfolioError,
     portfolioLoading,
-    wbsNodes,
-    wbsError,
-    reportsData,
     reportsError,
     reportsLoading,
-    selectedProjectId,
-    projects
+    selectedOrganizationId
   } = useOutletContext<DashboardOutletContext>();
-  const [scopeLevel, setScopeLevel] = useState("all");
+  const { token } = useAuth();
+
+  const [scopeLevel, setScopeLevel] = useState<LevelFilter>("1-2");
   const [scopeSearch, setScopeSearch] = useState("");
+  const [panelData, setPanelData] = useState<Record<string, PanelState>>({});
 
-  const selectedProjectName = useMemo(() => {
-    if (!selectedProjectId || selectedProjectId === "all") return "Todos os projetos";
-    return (
-      portfolio.find((project) => project.projectId === selectedProjectId)?.projectName ??
-      projects.find((project) => project.id === selectedProjectId)?.name ??
-      "Projeto selecionado"
-    );
-  }, [selectedProjectId, portfolio, projects]);
+  const selectedProjectName = "Todos os projetos";
 
-  const progressById = useMemo(() => {
-    const cache = new Map<string, number>();
-    const compute = (node: any): number => {
-      if (cache.has(node.id)) return cache.get(node.id)!;
-      let value = 0;
-      if (typeof node.progress === "number" && Number.isFinite(node.progress)) {
-        value = Math.max(0, Math.min(100, Math.round(node.progress)));
-      } else if (Array.isArray(node.children) && node.children.length) {
-        const total = node.children.reduce((sum: number, child: any) => sum + compute(child), 0);
-        value = node.children.length ? Math.round(total / node.children.length) : 0;
-      }
-      cache.set(node.id, value);
-      return value;
+  const groupedProjects = useMemo(() => {
+    const normalized = portfolio as ProjectSummary[];
+    const getKey = (project: ProjectSummary) => resolveProjectStatusKey(getProjectStatusValue(project));
+    const finished = normalized.filter((project) => getKey(project) === "COMPLETED");
+    const planned = normalized.filter((project) => getKey(project) === "PLANNED");
+    const inProgress = normalized
+      .filter((project) => getKey(project) === "IN_PROGRESS")
+      .sort((a, b) => {
+        const priorityA = getProjectPriorityMeta(a.priority ?? a.priorityLevel ?? null).rank;
+        const priorityB = getProjectPriorityMeta(b.priority ?? b.priorityLevel ?? null).rank;
+        if (priorityA !== priorityB) return priorityA - priorityB;
+        const dateA = a.endDate ? new Date(a.endDate).getTime() : Number.POSITIVE_INFINITY;
+        const dateB = b.endDate ? new Date(b.endDate).getTime() : Number.POSITIVE_INFINITY;
+        return dateA - dateB;
+      });
+    return {
+      finished,
+      planned,
+      inProgress,
+      all: normalized
     };
-    (wbsNodes ?? []).forEach((node: any) => compute(node));
-    return cache;
-  }, [wbsNodes]);
+  }, [portfolio]);
 
-  const { flattenedWbs, maxLevel } = useMemo(() => {
+  const currentProjectsLabel = groupedProjects.inProgress.length === 1
+    ? groupedProjects.inProgress[0].projectName
+    : groupedProjects.inProgress.length
+      ? `V√°rios projetos (${groupedProjects.inProgress.length})`
+      : "Nenhum projeto";
+
+
+  useEffect(() => {
+    const loadPanels = async () => {
+      const targets = groupedProjects.inProgress.map((project) => project.projectId);
+      if (!targets.length) return;
+      await Promise.all(
+        targets.map(async (projectId) => {
+          const existing = panelData[projectId];
+          if (existing && (existing.loading || existing.nodes.length)) return;
+          setPanelData((prev) => ({
+            ...prev,
+            [projectId]: { nodes: prev[projectId]?.nodes ?? [], loading: true, error: null }
+          }));
+          try {
+            const headers: Record<string, string> = {};
+            if (token) headers.Authorization = `Bearer ${token}`;
+            if (selectedOrganizationId) headers["x-organization-id"] = selectedOrganizationId;
+            const response = await fetch(apiUrl(`/projects/${projectId}/wbs`), {
+              headers,
+              credentials: "include"
+            });
+            if (!response.ok) {
+              const text = await response.text();
+              throw new Error(text || "Erro ao carregar EAP");
+            }
+            const data = await response.json();
+            setPanelData((prev) => ({
+              ...prev,
+              [projectId]: {
+                nodes: Array.isArray(data?.nodes) ? data.nodes : [],
+                loading: false,
+                error: null
+              }
+            }));
+          } catch (error: any) {
+            setPanelData((prev) => ({
+              ...prev,
+              [projectId]: {
+                nodes: prev[projectId]?.nodes ?? [],
+                loading: false,
+                error: error?.message ?? "Erro ao carregar EAP"
+              }
+            }));
+          }
+        })
+      );
+    };
+    loadPanels();
+  }, [groupedProjects.inProgress, panelData, selectedOrganizationId, token]);
+
+  const maxLevel = Math.max(2, ...groupedProjects.inProgress.map((project) => {
+    const state = panelData[project.projectId];
+    if (!state?.nodes?.length) return 2;
     const rows: ScopeRow[] = [];
-    let deepest = 1;
-    const walk = (nodes: any[], level: number) => {
-      nodes.forEach((node) => {
-        const title = node.title?.trim() || "Tarefa sem nome";
-        const projectName = node.projectName ?? selectedProjectName;
-        const progress = progressById.get(node.id) ?? 0;
-        rows.push({
-          id: node.id,
-          title,
-          status: node.status ?? "",
-          level,
-          projectName,
-          progress
-        });
-        deepest = Math.max(deepest, level);
-        if (Array.isArray(node.children) && node.children.length) {
-          walk(node.children, level + 1);
-        }
-      });
-    };
-    walk(wbsNodes ?? [], 1);
-    return { flattenedWbs: rows, maxLevel: deepest };
-  }, [progressById, selectedProjectName, wbsNodes]);
+    flattenNodes(state.nodes, 0, rows);
+    const deepest = rows.reduce((max, row) => Math.max(max, row.level + 1), 2);
+    return deepest;
+  }));
 
-  const levelOptions = useMemo(() => {
-    const limit = Math.max(1, maxLevel);
-    const options = [{ value: "all", label: "Todos os nÌveis" }];
-    for (let level = 1; level <= limit; level += 1) {
-      options.push({
-        value: String(level),
-        label: level === 1 ? "Somente nÌvel 1" : `NÌvel 1-${level}`
-      });
-    }
-    return options;
-  }, [maxLevel]);
-
-  const levelLimit = scopeLevel === "all" ? maxLevel : Number(scopeLevel);
-  const resolvedLevelLimit = Number.isFinite(levelLimit) ? Math.max(1, levelLimit) : maxLevel;
-
-  const filteredWbs = useMemo(() => {
-    const query = scopeSearch.trim().toLowerCase();
-    return flattenedWbs.filter((row) => {
-      if (row.level > resolvedLevelLimit) return false;
-      if (!query) return true;
-      return row.title.toLowerCase().includes(query) || row.projectName.toLowerCase().includes(query);
-    });
-  }, [flattenedWbs, resolvedLevelLimit, scopeSearch]);
-
-  const completedStages = filteredWbs.filter((row) => normalizeStatus(row.status) === "Finalizado").length;
-  const completionPercent = filteredWbs.length
-    ? Math.round((completedStages / filteredWbs.length) * 100)
-    : 0;
-  const scopePercent = filteredWbs.length
-    ? Math.round(filteredWbs.reduce((sum, row) => sum + row.progress, 0) / filteredWbs.length)
-    : 0;
-
-  const totalProjects = portfolio.length;
-  const scopeLabel = resolvedLevelLimit <= 1 ? "NÌvel 1" : `NÌvel 1-${resolvedLevelLimit}`;
-  const heroStats = [
-    { label: "Projetos na organizaÁ„o", value: portfolioLoading ? "--" : totalProjects.toString() },
-    { label: "Tarefas no escopo", value: filteredWbs.length.toString() },
-    { label: "Etapas finalizadas", value: `${completionPercent}%` }
+  const levelOptions = [
+    { value: "1", label: "N√≠vel 1" },
+    { value: "2", label: "N√≠vel 2" },
+    { value: "1-2", label: "N√≠vel 1 e 2" }
   ];
 
+  for (let level = 3; level <= maxLevel; level += 1) {
+    levelOptions.push({ value: String(level), label: `N√≠vel ${level}` });
+  }
+
   return (
-    <section className="reports-page">
-      <header className="reports-hero">
-        <div className="reports-hero__grid">
-          <div className="reports-hero__content">
-            <p className="reports-hero__kicker">RelatÛrios</p>
-            <h1 className="reports-hero__title">Panorama completo da organizaÁ„o</h1>
-            <p className="reports-hero__subtitle">
-              Acompanhe prioridades, status e o progresso do escopo filtrado da EAP em um sÛ lugar.
-            </p>
-          </div>
-          <div className="reports-hero__actions">
-            <button type="button" className="reports-print-button" onClick={() => window.print()}>
-              Exportar PDF
-            </button>
-          </div>
+    <section className="reports-page reports-page--timeline">
+      <header className="reports-header">
+        <div>
+          <p className="eyebrow">Relat√≥rios</p>
+          <h2>Projetos e atualiza√ß√µes</h2>
+          <p className="subtext">Vis√£o macro do portf√≥lio e do escopo por n√≠vel da EAP.</p>
         </div>
-        <div className="reports-hero__stats">
-          {heroStats.map((stat) => (
-            <div key={stat.label} className="reports-hero__stat">
-              <span>{stat.label}</span>
-              <strong>{stat.value}</strong>
-            </div>
-          ))}
+        <div className="reports-header__actions">
+          <button type="button" className="reports-print-button" onClick={() => window.print()}>
+            Salvar em PDF
+          </button>
         </div>
       </header>
 
-      <section className="reports-block reports-block--portfolio">
-        <header className="reports-block-header">
-          <div>
-            <p className="reports-block-kicker">PortfÛlio da organizaÁ„o</p>
-            <h2>Projetos, prioridades e status</h2>
-            <p>Resumo visual com progresso, prazos e respons·veis principais.</p>
-          </div>
-          <div className="reports-block-meta">
-            <span className="reports-meta-pill">{totalProjects} projetos</span>
-          </div>
-        </header>
+      {portfolioError && <p className="error-text">{portfolioError}</p>}
 
-        {portfolioError && <p className="error-text">{portfolioError}</p>}
+      <section className="reports-section">
+        <div className="reports-section-title reports-section-title--success">
+          <h2>
+            PROJETOS <span>FINALIZADOS</span>
+          </h2>
+          <span>{groupedProjects.finished.length} projetos</span>
+        </div>
         {portfolioLoading ? (
           <p className="muted">Carregando projetos...</p>
-        ) : portfolio.length ? (
-          <div className="reports-projects-grid">
-            {portfolio.map((project) => {
+        ) : groupedProjects.finished.length ? (
+          <div className="reports-projects-grid reports-projects-grid--compact">
+            {groupedProjects.finished.map((project) => (
+              <div key={project.projectId} className="reports-project-item">
+                <ProjectProgressPill percent={100} variant="success" />
+                <ProjectMiniCard project={project} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">Nenhum projeto finalizado.</p>
+        )}
+      </section>
+
+      <section className="reports-section">
+        <div className="reports-section-title reports-section-title--info">
+          <h2>PROJETOS EM ANDAMENTO</h2>
+          <span>(Sequ√™ncia de Urgente para baixa)</span>
+        </div>
+        {portfolioLoading ? (
+          <p className="muted">Carregando projetos...</p>
+        ) : groupedProjects.inProgress.length ? (
+          <div className="reports-projects-grid reports-projects-grid--compact">
+            {groupedProjects.inProgress.map((project) => {
               const progress = calcProgress(project.tasksDone, project.tasksTotal);
-              const priorityMeta = getProjectPriorityMeta(
-                project.priority ?? (project as { priorityLevel?: string | null }).priorityLevel ?? null
-              );
-              const statusMeta = getProjectStatusMeta(project.status);
-              const tasksTotal = project.tasksTotal ?? 0;
-              const tasksDone = project.tasksDone ?? 0;
-              const scheduleLabel = project.endDate ? formatShortDate(project.endDate) : "Sem prazo";
-              const clientLabel = project.clientName ?? project.code ?? "Cliente n„o informado";
-              const responsibleLabel = project.responsibleName ?? "Respons·vel n„o definido";
               return (
-                <article key={project.projectId} className={`reports-project-card tone-${priorityMeta.tone}`}>
-                  <div className="reports-project-card__header">
-                    <div className="reports-project-tags">
-                      <span className={`reports-pill tone-${priorityMeta.tone}`}>{priorityMeta.label}</span>
-                      <span className={`reports-pill tone-${statusMeta.tone}`}>{statusMeta.label}</span>
-                    </div>
-                    <span className="reports-project-progress">{progress}%</span>
-                  </div>
-                  <h3>{project.projectName}</h3>
-                  <p className="reports-project-subtitle">{clientLabel}</p>
-                  <div className="reports-progress-bar">
-                    <span style={{ width: `${progress}%` }} />
-                  </div>
-                  <div className="reports-project-meta">
-                    <span>
-                      {tasksDone}/{tasksTotal} tarefas
-                    </span>
-                    <span>Entrega: {scheduleLabel}</span>
-                  </div>
-                  <div className="reports-project-owner">
-                    <span>Respons·vel</span>
-                    <strong>{responsibleLabel}</strong>
-                  </div>
-                </article>
+                <div key={project.projectId} className="reports-project-item">
+                  <ProjectProgressPill percent={progress} variant="info" />
+                  <ProjectMiniCard project={project} />
+                </div>
               );
             })}
           </div>
         ) : (
-          <p className="muted">Nenhum projeto encontrado para a organizaÁ„o.</p>
+          <p className="muted">Nenhum projeto em andamento.</p>
+        )}
+      </section>
+
+      <section className="reports-section">
+        <div className="reports-section-title reports-section-title--neutral">
+          <h2>
+            PROJETOS <span>PLANEJADOS</span>
+          </h2>
+          <span>{groupedProjects.planned.length} projetos</span>
+        </div>
+        {portfolioLoading ? (
+          <p className="muted">Carregando projetos...</p>
+        ) : groupedProjects.planned.length ? (
+          <div className="reports-projects-grid reports-projects-grid--compact">
+            {groupedProjects.planned.map((project) => (
+              <div key={project.projectId} className="reports-project-item">
+                <ProjectProgressPill percent={0} variant="neutral" />
+                <ProjectMiniCard project={project} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">Nenhum projeto planejado.</p>
         )}
       </section>
 
       <section className="reports-block reports-block--scope">
         <header className="reports-block-header">
           <div>
-            <p className="reports-block-kicker">Escopo e EAP</p>
-            <h2>Escopo do projeto</h2>
-            <p>Filtre os nÌveis da EAP para acompanhar entregas e progresso do escopo.</p>
+            <p className="reports-block-kicker">Atualiza√ß√µes em andamento</p>
+            <h2>
+              PROJETOS ATUALIZA√á√ïES <span className="reports-title-accent">EM ANDAMENTO</span>
+            </h2>
+            <p>Mostrando apenas projetos em andamento. Se houver mais, eles aparecem abaixo.</p>
           </div>
           <div className="reports-block-meta">
-            <span className="reports-meta-pill">{scopeLabel}</span>
+            <span className="reports-meta-pill">{groupedProjects.inProgress.length} projetos</span>
           </div>
         </header>
 
         <div className="reports-scope-controls">
           <label className="reports-control">
-            <span>NÌvel da EAP</span>
-            <select value={scopeLevel} onChange={(event) => setScopeLevel(event.target.value)}>
+            <span>N√≠vel (macro)</span>
+            <select value={scopeLevel} onChange={(event) => setScopeLevel(event.target.value as LevelFilter)}>
               {levelOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -301,93 +478,168 @@ const ReportsPage = () => {
             </select>
           </label>
           <label className="reports-control">
-            <span>Buscar tarefa</span>
+            <span>Buscar etapa</span>
             <input
               type="search"
-              placeholder="Nome da tarefa ou projeto..."
+              placeholder="Buscar etapa..."
               value={scopeSearch}
               onChange={(event) => setScopeSearch(event.target.value)}
             />
           </label>
           <div className="reports-control reports-control--readonly">
-            <span>Projeto</span>
-            <div className="reports-control-value">{selectedProjectName}</div>
+            <span>Projetos (atual)</span>
+            <div className="reports-control-value">{currentProjectsLabel}</div>
           </div>
         </div>
 
-        {wbsError && <p className="error-text">{wbsError}</p>}
-
-        <div className="reports-scope-metrics">
-          <article className="reports-scope-card">
-            <span>Percentual das etapas finalizadas</span>
-            <strong>{completionPercent}%</strong>
-            <div className="reports-progress-bar">
-              <span style={{ width: `${completionPercent}%` }} />
-            </div>
-          </article>
-          <article className="reports-scope-card">
-            <span>Percentual do escopo do projeto</span>
-            <strong>{scopePercent}%</strong>
-            <div className="reports-progress-bar reports-progress-bar--soft">
-              <span style={{ width: `${scopePercent}%` }} />
-            </div>
-          </article>
-        </div>
-
-        <div className="reports-scope-table">
-          <div className="reports-table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>NÌvel</th>
-                  <th>Tarefa</th>
-                  <th>Projeto</th>
-                  <th>Status</th>
-                  <th>% ConcluÌdo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredWbs.length ? (
-                  filteredWbs.map((row) => {
-                    const statusLabel = normalizeStatus(row.status);
-                    const tone = getScopeTone(statusLabel);
-                    return (
-                      <tr key={row.id}>
-                        <td>
-                          <span className="reports-level-pill">N{row.level}</span>
-                        </td>
-                        <td>{row.title}</td>
-                        <td>{row.projectName}</td>
-                        <td>
-                          <span className={`reports-pill tone-${tone}`}>{statusLabel}</span>
-                        </td>
-                        <td>
-                          <div className="reports-scope-progress">
-                            <span style={{ width: `${row.progress}%` }} />
+        {groupedProjects.inProgress.length === 0 ? (
+          <p className="muted">Nenhum projeto em andamento.</p>
+        ) : (
+          groupedProjects.inProgress.map((project) => {
+            const panelState = panelData[project.projectId] ?? { nodes: [], loading: false, error: null };
+            const panelRows = buildPanelRows(panelState.nodes, scopeLevel, scopeSearch);
+            const percentRows = buildPanelRows(panelState.nodes, scopeLevel, "");
+            const completionPercent = percentRows.length
+              ? Math.round(
+                  (percentRows.filter((row) => normalizeStatus(row.status) === "Finalizado").length /
+                    percentRows.length) *
+                    100
+                )
+              : 0;
+            const scopePercent = percentRows.length
+              ? Math.round(percentRows.reduce((sum, row) => sum + row.progress, 0) / percentRows.length)
+              : 0;
+            const panelProgress = calcProgress(project.tasksDone, project.tasksTotal);
+            return (
+              <div key={project.projectId} className="reports-updates-grid">
+                <div className="reports-updates-left">
+                  <div className="reports-project-spot">
+                    <span>Projeto: {project.projectName}</span>
+                  </div>
+                  <div className="reports-gauge-card">
+                    <div className="reports-gauge-title">Percentual Conclu√≠do</div>
+                    <div className="reports-gauge-bar">
+                      <span style={{ width: `${panelProgress}%` }} />
+                    </div>
+                    <div className="reports-gauge-value">{panelProgress}%</div>
+                  </div>
+                  <div className="reports-scope-card">
+                    <span>Percentual do Escopo do Projeto</span>
+                    <strong>{scopePercent}%</strong>
+                    <div className="reports-progress-bar reports-progress-bar--soft">
+                      <span style={{ width: `${scopePercent}%` }} />
+                    </div>
+                  </div>
+                  <div className="reports-scope-chart">
+                    {panelState.loading ? (
+                      <p className="muted">Carregando etapas...</p>
+                    ) : panelRows.length ? (
+                      <>
+                        {panelRows.map((row) => (
+                          <div key={row.id} className="reports-scope-chart-row">
+                            <div
+                              className="reports-scope-chart-label"
+                              style={{ paddingLeft: `${Math.max(0, row.level - 1) * 14}px` }}
+                            >
+                              {row.title}
+                            </div>
+                            <div className="reports-scope-chart-bar">
+                              <span style={{ width: `${row.progress}%` }} />
+                            </div>
+                            <div className="reports-scope-chart-value">{row.progress}%</div>
                           </div>
-                          <small>{row.progress}%</small>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={5} className="reports-empty">
-                      Nenhuma tarefa encontrada para o nÌvel selecionado.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                        ))}
+                        <div className="reports-scope-chart-axis">
+                          <div className="reports-scope-chart-axis-spacer" />
+                          <div className="reports-scope-chart-axis-line">
+                            <span>0%</span>
+                            <span>20%</span>
+                            <span>40%</span>
+                            <span>60%</span>
+                            <span>80%</span>
+                            <span>100%</span>
+                          </div>
+                          <div />
+                        </div>
+                      </>
+                    ) : (
+                      <p className="muted">Nenhuma etapa encontrada.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="reports-updates-right">
+                  <h3>Escopo do Projeto Previsto</h3>
+                  {panelState.error && <p className="error-text">{panelState.error}</p>}
+                  <div className="reports-table-scroll">
+                    <table className="reports-scope-table">
+                      <thead>
+                        <tr>
+                          <th>Nome da tarefa</th>
+                          <th>Situa√ß√£o</th>
+                          <th>In√≠cio</th>
+                          <th>T√©rmino</th>
+                          <th>% conclu√≠do</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {panelState.loading ? (
+                          <tr>
+                            <td colSpan={5} className="reports-empty">Carregando etapas...</td>
+                          </tr>
+                        ) : panelRows.length ? (
+                          panelRows.map((row) => {
+                            const statusLabel = normalizeStatus(row.status);
+                            const tone = getScopeTone(statusLabel);
+                            return (
+                              <tr key={row.id}>
+                                <td>
+                                  <span
+                                    className="reports-scope-name"
+                                    style={{ paddingLeft: `${Math.max(0, row.level - 1) * 14}px` }}
+                                  >
+                                    {row.title}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className={`reports-pill tone-${tone}`}>{statusLabel}</span>
+                                </td>
+                                <td>{formatShortDate(row.startDate ?? null)}</td>
+                                <td>{formatShortDate(row.endDate ?? null)}</td>
+                                <td>
+                                  <div className="reports-scope-progress">
+                                    <span style={{ width: `${row.progress}%` }} />
+                                  </div>
+                                  <small>{row.progress}%</small>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="reports-empty">
+                              Nenhuma etapa encontrada para o n√≠vel selecionado.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="reports-updates-summary">
+                    <div className="reports-summary-item">
+                      <span>Etapas finalizadas</span>
+                      <strong>{completionPercent}%</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
       </section>
 
-      <ReportsPanel
-        metrics={reportsData}
-        metricsError={reportsError ?? null}
-        metricsLoading={Boolean(reportsLoading)}
-      />
+      {reportsError && <p className="error-text">{reportsError}</p>}
+      {reportsLoading && <p className="muted">Carregando relat√≥rios...</p>}
     </section>
   );
 };

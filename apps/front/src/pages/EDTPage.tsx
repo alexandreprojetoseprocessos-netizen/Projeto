@@ -276,6 +276,28 @@ const EDTPage: React.FC = () => {
     importInputRef.current?.click();
   };
 
+  const downloadCsvTemplate = (filename: string, headers: string[]) => {
+    const content = `${headers.join(',')}\n`;
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleDownloadEapTemplate = () => {
+    const link = document.createElement("a");
+    link.href = encodeURI("/Modelo EAP.xlsx");
+    link.download = "Modelo EAP.xlsx";
+    link.click();
+  };
+
+  const handleDownloadServiceTemplate = () => {
+    downloadCsvTemplate('modelo-servicos.csv', ['Name', 'Description', 'HoursBase']);
+  };
+
+
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     setImportError(null);
     setImportFeedback(null);
@@ -302,12 +324,64 @@ const EDTPage: React.FC = () => {
       if (!response.ok) {
         const text = await response.text();
         throw new Error(`Erro ao importar (${response.status}). ${text || ""}`.trim());
-      }
-      const data = await response.json().catch(() => ({}));
+      }      const data = await response.json().catch(() => ({}));
       const created = data?.created ?? 0;
       const updated = data?.updated ?? 0;
       const errors = data?.errors?.length ?? 0;
-      setImportFeedback(`Importação concluída. Criados: ${created}. Atualizados: ${updated}. Erros: ${errors}.`);
+      const warnings = data?.warnings?.length ?? 0;
+      if (errors > 0) {
+        const friendly = (msg: string) => {
+          if (msg.includes("Missing ID/Code")) {
+            return "Coluna ID/Code vazia. Preencha 'ID' ou 'Code' para cada linha.";
+          }
+          if (msg.includes("Missing task title")) {
+            return "Coluna Title/Nome da tarefa vazia.";
+          }
+          if (msg.includes("Catalog not found")) {
+            return "Catálogo de serviços não encontrado. Verifique o nome/ID na coluna ServiceCatalog.";
+          }
+          if (msg.includes("Parent not found")) {
+            return "Pai não encontrado. Verifique a coluna Parent ou o código hierárquico.";
+          }
+          return msg;
+        };
+        const errorLines = (data?.errors ?? [])
+          .slice(0, 6)
+          .map((err: any) => {
+            const rowLabel = err?.row ? `Linha ${err.row}` : "Linha ?";
+            const msg = err?.message ? String(err.message) : "Erro desconhecido";
+            return `${rowLabel}: ${friendly(msg)}`;
+          })
+          .join(" | ");
+        const warningLines = (data?.warnings ?? [])
+          .slice(0, 4)
+          .map((warn: any) => {
+            const rowLabel = warn?.row ? `Linha ${warn.row}` : "Linha ?";
+            const msg = warn?.message ? String(warn.message) : "Aviso";
+            return `${rowLabel}: ${msg}`;
+          })
+          .join(" | ");
+        const help = "Dica: preencha Nome da Atividade e Código da EAP ou Código do Pai.";
+        setImportError(
+          `Importação com erros. Criados: ${created}. Atualizados: ${updated}. Erros: ${errors}. ${errorLines}. ${
+            warningLines ? `Avisos: ${warningLines}.` : ""
+          } ${help}`
+        );
+      } else if (warnings > 0) {
+        const warningLines = (data?.warnings ?? [])
+          .slice(0, 6)
+          .map((warn: any) => {
+            const rowLabel = warn?.row ? `Linha ${warn.row}` : "Linha ?";
+            const msg = warn?.message ? String(warn.message) : "Aviso";
+            return `${rowLabel}: ${msg}`;
+          })
+          .join(" | ");
+        setImportFeedback(
+          `Importação concluída com avisos. Criados: ${created}. Atualizados: ${updated}. Avisos: ${warnings}. ${warningLines}`
+        );
+      } else {
+        setImportFeedback(`Importação concluída. Criados: ${created}. Atualizados: ${updated}. Erros: ${errors}.`);
+      }
       onReloadWbs?.();
     } catch (error: any) {
       setImportError(error?.message ?? "Erro ao importar.");
@@ -486,7 +560,7 @@ const EDTPage: React.FC = () => {
         ? {
             membershipId: member.id,
             userId: member.userId,
-            name: member.name ?? member.email ?? "Responsavel",
+            name: member.name ?? member.email ?? "Responsável",
           }
         : null;
     }
@@ -552,8 +626,8 @@ const EDTPage: React.FC = () => {
     selectedTask?.owner?.email ??
     selectedTask?.responsible?.name ??
     selectedTask?.responsible?.email ??
-    "Sem responsavel";
-  const detailsStatusLabel = selectedTask?.status ? normalizeStatus(selectedTask.status) : "Nao informado";
+    "Sem responsável";
+  const detailsStatusLabel = selectedTask?.status ? normalizeStatus(selectedTask.status) : "Não informado";
   const selectedDependencyIds = Array.isArray(selectedTask?.dependencies)
     ? selectedTask.dependencies.map((dep: any) => String(dep))
     : [];
@@ -570,6 +644,14 @@ const EDTPage: React.FC = () => {
           Projeto atual: {currentProjectName}
           {wbsError ? ` — ${wbsError}` : ""}
         </p>
+        <div className="eap-header-actions">
+          <button className="eap-btn eap-btn-ghost" onClick={handleDownloadEapTemplate}>
+            Modelo de EAP
+          </button>
+          <button className="eap-btn eap-btn-ghost" onClick={handleDownloadServiceTemplate}>
+            Modelo de serviços
+          </button>
+        </div>
       </header>
 
             <div className="eap-toolbar2" style={{ marginBottom: 12 }}>
@@ -923,7 +1005,7 @@ const EDTPage: React.FC = () => {
                 )}
               </div>
               <div>
-                <p className="detail-label">Responsavel</p>
+                <p className="detail-label">Responsável</p>
                 {detailsEditing ? (
                   <select
                     className="gp-input"
@@ -932,10 +1014,10 @@ const EDTPage: React.FC = () => {
                       setDetailsDraft((prev) => (prev ? { ...prev, responsibleId: event.target.value } : prev))
                     }
                   >
-                    <option value="">Sem responsavel</option>
+                    <option value="">Sem responsável</option>
                     {(members ?? []).map((member: any) => (
                       <option key={member.id} value={member.id}>
-                        {member.name ?? member.email ?? member.userId ?? "Responsavel"}
+                        {member.name ?? member.email ?? member.userId ?? "Responsável"}
                       </option>
                     ))}
                   </select>
@@ -1000,7 +1082,7 @@ const EDTPage: React.FC = () => {
                     }
                   />
                 ) : (
-                  <p className="detail-value">{selectedTask.description ?? "Sem descricao"}</p>
+                  <p className="detail-value">{selectedTask.description ?? "Sem descrição"}</p>
                 )}
               </div>
             </div>
