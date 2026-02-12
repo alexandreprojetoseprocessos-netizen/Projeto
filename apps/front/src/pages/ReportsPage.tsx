@@ -188,12 +188,17 @@ const flattenNodes = (nodes: PanelNode[], levelOffset: number, rows: ScopeRow[])
   });
 };
 
-const ProjectProgressPill = ({ percent, variant }: { percent: number; variant: "success" | "info" | "neutral" }) => (
-  <div className={`reports-progress-pill is-${variant}`}>
-    <span style={{ width: `${percent}%` }} />
-    <strong>{percent}%</strong>
-  </div>
-);
+const ProjectProgressPill = ({ percent, variant }: { percent: number; variant: "success" | "info" | "neutral" }) => {
+  const safePercent = Number.isFinite(percent) ? Math.max(0, Math.min(100, Math.round(percent))) : 0;
+  return (
+    <div className={`reports-progress-pill is-${variant}`}>
+      <span className="reports-progress-pill-track">
+        <span className="reports-progress-pill-fill" style={{ width: `${safePercent}%` }} />
+      </span>
+      <strong>{safePercent}%</strong>
+    </div>
+  );
+};
 
 const ProjectMiniCard = ({ project }: { project: ProjectSummary }) => {
   const progress = calcProgress(project.tasksDone, project.tasksTotal);

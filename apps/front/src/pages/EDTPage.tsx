@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { apiUrl } from "../config/api";
 import { WbsTreeView, type DashboardOutletContext } from "../components/DashboardLayout";
 import { DependenciesDropdown, type DependencyOption } from "../components/DependenciesDropdown";
+import { CleanFilterSelect } from "../components/CleanFilterSelect";
 import ServiceCatalogModal from "../components/ServiceCatalogModal";
 import { StatusSelect } from "../components/StatusSelect";
 import { normalizeStatus, STATUS_ORDER, type Status } from "../utils/status";
@@ -45,6 +46,21 @@ const isoFromDateInput = (value: string) => {
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
+};
+
+const toLocalMidnightIso = (value: Date): string =>
+  new Date(value.getFullYear(), value.getMonth(), value.getDate()).toISOString();
+
+const addDaysToDate = (base: Date, days: number): Date =>
+  new Date(base.getFullYear(), base.getMonth(), base.getDate() + days);
+
+const toDateKey = (value?: string | null): string => {
+  const parsed = parseDate(value);
+  if (!parsed) return "";
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 };
 
 type WbsUpdate = {
@@ -104,6 +120,7 @@ const EDTPage: React.FC = () => {
   const [filterService, setFilterService] = useState<string>("ALL");
   const [filterOwner, setFilterOwner] = useState<string>("ALL");
   const [filterOverdue, setFilterOverdue] = useState<"ALL" | "OVERDUE">("ALL");
+  const [filterLevel, setFilterLevel] = useState<string>("ALL");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createTitle, setCreateTitle] = useState("");
   const [createStatus, setCreateStatus] = useState<Status>(STATUS_ORDER[0]);
@@ -118,6 +135,7 @@ const EDTPage: React.FC = () => {
   const [trashItems, setTrashItems] = useState<any[]>([]);
   const [trashLoading, setTrashLoading] = useState(false);
   const [trashError, setTrashError] = useState<string | null>(null);
+  const [reloadingDependencies, setReloadingDependencies] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   useEffect(() => {
@@ -142,6 +160,77 @@ const EDTPage: React.FC = () => {
 
   const flattenNodes = (nodes: any[] = []): any[] =>
     nodes.flatMap((n) => [n, ...(n.children ? flattenNodes(n.children) : [])]);
+
+  const resolveNodeDisplayLevel = (node: any): number | null => {
+    const numericLevel = Number(node?.level);
+    if (Number.isFinite(numericLevel)) {
+      return Math.max(1, numericLevel + 1);
+    }
+    const code = String(node?.wbsCode ?? node?.code ?? "").trim();
+    if (/^\d+(\.\d+)*$/.test(code)) {
+      return code.split(".").length;
+    }
+    return null;
+  };
+
+  const availableLevels = useMemo(() => {
+    const levels = new Set<number>();
+    flattenNodes(wbsNodes ?? []).forEach((node) => {
+      if (node?.deletedAt) return;
+      const level = resolveNodeDisplayLevel(node);
+      if (level && Number.isFinite(level)) levels.add(level);
+    });
+    return Array.from(levels).sort((a, b) => a - b);
+  }, [wbsNodes]);
+
+  const statusFilterOptions = useMemo(
+    () => [
+      { value: "ALL", label: "Todos" },
+      ...STATUS_ORDER.map((status) => ({ value: status, label: status })),
+    ],
+    []
+  );
+
+  const serviceFilterOptions = useMemo(
+    () => [
+      { value: "ALL", label: "Todos" },
+      ...serviceCatalogOptions.map((service) => ({
+        value: String(service.id),
+        label: service.name ?? "Sem nome",
+      })),
+    ],
+    [serviceCatalogOptions]
+  );
+
+  const ownerFilterOptions = useMemo(
+    () => [
+      { value: "ALL", label: "Todos" },
+      ...(members ?? []).map((member: any) => ({
+        value: String(member.id),
+        label: member.name ?? member.email ?? "Sem nome",
+      })),
+    ],
+    [members]
+  );
+
+  const overdueFilterOptions = useMemo(
+    () => [
+      { value: "ALL", label: "Todos" },
+      { value: "OVERDUE", label: "Em atraso" },
+    ],
+    []
+  );
+
+  const levelFilterOptions = useMemo(
+    () => [
+      { value: "ALL", label: "Todos" },
+      ...availableLevels.map((level) => ({
+        value: String(level),
+        label: `Nivel ${level}`,
+      })),
+    ],
+    [availableLevels]
+  );
 
   const nodeById = useMemo(() => {
     const flat = flattenNodes(wbsNodes ?? []);
@@ -170,13 +259,166 @@ const EDTPage: React.FC = () => {
         if (!(end < now)) return false;
         if (statusNorm === "Finalizado") return false;
       }
+      if (filterLevel !== "ALL") {
+        const nodeLevel = resolveNodeDisplayLevel(node);
+        if (String(nodeLevel ?? "") !== filterLevel) return false;
+      }
       if (!q) return true;
       const code = String(node.wbsCode ?? node.code ?? node.id ?? "").toLowerCase();
       const title = String(node.title ?? "").toLowerCase();
       const owner = String(node.owner?.name ?? node.owner?.email ?? "").toLowerCase();
       return code.includes(q) || title.includes(q) || owner.includes(q);
     });
-  }, [filterStatus, filterService, filterOwner, filterOverdue, filterText, wbsNodes]);
+  }, [filterLevel, filterStatus, filterService, filterOwner, filterOverdue, filterText, wbsNodes]);
+
+  const resolveNodeDurationInDays = (node: any): number => {
+    const explicitDuration = Number(node?.durationInDays ?? node?.durationDays ?? 0);
+    if (Number.isFinite(explicitDuration) && explicitDuration > 0) {
+      return Math.max(1, Math.round(explicitDuration));
+    }
+
+    const diff = calcDurationInDays(node?.startDate ?? null, node?.endDate ?? null);
+    if (diff > 0) return diff;
+
+    const estimateHours = Number(node?.estimateHours ?? 0);
+    if (Number.isFinite(estimateHours) && estimateHours > 0) {
+      return Math.max(1, Math.round(estimateHours / WORKDAY_HOURS));
+    }
+
+    return 1;
+  };
+
+  const handleReloadWithDependencySync = async () => {
+    if (reloadingDependencies) return;
+
+    if (!onUpdateWbsNode) {
+      onReloadWbs?.();
+      return;
+    }
+
+    const flatNodes = flattenNodes(wbsNodes ?? []).filter((node) => node?.id && !node?.deletedAt);
+    if (!flatNodes.length) {
+      onReloadWbs?.();
+      return;
+    }
+
+    type NodeSchedule = {
+      startDate: string | null;
+      endDate: string | null;
+      durationInDays: number;
+      dependencies: string[];
+    };
+
+    const scheduleById = new Map<string, NodeSchedule>();
+    flatNodes.forEach((node) => {
+      const dependenciesSource = Array.isArray(node?.dependencies) ? node.dependencies : [];
+      const dependencies = Array.from(
+        new Set<string>(
+          dependenciesSource
+            .map((dep: any) => String(dep ?? "").trim())
+            .filter((dep: string) => dep.length > 0 && dep !== String(node.id))
+        )
+      );
+
+      scheduleById.set(String(node.id), {
+        startDate: node?.startDate ?? null,
+        endDate: node?.endDate ?? null,
+        durationInDays: resolveNodeDurationInDays(node),
+        dependencies,
+      });
+    });
+
+    let hasChangesInPass = true;
+    let pass = 0;
+    const maxPasses = scheduleById.size;
+
+    while (hasChangesInPass && pass < maxPasses) {
+      hasChangesInPass = false;
+      pass += 1;
+
+      scheduleById.forEach((nodeSchedule, nodeId) => {
+        if (!nodeSchedule.dependencies.length) return;
+
+        let latestDependencyDate: Date | null = null;
+        nodeSchedule.dependencies.forEach((dependencyId) => {
+          const dependency = scheduleById.get(dependencyId);
+          if (!dependency) return;
+          const referenceDate = parseDate(dependency.endDate ?? dependency.startDate ?? null);
+          if (!referenceDate) return;
+          if (!latestDependencyDate || referenceDate.getTime() > latestDependencyDate.getTime()) {
+            latestDependencyDate = referenceDate;
+          }
+        });
+
+        if (!latestDependencyDate) return;
+
+        const nextStart = addDaysToDate(latestDependencyDate, 1);
+        const nextEnd = addDaysToDate(nextStart, Math.max(nodeSchedule.durationInDays - 1, 0));
+        const nextStartIso = toLocalMidnightIso(nextStart);
+        const nextEndIso = toLocalMidnightIso(nextEnd);
+
+        const startChanged = toDateKey(nodeSchedule.startDate) !== toDateKey(nextStartIso);
+        const endChanged = toDateKey(nodeSchedule.endDate) !== toDateKey(nextEndIso);
+        if (!startChanged && !endChanged) return;
+
+        scheduleById.set(nodeId, {
+          ...nodeSchedule,
+          startDate: nextStartIso,
+          endDate: nextEndIso,
+        });
+        hasChangesInPass = true;
+      });
+    }
+
+    const updates = flatNodes
+      .map((node) => {
+        const nextSchedule = scheduleById.get(String(node.id));
+        if (!nextSchedule || !nextSchedule.dependencies.length) return null;
+
+        const startChanged = toDateKey(node?.startDate ?? null) !== toDateKey(nextSchedule.startDate);
+        const endChanged = toDateKey(node?.endDate ?? null) !== toDateKey(nextSchedule.endDate);
+        if (!startChanged && !endChanged) return null;
+
+        return {
+          id: String(node.id),
+          startDate: nextSchedule.startDate,
+          endDate: nextSchedule.endDate,
+          estimateHours: nextSchedule.durationInDays * WORKDAY_HOURS,
+        };
+      })
+      .filter(Boolean) as Array<{
+      id: string;
+      startDate: string | null;
+      endDate: string | null;
+      estimateHours: number;
+    }>;
+
+    try {
+      setReloadingDependencies(true);
+      setImportError(null);
+
+      for (const update of updates) {
+        await Promise.resolve(
+          onUpdateWbsNode(update.id, {
+            startDate: update.startDate,
+            endDate: update.endDate,
+            estimateHours: update.estimateHours,
+          })
+        );
+      }
+
+      if (updates.length > 0) {
+        setImportFeedback(`${updates.length} tarefa(s) atualizada(s) com base em dependencias.`);
+      } else {
+        setImportFeedback("Nenhuma divergencia encontrada entre dependencias e datas.");
+      }
+    } catch (error: any) {
+      setImportError(error?.message ?? "Erro ao atualizar datas por dependencias.");
+    } finally {
+      await Promise.resolve(onReloadWbs?.());
+      setReloadingDependencies(false);
+    }
+  };
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -637,13 +879,16 @@ const EDTPage: React.FC = () => {
 
   return (
     <section className="edt-page">
-      <header className="page-header">
-        <p className="eyebrow">EAP</p>
-        <h1>Estrutura Analítica do Projeto</h1>
-        <p className="subtext">
-          Projeto atual: {currentProjectName}
-          {wbsError ? ` — ${wbsError}` : ""}
-        </p>
+      <header className="page-header eap-page-header">
+        <div className="eap-page-header__main">
+          <p className="eyebrow">EAP</p>
+          <h1>Estrutura Analítica do Projeto</h1>
+          <p className="subtext eap-page-header__subtitle">
+            <span className="eap-page-header__project-label">Projeto atual</span>
+            <strong className="eap-page-header__project-name">{currentProjectName}</strong>
+          </p>
+          {wbsError ? <p className="eap-page-header__error">{wbsError}</p> : null}
+        </div>
         <div className="eap-header-actions">
           <button className="eap-btn eap-btn-ghost" onClick={handleDownloadEapTemplate}>
             Modelo de EAP
@@ -659,8 +904,17 @@ const EDTPage: React.FC = () => {
           <button className="eap-btn" onClick={() => setIsCreateOpen(true)}>
             + Nova tarefa
           </button>
-          <button className="eap-btn" onClick={() => onReloadWbs?.()}>
-            Recarregar
+          <button
+            className="eap-btn"
+            onClick={handleReloadWithDependencySync}
+            disabled={reloadingDependencies}
+            title={
+              reloadingDependencies
+                ? "Sincronizando datas por dependência..."
+                : "Recalcular datas por dependência e recarregar"
+            }
+          >
+            {reloadingDependencies ? "Recarregando..." : "Recarregar"}
           </button>
           <div className="eap-divider" />
           <button className="eap-btn" onClick={handleExport}>
@@ -689,59 +943,50 @@ const EDTPage: React.FC = () => {
           <div className="eap-filters">
             <div className="eap-filter-field">
               <label>Status</label>
-              <select
-                className="eap-filter-select"
+              <CleanFilterSelect
                 value={filterStatus}
-                onChange={(event) => setFilterStatus(event.target.value as Status | "ALL")}
-              >
-                <option value="ALL">Todos</option>
-                {STATUS_ORDER.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
+                options={statusFilterOptions}
+                onChange={(nextValue) => setFilterStatus(nextValue as Status | "ALL")}
+                ariaLabel="Filtrar por status"
+              />
             </div>
             <div className="eap-filter-field">
               <label>Catálogo</label>
-              <select
-                className="eap-filter-select"
+              <CleanFilterSelect
                 value={filterService}
-                onChange={(event) => setFilterService(event.target.value)}
-              >
-                <option value="ALL">Todos</option>
-                {serviceCatalogOptions.map((service) => (
-                  <option key={service.id} value={service.id}>
-                    {service.name ?? "Sem nome"}
-                  </option>
-                ))}
-              </select>
+                options={serviceFilterOptions}
+                onChange={setFilterService}
+                ariaLabel="Filtrar por catÃ¡logo"
+              />
             </div>
             <div className="eap-filter-field">
               <label>Responsável</label>
-              <select
-                className="eap-filter-select"
+              <CleanFilterSelect
                 value={filterOwner}
-                onChange={(event) => setFilterOwner(event.target.value)}
-              >
-                <option value="ALL">Todos</option>
-                {(members ?? []).map((member: any) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name ?? member.email ?? "Sem nome"}
-                  </option>
-                ))}
-              </select>
+                options={ownerFilterOptions}
+                onChange={setFilterOwner}
+                ariaLabel="Filtrar por responsÃ¡vel"
+              />
             </div>
             <div className="eap-filter-field">
               <label>Em atraso</label>
-              <select
-                className="eap-filter-select is-small"
+              <CleanFilterSelect
                 value={filterOverdue}
-                onChange={(event) => setFilterOverdue(event.target.value as "ALL" | "OVERDUE")}
-              >
-                <option value="ALL">Todos</option>
-                <option value="OVERDUE">Em atraso</option>
-              </select>
+                options={overdueFilterOptions}
+                onChange={(nextValue) => setFilterOverdue(nextValue as "ALL" | "OVERDUE")}
+                ariaLabel="Filtrar por atraso"
+                size="small"
+              />
+            </div>
+            <div className="eap-filter-field">
+              <label>Nivel</label>
+              <CleanFilterSelect
+                value={filterLevel}
+                options={levelFilterOptions}
+                onChange={setFilterLevel}
+                ariaLabel="Filtrar por nÃ­vel"
+                size="small"
+              />
             </div>
           </div>
           <div className="eap-filter-field">
@@ -795,6 +1040,7 @@ const EDTPage: React.FC = () => {
               filterService={filterService}
               filterOwner={filterOwner}
               filterOverdue={filterOverdue}
+              filterLevel={filterLevel}
             />
           </div>
         </div>

@@ -18,6 +18,7 @@ import { ProjectBoardPage } from "./pages/ProjectBoardPage";
 import { ProjectTimelinePage } from "./pages/ProjectTimelinePage";
 import { ProjectDocumentsPage } from "./pages/ProjectDocumentsPage";
 import { ProjectActivitiesPage } from "./pages/ProjectActivitiesPage";
+import DiagramPage from "./pages/DiagramPage";
 import BoardPage from "./pages/BoardPage";
 import TimelinePage from "./pages/TimelinePage";
 import ReportsPage from "./pages/ReportsPage";
@@ -66,10 +67,32 @@ export const App = () => {
     const { status, user, token, signOut } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
+    const routeProjectId = useMemo(() => {
+        const eapMatch = location.pathname.match(/^\/EAP\/organizacao\/[^/]+\/projeto\/([^/?#]+)/i);
+        if (eapMatch?.[1]) {
+            try {
+                return decodeURIComponent(eapMatch[1]);
+            }
+            catch {
+                return eapMatch[1];
+            }
+        }
+        const projectMatch = location.pathname.match(/^\/projects\/([^/?#]+)/i);
+        if (projectMatch?.[1]) {
+            try {
+                return decodeURIComponent(projectMatch[1]);
+            }
+            catch {
+                return projectMatch[1];
+            }
+        }
+        return null;
+    }, [location.pathname]);
     const [subscriptionStatus, setSubscriptionStatus] = useState(status === "authenticated" ? "loading" : "idle");
     const [subscription, setSubscription] = useState(null);
     const [subscriptionError, setSubscriptionError] = useState(null);
     const [organizations, setOrganizations] = useState([]);
+    const [organizationsLoaded, setOrganizationsLoaded] = useState(false);
     const [selectedOrganizationId, setSelectedOrganizationId] = useState(() => {
         if (typeof window === "undefined")
             return null;
@@ -80,9 +103,12 @@ export const App = () => {
     const [selectedProjectId, setSelectedProjectId] = useState(() => {
         if (typeof window === "undefined")
             return null;
-        return window.localStorage.getItem(SELECTED_PROJECT_KEY);
+        const stored = window.localStorage.getItem(SELECTED_PROJECT_KEY);
+        return stored === "all" ? null : stored;
     });
     const [projectsError, setProjectsError] = useState(null);
+    const isAllProjectsSelected = selectedProjectId === "all";
+    const activeProjectId = isAllProjectsSelected ? null : selectedProjectId;
     const [members, setMembers] = useState([]);
     const [membersError, setMembersError] = useState(null);
     const [wbsNodes, setWbsNodes] = useState([]);
@@ -103,6 +129,7 @@ export const App = () => {
     const [attachmentsError, setAttachmentsError] = useState(null);
     const [attachmentsLoading, setAttachmentsLoading] = useState(false);
     const [portfolio, setPortfolio] = useState([]);
+    const [portfolioRefresh, setPortfolioRefresh] = useState(0);
     const [portfolioError, setPortfolioError] = useState(null);
     const [portfolioLoading, setPortfolioLoading] = useState(false);
     const [reportMetrics, setReportMetrics] = useState(null);
@@ -161,6 +188,7 @@ export const App = () => {
             acc[status] = [];
             return acc;
         }, {});
+        const projectNameMap = new Map(projects.map((project) => [project.id, project.name]));
         const wipLimits = {};
         const statusEntries = Object.entries(STATUS_MAP);
         const resolveStatus = (value) => {
@@ -183,9 +211,14 @@ export const App = () => {
             }
             (column.tasks ?? []).forEach((rawTask) => {
                 const matchedStatus = resolveStatus(rawTask.status) ?? columnStatus ?? statusOrder[0];
+                const resolvedProjectName = rawTask.projectName ??
+                    rawTask.project?.name ??
+                    (rawTask.projectId ? projectNameMap.get(rawTask.projectId) : null) ??
+                    (selectedProjectId && selectedProjectId !== "all" ? projectNameMap.get(selectedProjectId) : null);
                 grouped[matchedStatus].push({
                     ...rawTask,
-                    status: matchedStatus
+                    status: matchedStatus,
+                    projectName: resolvedProjectName ?? undefined
                 });
             });
         });
@@ -195,16 +228,18 @@ export const App = () => {
             tasks: grouped[status].sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0)),
             wipLimit: wipLimits[status]
         }));
-    }, [boardColumns]);
+    }, [boardColumns, projects, selectedProjectId]);
     useEffect(() => {
         if (status !== "authenticated" || !token) {
             setOrganizations([]);
+            setOrganizationsLoaded(false);
             setSelectedOrganizationId(null);
             setSelectedProjectId(null);
             setOrganizationLimits(null);
             setProjectLimits(null);
             return;
         }
+        setOrganizationsLoaded(false);
         const loadOrganizations = async () => {
             try {
                 setOrgError(null);
@@ -227,6 +262,7 @@ export const App = () => {
                 }));
                 setOrganizations(normalized);
                 setOrganizationLimits(data.organizationLimits ?? null);
+                setOrganizationsLoaded(true);
                 setSelectedOrganizationId((current) => {
                     if (normalized.length === 0)
                         return null;
@@ -239,12 +275,13 @@ export const App = () => {
                 });
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Falha ao carregar organiza��es";
+                const message = error instanceof Error ? error.message : "Falha ao carregar organizações";
                 setOrgError(message);
                 setOrganizations([]);
                 setSelectedOrganizationId((current) => current ?? null);
                 setOrganizationLimits(null);
                 setProjectLimits(null);
+                setOrganizationsLoaded(true);
             }
         };
         loadOrganizations();
@@ -267,24 +304,34 @@ export const App = () => {
         });
     }, [organizationLimits, organizations, selectedOrganizationId]);
     useEffect(() => {
+        if (!projects.length) {
+            setSelectedProjectId(null);
+            return;
+        }
+        if (routeProjectId && projects.some((project) => project.id === routeProjectId)) {
+            setSelectedProjectId(routeProjectId);
+            return;
+        }
         setSelectedProjectId((current) => {
-            if (!projects.length)
-                return null;
             if (current && projects.some((project) => project.id === current))
                 return current;
             return projects[0].id;
         });
-    }, [projects]);
+    }, [projects, routeProjectId]);
     useEffect(() => {
         if (status !== "authenticated")
             return;
         if (subscriptionStatus !== "active")
             return;
+        if (!organizationsLoaded)
+            return;
+        if (orgError)
+            return;
         const isEapRoute = location.pathname.toLowerCase().startsWith("/eap");
         if (organizations.length === 0 && location.pathname !== "/organizacao" && !isEapRoute) {
             navigate("/organizacao", { replace: true });
         }
-    }, [status, subscriptionStatus, organizations.length, location.pathname, navigate]);
+    }, [status, subscriptionStatus, organizations.length, organizationsLoaded, orgError, location.pathname, navigate]);
     const [projectsLoaded, setProjectsLoaded] = useState(false);
     const previousOrganizationId = useRef(null);
     useEffect(() => {
@@ -357,7 +404,7 @@ export const App = () => {
                     if (list.length === 0)
                         return null;
                     const stored = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_PROJECT_KEY) : null;
-                    const candidate = current || stored || null;
+                    const candidate = routeProjectId || current || stored || null;
                     const exists = candidate && list.some((project) => project.id === candidate);
                     return exists ? candidate : list[0].id;
                 });
@@ -369,9 +416,9 @@ export const App = () => {
             }
         };
         loadProjects();
-    }, [status, token, selectedOrganizationId]);
+    }, [status, token, selectedOrganizationId, portfolioRefresh, routeProjectId]);
     useEffect(() => {
-        if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+        if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
             setProjectSummary(null);
             return;
         }
@@ -379,7 +426,7 @@ export const App = () => {
             try {
                 setSummaryError(null);
                 const query = new URLSearchParams({ rangeDays: String(filters.rangeDays) });
-                const data = await fetchJson(`/projects/${selectedProjectId}/summary?${query.toString()}`, token, undefined, selectedOrganizationId);
+                const data = await fetchJson(`/projects/${activeProjectId}/summary?${query.toString()}`, token, undefined, selectedOrganizationId);
                 setProjectSummary(data);
             }
             catch (error) {
@@ -391,14 +438,14 @@ export const App = () => {
         loadSummary();
     }, [status, token, selectedProjectId, selectedOrganizationId, filters.rangeDays, summaryRefresh]);
     useEffect(() => {
-        if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+        if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
             setMembers([]);
             return;
         }
         const loadMembers = async () => {
             try {
                 setMembersError(null);
-                const data = await fetchJson(`/projects/${selectedProjectId}/members`, token, undefined, selectedOrganizationId);
+                const data = await fetchJson(`/projects/${activeProjectId}/members`, token, undefined, selectedOrganizationId);
                 setMembers(data.members ?? []);
             }
             catch (error) {
@@ -409,25 +456,34 @@ export const App = () => {
         loadMembers();
     }, [status, token, selectedProjectId, selectedOrganizationId]);
     useEffect(() => {
-        if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+        if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
             setServiceCatalog([]);
             return;
         }
         const loadServiceCatalog = async () => {
             try {
                 setServiceCatalogError(null);
-                const data = await fetchJson(`/service-catalog?projectId=${selectedProjectId}`, token, undefined, selectedOrganizationId);
+                const data = await fetchJson(`/service-catalog?projectId=${activeProjectId}`, token, undefined, selectedOrganizationId);
                 setServiceCatalog(data ?? []);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar cat�logo de servi�os";
+                const message = error instanceof Error ? error.message : "Erro ao carregar catálogo de serviços";
                 setServiceCatalogError(message);
             }
         };
         loadServiceCatalog();
     }, [status, token, selectedProjectId, selectedOrganizationId, serviceCatalogRefresh]);
     useEffect(() => {
-        if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+        if (status !== "authenticated" || !token || !selectedOrganizationId) {
+            setWbsNodes([]);
+            setSelectedNodeId(null);
+            return;
+        }
+        if (selectedProjectId === "all") {
+            setSelectedNodeId(null);
+            return;
+        }
+        if (!activeProjectId) {
             setWbsNodes([]);
             setSelectedNodeId(null);
             return;
@@ -435,8 +491,8 @@ export const App = () => {
         const loadWbs = async () => {
             try {
                 setWbsError(null);
-                const data = await fetchJson(`/projects/${selectedProjectId}/wbs`, token, undefined, selectedOrganizationId);
-                const nodes = data.nodes ?? [];
+                const data = await fetchJson(`/projects/${activeProjectId}/wbs`, token, undefined, selectedOrganizationId);
+                const nodes = ensureWbsTree(data.nodes ?? []);
                 setWbsNodes(nodes);
                 setSelectedNodeId((current) => {
                     if (!current)
@@ -452,6 +508,46 @@ export const App = () => {
         loadWbs();
     }, [status, token, selectedProjectId, selectedOrganizationId, wbsRefresh]);
     useEffect(() => {
+        if (status !== "authenticated" || !token || !selectedOrganizationId || selectedProjectId !== "all") {
+            return;
+        }
+        if (!projects.length) {
+            setWbsNodes([]);
+            return;
+        }
+        const loadAllWbs = async () => {
+            try {
+                setWbsError(null);
+                const results = await Promise.allSettled(projects.map((project) => fetchJson(`/projects/${project.id}/wbs`, token, undefined, selectedOrganizationId).then((data) => ({
+                    ...data,
+                    projectId: project.id,
+                    projectName: project.name
+                }))));
+                const attachProjectMeta = (nodes = [], meta) => nodes.map((node) => ({
+                    ...node,
+                    projectId: meta.projectId,
+                    projectName: meta.projectName,
+                    children: attachProjectMeta(node.children ?? [], meta)
+                }));
+                const merged = results.flatMap((result) => {
+                    if (result.status !== "fulfilled")
+                        return [];
+                    const { nodes = [], projectId, projectName } = result.value;
+                    if (!projectId || !projectName)
+                        return nodes ?? [];
+                    const tree = ensureWbsTree(nodes ?? []);
+                    return attachProjectMeta(tree, { projectId, projectName });
+                });
+                setWbsNodes(merged);
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : "Erro ao carregar WBS";
+                setWbsError(message);
+            }
+        };
+        loadAllWbs();
+    }, [status, token, selectedProjectId, selectedOrganizationId, projects, wbsRefresh]);
+    useEffect(() => {
         if (!selectedNodeId || status !== "authenticated" || !token || !selectedOrganizationId) {
             setComments([]);
             return;
@@ -464,22 +560,96 @@ export const App = () => {
                 setComments(nextComments);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar coment�rios";
+                const message = error instanceof Error ? error.message : "Erro ao carregar comentários";
                 setCommentsError(message);
             }
         };
         loadComments();
     }, [status, token, selectedNodeId, selectedOrganizationId, commentsRefresh]);
     const loadBoardColumns = useCallback(async () => {
-        if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+        if (status !== "authenticated" || !token || !selectedOrganizationId) {
+            return;
+        }
+        if (selectedProjectId === "all") {
+            try {
+                setBoardError(null);
+                if (!projects.length) {
+                    setBoardColumns([]);
+                    return;
+                }
+                const results = await Promise.allSettled(projects.map((project) => fetchJson(`/projects/${project.id}/board`, token, undefined, selectedOrganizationId).then((data) => ({ ...data, projectId: project.id, projectName: project.name }))));
+                const statusOrder = KANBAN_STATUS_ORDER;
+                const statusEntries = Object.entries(STATUS_MAP);
+                const resolveStatus = (value) => {
+                    if (!value)
+                        return undefined;
+                    const trimmed = value.trim();
+                    if (!trimmed)
+                        return undefined;
+                    const upper = trimmed.toUpperCase();
+                    if (statusOrder.includes(upper))
+                        return upper;
+                    const matched = statusEntries.find(([, label]) => label.toUpperCase() === upper);
+                    return matched ? matched[0] : undefined;
+                };
+                const aggregated = statusOrder.map((status, index) => ({
+                    id: status,
+                    label: STATUS_MAP[status],
+                    order: index,
+                    status,
+                    tasks: []
+                }));
+                const columnMap = aggregated.reduce((acc, column) => {
+                    acc[column.id] = column;
+                    return acc;
+                }, {});
+                results.forEach((result) => {
+                    if (result.status !== "fulfilled")
+                        return;
+                    const data = result.value;
+                    (data.columns ?? []).forEach((column) => {
+                        const columnStatus = resolveStatus(column.status) ??
+                            resolveStatus(column.id) ??
+                            resolveStatus(column.label) ??
+                            statusOrder[0];
+                        (column.tasks ?? []).forEach((task) => {
+                            const taskStatus = resolveStatus(task.status) ?? columnStatus ?? statusOrder[0];
+                            const target = columnMap[taskStatus] ?? columnMap[statusOrder[0]];
+                            target.tasks.push({
+                                ...task,
+                                status: taskStatus,
+                                projectName: task.projectName ?? data.projectName
+                            });
+                        });
+                    });
+                });
+                aggregated.forEach((column) => {
+                    column.tasks = [...column.tasks].sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0));
+                });
+                setBoardColumns(aggregated);
+                setNewTaskColumn(statusOrder[0]);
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : "Erro ao carregar quadro";
+                setBoardError(message);
+            }
+            return;
+        }
+        if (!activeProjectId) {
             return;
         }
         try {
             setBoardError(null);
-            const data = await fetchJson(`/projects/${selectedProjectId}/board`, token, undefined, selectedOrganizationId);
+            const data = await fetchJson(`/projects/${activeProjectId}/board`, token, undefined, selectedOrganizationId);
+            const projectName = projects.find((project) => project.id === activeProjectId)?.name;
             const normalized = (data.columns ?? []).map((column) => ({
                 ...column,
-                tasks: [...(column.tasks ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                tasks: [...(column.tasks ?? [])]
+                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                    .map((task) => ({
+                    ...task,
+                    projectName: task.projectName ?? projectName
+                }))
             }));
             setBoardColumns(normalized);
             if (normalized.length) {
@@ -495,21 +665,25 @@ export const App = () => {
             const message = error instanceof Error ? error.message : "Erro ao carregar quadro";
             setBoardError(message);
         }
-    }, [status, token, selectedProjectId, selectedOrganizationId]);
+    }, [status, token, selectedProjectId, selectedOrganizationId, activeProjectId, projects]);
     useEffect(() => {
-        if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+        if (status !== "authenticated" || !token || !selectedOrganizationId) {
+            setBoardColumns([]);
+            return;
+        }
+        if (!activeProjectId && selectedProjectId !== "all") {
             setBoardColumns([]);
             return;
         }
         loadBoardColumns();
-    }, [status, token, selectedProjectId, selectedOrganizationId, boardRefresh, loadBoardColumns]);
+    }, [status, token, selectedProjectId, selectedOrganizationId, activeProjectId, boardRefresh, loadBoardColumns]);
     const handleImportServiceCatalog = useCallback(async (file) => {
-        if (!file || !token || !selectedProjectId || !selectedOrganizationId) {
-            throw new Error("Arquivo e projeto s�o obrigat�rios.");
+        if (!file || !token || !activeProjectId || !selectedOrganizationId) {
+            throw new Error("Arquivo e projeto são obrigatórios.");
         }
         const formData = new FormData();
         formData.append("file", file);
-        const response = await fetch(apiUrl(`/service-catalog/import?projectId=${selectedProjectId}`), {
+        const response = await fetch(apiUrl(`/service-catalog/import?projectId=${activeProjectId}`), {
             method: "POST",
             headers: {
                 Authorization: `Bearer ${token}`,
@@ -519,14 +693,64 @@ export const App = () => {
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
-            const message = body?.message ?? "Erro ao importar cat�logo";
+            const message = body?.message ?? "Erro ao importar catálogo";
             throw new Error(message);
         }
         setServiceCatalogRefresh((value) => value + 1);
         return body;
     }, [token, selectedProjectId, selectedOrganizationId]);
     useEffect(() => {
-        if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+        if (status !== "authenticated" || !token || !selectedOrganizationId) {
+            setGanttTasks([]);
+            setGanttMilestones([]);
+            return;
+        }
+        if (selectedProjectId === "all") {
+            if (!projects.length) {
+                setGanttTasks([]);
+                setGanttMilestones([]);
+                return;
+            }
+            const loadAllGantt = async () => {
+                try {
+                    setGanttError(null);
+                    const results = await Promise.allSettled(projects.map((project) => fetchJson(`/projects/${project.id}/gantt`, token, undefined, selectedOrganizationId).then((data) => ({
+                        ...data,
+                        projectId: project.id,
+                        projectName: project.name
+                    }))));
+                    const mergedTasks = results.flatMap((result) => {
+                        if (result.status !== "fulfilled")
+                            return [];
+                        const { tasks = [], projectId, projectName } = result.value;
+                        return (tasks ?? []).map((task) => ({
+                            ...task,
+                            projectId,
+                            projectName
+                        }));
+                    });
+                    const mergedMilestones = results.flatMap((result) => {
+                        if (result.status !== "fulfilled")
+                            return [];
+                        const { milestones = [], projectId, projectName } = result.value;
+                        return (milestones ?? []).map((milestone) => ({
+                            ...milestone,
+                            projectId,
+                            projectName
+                        }));
+                    });
+                    setGanttTasks(mergedTasks);
+                    setGanttMilestones(mergedMilestones);
+                }
+                catch (error) {
+                    const message = error instanceof Error ? error.message : "Erro ao carregar Gantt";
+                    setGanttError(message);
+                }
+            };
+            loadAllGantt();
+            return;
+        }
+        if (!activeProjectId) {
             setGanttTasks([]);
             setGanttMilestones([]);
             return;
@@ -534,7 +758,7 @@ export const App = () => {
         const loadGantt = async () => {
             try {
                 setGanttError(null);
-                const data = await fetchJson(`/projects/${selectedProjectId}/gantt`, token, undefined, selectedOrganizationId);
+                const data = await fetchJson(`/projects/${activeProjectId}/gantt`, token, undefined, selectedOrganizationId);
                 setGanttTasks(data.tasks ?? []);
                 setGanttMilestones(data.milestones ?? []);
             }
@@ -544,9 +768,9 @@ export const App = () => {
             }
         };
         loadGantt();
-    }, [status, token, selectedProjectId, selectedOrganizationId]);
+    }, [status, token, selectedProjectId, selectedOrganizationId, activeProjectId, projects]);
     useEffect(() => {
-        if (status !== "authenticated" || !token || !selectedProjectId || !selectedOrganizationId) {
+        if (status !== "authenticated" || !token || !selectedOrganizationId) {
             setAttachments([]);
             setAttachmentsLoading(false);
             return;
@@ -555,8 +779,39 @@ export const App = () => {
             try {
                 setAttachmentsLoading(true);
                 setAttachmentsError(null);
-                const data = await fetchJson(`/projects/${selectedProjectId}/attachments`, token, undefined, selectedOrganizationId);
-                setAttachments(data.attachments ?? []);
+                if (selectedProjectId === "all") {
+                    if (!projects.length) {
+                        setAttachments([]);
+                        return;
+                    }
+                    const responses = await Promise.all(projects.map(async (project) => {
+                        const projectId = project.id ?? project.projectId;
+                        if (!projectId)
+                            return [];
+                        const data = await fetchJson(`/projects/${projectId}/attachments`, token, undefined, selectedOrganizationId);
+                        const projectName = project.projectName ?? project.name ?? "Projeto";
+                        return (data.attachments ?? []).map((attachment) => ({
+                            ...attachment,
+                            projectId,
+                            projectName
+                        }));
+                    }));
+                    setAttachments(responses.flat());
+                    return;
+                }
+                if (!activeProjectId) {
+                    setAttachments([]);
+                    return;
+                }
+                const data = await fetchJson(`/projects/${activeProjectId}/attachments`, token, undefined, selectedOrganizationId);
+                const projectName = projects.find((project) => (project.id ?? project.projectId) === activeProjectId)?.projectName ??
+                    projects.find((project) => (project.id ?? project.projectId) === activeProjectId)?.name ??
+                    "Projeto";
+                setAttachments((data.attachments ?? []).map((attachment) => ({
+                    ...attachment,
+                    projectId: activeProjectId,
+                    projectName
+                })));
             }
             catch (error) {
                 const message = error instanceof Error ? error.message : "Erro ao carregar documentos";
@@ -568,7 +823,7 @@ export const App = () => {
             }
         };
         loadAttachments();
-    }, [status, token, selectedProjectId, selectedOrganizationId]);
+    }, [status, token, selectedProjectId, selectedOrganizationId, activeProjectId, projects]);
     useEffect(() => {
         if (status !== "authenticated" || !token || !selectedOrganizationId) {
             setPortfolio([]);
@@ -584,7 +839,7 @@ export const App = () => {
                 setPortfolio(data.projects ?? []);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar portf�lio";
+                const message = error instanceof Error ? error.message : "Erro ao carregar portfólio";
                 setPortfolioError(message);
                 setPortfolio([]);
             }
@@ -593,7 +848,7 @@ export const App = () => {
             }
         };
         loadPortfolio();
-    }, [status, token, selectedOrganizationId]);
+    }, [status, token, selectedOrganizationId, portfolioRefresh]);
     useEffect(() => {
         if (status !== "authenticated" || !token || !selectedOrganizationId) {
             setReportMetrics(null);
@@ -608,7 +863,7 @@ export const App = () => {
                 setReportMetrics(data);
             }
             catch (error) {
-                const message = error instanceof Error ? error.message : "Erro ao carregar relat�rios";
+                const message = error instanceof Error ? error.message : "Erro ao carregar relatórios";
                 setReportMetricsError(message);
                 setReportMetrics(null);
             }
@@ -618,13 +873,14 @@ export const App = () => {
         };
         loadMetrics();
     }, [status, token, selectedOrganizationId]);
+    const onReloadPortfolio = () => setPortfolioRefresh((value) => value + 1);
     const handleCreateTask = async (event) => {
         event.preventDefault();
-        if (!token || !selectedProjectId || !selectedOrganizationId || !newTaskColumn || !newTaskTitle.trim()) {
+        if (!token || !activeProjectId || !selectedOrganizationId || !newTaskColumn || !newTaskTitle.trim()) {
             return false;
         }
         try {
-            await fetchJson(`/projects/${selectedProjectId}/board/tasks`, token, {
+            await fetchJson(`/projects/${activeProjectId}/board/tasks`, token, {
                 method: "POST",
                 body: JSON.stringify({
                     title: newTaskTitle,
@@ -665,7 +921,7 @@ export const App = () => {
             setCommentsError(null);
         }
         catch (error) {
-            const message = error instanceof Error ? error.message : "Erro ao criar coment�rio";
+            const message = error instanceof Error ? error.message : "Erro ao criar comentário";
             setCommentsError(message);
         }
     };
@@ -695,7 +951,7 @@ export const App = () => {
     };
     const handleCreateProject = async (payload) => {
         if (!token || !selectedOrganizationId) {
-            throw new Error("Selecione uma organiza��o para criar projetos.");
+            throw new Error("Selecione uma organização para criar projetos.");
         }
         try {
             const response = await fetchJson("/projects", token, {
@@ -722,6 +978,14 @@ export const App = () => {
                         projectId: createdProject.id,
                         projectName: createdProject.name,
                         clientName: payload.clientName,
+                        description: payload.description ?? null,
+                        status: createdProject.status ?? payload.status ?? "PLANNED",
+                        priority: createdProject.priority ?? payload.priority ?? "MEDIUM",
+                        startDate: payload.startDate ?? null,
+                        endDate: payload.endDate ?? null,
+                        budget: Number.isFinite(payload.budget) ? payload.budget : null,
+                        repositoryUrl: payload.repositoryUrl ?? null,
+                        teamMembers: payload.teamMembers,
                         hoursTracked: 0,
                         tasksTotal: 0,
                         tags: []
@@ -755,7 +1019,7 @@ export const App = () => {
     };
     const handleUpdateProject = async (projectId, payload) => {
         if (!token || !selectedOrganizationId) {
-            throw new Error("Selecione uma organiza��o antes de editar projeto.");
+            throw new Error("Selecione uma organização antes de editar projeto.");
         }
         const response = await fetchJson(`/projects/${projectId}`, token, {
             method: "PUT",
@@ -768,6 +1032,9 @@ export const App = () => {
                 ...project,
                 projectName: updatedProject.name ?? project.projectName,
                 clientName: payload.clientName,
+                description: payload.description !== undefined ? payload.description : updatedProject.description ?? project.description,
+                status: updatedProject.status ?? payload.status ?? project.status,
+                priority: updatedProject.priority ?? payload.priority ?? project.priority,
                 startDate: payload.startDate || project.startDate,
                 endDate: payload.endDate || project.endDate
             }
@@ -782,7 +1049,7 @@ export const App = () => {
             organizationLimits?.remaining === null ||
             (organizationLimits?.remaining ?? 0) > 0;
         if (organizationLimits && !canCreate) {
-            setOrgError("Limite de organiza��es do plano atingido. Atualize o plano para criar mais.");
+            setOrgError("Limite de organizações do plano atingido. Atualize o plano para criar mais.");
             return;
         }
         try {
@@ -815,9 +1082,9 @@ export const App = () => {
             const code = error?.body?.code ?? error?.response?.data?.code;
             const message = error?.body?.message ??
                 error?.response?.data?.message ??
-                (error instanceof Error ? error.message : "Erro ao criar organiza��o");
+                (error instanceof Error ? error.message : "Erro ao criar organização");
             if (status === 409 && code === "ORG_LIMIT_REACHED") {
-                setOrgError("Limite de organiza��es do seu plano atingido.");
+                setOrgError("Limite de organizações do seu plano atingido.");
             }
             else {
                 setOrgError(message);
@@ -839,18 +1106,18 @@ export const App = () => {
         const { destination, source, draggableId } = result;
         if (!destination ||
             !token ||
-            !selectedProjectId ||
+            !activeProjectId ||
             !selectedOrganizationId ||
             (destination.droppableId === source.droppableId && destination.index === source.index)) {
             return;
         }
         // Normaliza o status alvo
         const newStatus = resolveStatus(destination.droppableId) ?? "BACKLOG";
-        // Atualiza��o otimista do estado local
+        // Atualização otimista do estado local
         setBoardColumns((prev) => reorderBoard(prev, source, destination, draggableId, newStatus));
         try {
             // Persiste no backend com o novo status
-            await fetchJson(`/projects/${selectedProjectId}/board/tasks/${draggableId}`, token, {
+            await fetchJson(`/projects/${activeProjectId}/board/tasks/${draggableId}`, token, {
                 method: "PATCH",
                 body: JSON.stringify({
                     columnId: destination.droppableId,
@@ -858,7 +1125,7 @@ export const App = () => {
                     order: destination.index
                 })
             }, selectedOrganizationId);
-            // Recarrega para garantir sincroniza��o
+            // Recarrega para garantir sincronização
             setBoardRefresh((value) => value + 1);
             setWbsRefresh((value) => value + 1);
         }
@@ -886,6 +1153,20 @@ export const App = () => {
             setWbsRefresh((value) => value + 1);
         }
     };
+    const normalizePriority = (value) => {
+        const raw = String(value ?? "").trim().toUpperCase();
+        if (!raw)
+            return "MEDIUM";
+        if (raw === "URGENTE" || raw === "URGENT" || raw === "CRITICAL")
+            return "CRITICAL";
+        if (raw === "ALTA" || raw === "HIGH")
+            return "HIGH";
+        if (raw === "MEDIA" || raw === "MÉDIA" || raw === "MEDIUM")
+            return "MEDIUM";
+        if (raw === "BAIXA" || raw === "LOW")
+            return "LOW";
+        return "MEDIUM";
+    };
     const handleWbsUpdate = async (nodeId, changes) => {
         if (!token || !selectedOrganizationId)
             return;
@@ -893,12 +1174,6 @@ export const App = () => {
         const payload = { ...rest };
         if (Object.keys(payload).length === 0 && owner === undefined) {
             return;
-        }
-        if ("estimateHours" in payload && payload.estimateHours !== undefined) {
-            payload.estimateHours =
-                payload.estimateHours === null
-                    ? null
-                    : payload.estimateHours.toString();
         }
         if ("dependencies" in payload) {
             payload.dependencies = Array.isArray(payload.dependencies) ? payload.dependencies : [];
@@ -909,8 +1184,37 @@ export const App = () => {
         if ("serviceMultiplier" in payload && payload.serviceMultiplier !== undefined && payload.serviceMultiplier !== null) {
             payload.serviceMultiplier = Number(payload.serviceMultiplier);
         }
-        // Recalcula serviceHours = hoursBase � multiplier
+        // Recalcula datas automaticamente quando a dependência muda
         const currentNode = findWbsNode(wbsNodes, nodeId);
+        if ("dependencies" in payload &&
+            Array.isArray(payload.dependencies) &&
+            payload.dependencies.length > 0 &&
+            !("startDate" in payload) &&
+            !("endDate" in payload)) {
+            const derivedSchedule = resolveDependencySchedule(wbsNodes, payload.dependencies, currentNode);
+            if (derivedSchedule) {
+                payload.startDate = derivedSchedule.startDate;
+                payload.endDate = derivedSchedule.endDate;
+                payload.estimateHours = derivedSchedule.estimateHours;
+            }
+        }
+        if ("estimateHours" in payload && payload.estimateHours !== undefined) {
+            payload.estimateHours =
+                payload.estimateHours === null
+                    ? null
+                    : payload.estimateHours.toString();
+        }
+        // Recalcula serviceHours = hoursBase × multiplier
+        if ("priority" in payload && payload.priority !== undefined && payload.priority !== null) {
+            const normalizedPriority = normalizePriority(payload.priority);
+            payload.priority = normalizedPriority;
+            if (currentNode && "prioridade" in currentNode)
+                payload.prioridade = normalizedPriority;
+            if (currentNode && "task_priority" in currentNode)
+                payload.task_priority = normalizedPriority;
+            if (currentNode && "taskPriority" in currentNode)
+                payload.taskPriority = normalizedPriority;
+        }
         if ("serviceMultiplier" in payload && !("serviceCatalogId" in payload) && currentNode?.serviceCatalogId) {
             payload.serviceCatalogId = currentNode.serviceCatalogId;
         }
@@ -952,7 +1256,7 @@ export const App = () => {
                 .map((member) => ({
                 membershipId: member.id,
                 userId: member.userId,
-                name: member.name ?? member.email ?? "Respons�vel"
+                name: member.name ?? member.email ?? "Responsável"
             }))[0] ?? null
             : null;
         setWbsNodes((prev) => patchWbsNode(prev, nodeId, { responsible: optimisticResponsible }));
@@ -964,13 +1268,13 @@ export const App = () => {
             setWbsNodes((prev) => patchWbsNode(prev, nodeId, { responsible: response.responsible ?? null }));
         }
         catch (error) {
-            const message = error instanceof Error ? error.message : "Erro ao atualizar respons�vel";
+            const message = error instanceof Error ? error.message : "Erro ao atualizar responsável";
             setWbsError(message);
             setWbsRefresh((value) => value + 1);
         }
     };
     const handleCreateWbsItem = async (parentId, data) => {
-        if (!token || !selectedOrganizationId || !selectedProjectId)
+        if (!token || !selectedOrganizationId || !activeProjectId)
             return;
         const payload = {
             title: data?.title ?? "Nova tarefa",
@@ -987,7 +1291,7 @@ export const App = () => {
         };
         try {
             setWbsError(null);
-            const data = await fetchJson(`/projects/${selectedProjectId}/wbs`, token, {
+            const data = await fetchJson(`/projects/${activeProjectId}/wbs`, token, {
                 method: "POST",
                 body: JSON.stringify(payload)
             }, selectedOrganizationId);
@@ -1045,11 +1349,11 @@ export const App = () => {
     }));
     const currentOrgRole = organizationCards.find((org) => org.id === selectedOrganizationId)?.role ?? null;
     const handleCreateServiceCatalog = useCallback(async (payload) => {
-        if (!token || !selectedProjectId || !selectedOrganizationId) {
-            throw new Error("Projeto selecionado � obrigat�rio.");
+        if (!token || !activeProjectId || !selectedOrganizationId) {
+            throw new Error("Projeto selecionado é obrigatório.");
         }
         const body = {
-            projectId: selectedProjectId,
+            projectId: activeProjectId,
             name: payload.name,
             description: payload.description ?? null,
             hoursBase: Number(payload.hoursBase)
@@ -1062,7 +1366,7 @@ export const App = () => {
     }, [token, selectedProjectId, selectedOrganizationId]);
     const handleUpdateServiceCatalog = useCallback(async (serviceId, payload) => {
         if (!token || !selectedOrganizationId) {
-            throw new Error("Organiza��o � obrigat�ria.");
+            throw new Error("Organização é obrigatória.");
         }
         await fetchJson(`/service-catalog/${serviceId}`, token, {
             method: "PATCH",
@@ -1072,7 +1376,7 @@ export const App = () => {
     }, [token, selectedOrganizationId]);
     const handleDeleteServiceCatalog = useCallback(async (serviceId) => {
         if (!token || !selectedOrganizationId) {
-            throw new Error("Organiza��o � obrigat�ria.");
+            throw new Error("Organização é obrigatória.");
         }
         await fetchJson(`/service-catalog/${serviceId}`, token, {
             method: "DELETE"
@@ -1085,11 +1389,11 @@ export const App = () => {
             const storedProjId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_PROJECT_KEY) : null;
             if (storedOrgId)
                 setSelectedOrganizationId(storedOrgId);
-            if (storedProjId)
+            if (storedProjId && storedProjId !== "all")
                 setSelectedProjectId(storedProjId);
         }
         catch (error) {
-            console.error("Falha ao ler organiza��o/projeto salvos", error);
+            console.error("Falha ao ler organização/projeto salvos", error);
         }
     }, []);
     useEffect(() => {
@@ -1113,7 +1417,7 @@ export const App = () => {
     useEffect(() => {
         if (typeof window === "undefined")
             return;
-        if (selectedProjectId) {
+        if (selectedProjectId && selectedProjectId !== "all") {
             window.localStorage.setItem(SELECTED_PROJECT_KEY, selectedProjectId);
         }
         else {
@@ -1123,12 +1427,24 @@ export const App = () => {
     useEffect(() => {
         if (!projects.length)
             return;
+        if (routeProjectId && projects.some((project) => project.id === routeProjectId)) {
+            if (selectedProjectId !== routeProjectId) {
+                setSelectedProjectId(routeProjectId);
+            }
+            return;
+        }
         if (!selectedProjectId) {
             const stored = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_PROJECT_KEY) : null;
-            if (stored && projects.some((project) => project.id === stored)) {
+            if (stored && stored !== "all" && projects.some((project) => project.id === stored)) {
                 setSelectedProjectId(stored);
             }
             else if (projects.length === 1) {
+                setSelectedProjectId(projects[0].id);
+            }
+            return;
+        }
+        if (selectedProjectId === "all") {
+            if (projects.length) {
                 setSelectedProjectId(projects[0].id);
             }
             return;
@@ -1139,14 +1455,14 @@ export const App = () => {
             if (typeof window !== "undefined")
                 window.localStorage.removeItem(SELECTED_PROJECT_KEY);
         }
-    }, [projects, selectedProjectId]);
+    }, [projects, selectedProjectId, routeProjectId]);
     useEffect(() => {
         if (status === "authenticated" && location.pathname === "/") {
             navigate("/dashboard", { replace: true });
         }
     }, [location.pathname, navigate, status]);
     if (status === "loading") {
-        return _jsx("p", { style: { padding: "2rem" }, children: "Carregando autentica\uFFFD\uFFFDo..." });
+        return _jsx("p", { style: { padding: "2rem" }, children: "Carregando autentica\u00E7\u00E3o..." });
     }
     if (status === "unauthenticated" || !token) {
         if (location.pathname === "/") {
@@ -1159,7 +1475,7 @@ export const App = () => {
     const isOnCheckoutRoute = location.pathname === "/checkout";
     if (subscriptionStatus === "loading" || subscriptionStatus === "idle") {
         if (isOnCheckoutRoute) {
-            // Permite abrir o checkout enquanto o status � carregado
+            // Permite abrir o checkout enquanto o status é carregado
         }
         else {
             return _jsx("p", { style: { padding: "2rem" }, children: "Carregando assinatura..." });
@@ -1177,9 +1493,31 @@ export const App = () => {
         return _jsx(Navigate, { to: "/projects", replace: true });
     }
     const handleProjectSelection = (projectId) => {
+        const currentPath = location.pathname;
+        const lowerPath = currentPath.toLowerCase();
+        if (projectId === "all") {
+            const fallback = projects[0]?.id ?? "";
+            if (fallback) {
+                setSelectedProjectId(fallback);
+            }
+            else {
+                setSelectedProjectId(null);
+            }
+            setSelectedNodeId(null);
+            return;
+        }
         setSelectedProjectId(projectId);
-        if (selectedOrganizationId && projectId) {
-            navigate(`/EAP/organizacao/${selectedOrganizationId}/projeto/${projectId}`, { replace: true });
+        if (!projectId)
+            return;
+        if (lowerPath.includes("/eap") || lowerPath.includes("/edt")) {
+            if (selectedOrganizationId) {
+                navigate(`/EAP/organizacao/${selectedOrganizationId}/projeto/${projectId}`, { replace: true });
+            }
+            return;
+        }
+        if (lowerPath.startsWith("/projects/")) {
+            const suffix = currentPath.replace(/\/projects\/[^/]+/i, "");
+            navigate(`/projects/${projectId}${suffix}`, { replace: true });
         }
     };
     return (_jsxs(Routes, { children: [_jsx(Route, { path: "/", element: _jsx(Landing, {}) }), _jsxs(Route, { path: "/*", element: _jsx(DashboardLayout, { userEmail: user?.email ?? null, organizations: organizations, selectedOrganizationId: selectedOrganizationId ?? "", onOrganizationChange: setSelectedOrganizationId, currentOrgRole: currentOrgRole ?? null, orgError: orgError, onSignOut: signOut, projects: projects, selectedProjectId: selectedProjectId ?? "", onProjectChange: handleProjectSelection, onSelectProject: handleProjectSelection, projectsError: projectsError, filters: filters, onRangeChange: (rangeDays) => setFilters((prev) => ({ ...prev, rangeDays })), summary: projectSummary, summaryError: summaryError, members: members, membersError: membersError, attachments: attachments, attachmentsError: attachmentsError, attachmentsLoading: attachmentsLoading, boardColumns: boardColumns, boardError: boardError, onCreateTask: handleCreateTask, onReloadBoard: loadBoardColumns, onDragTask: handleDragEnd, newTaskTitle: newTaskTitle, onTaskTitleChange: setNewTaskTitle, newTaskColumn: newTaskColumn, onTaskColumnChange: setNewTaskColumn, newTaskStartDate: newTaskStartDate, onTaskStartDateChange: setNewTaskStartDate, newTaskEndDate: newTaskEndDate, onTaskEndDateChange: setNewTaskEndDate, newTaskAssignee: newTaskAssignee, onTaskAssigneeChange: setNewTaskAssignee, newTaskEstimateHours: newTaskEstimateHours, onTaskEstimateHoursChange: setNewTaskEstimateHours, wbsNodes: wbsNodes, wbsError: wbsError, onMoveNode: handleWbsMove, onUpdateWbsNode: handleWbsUpdate, onUpdateWbsResponsible: handleWbsResponsibleChange, onCreateWbsItem: handleCreateWbsItem, selectedNodeId: selectedNodeId, onSelectNode: setSelectedNodeId, comments: comments, commentsError: commentsError, onSubmitComment: handleCreateComment, commentBody: commentBody, onCommentBodyChange: setCommentBody, timeEntryDate: timeEntryDate, timeEntryHours: timeEntryHours, timeEntryDescription: timeEntryDescription, onTimeEntryDateChange: setTimeEntryDate, onTimeEntryHoursChange: setTimeEntryHours, onTimeEntryDescriptionChange: setTimeEntryDescription, onLogTime: handleCreateTimeEntry, timeEntryError: timeEntryError, ganttTasks: ganttTasks, ganttMilestones: ganttMilestones, ganttError: ganttError, portfolio: portfolio, portfolioError: portfolioError, portfolioLoading: portfolioLoading, reportMetrics: reportMetrics, reportMetricsError: reportMetricsError, reportMetricsLoading: reportMetricsLoading, kanbanColumns: kanbanColumns, onExportPortfolio: handleDownloadPortfolio, onCreateProject: handleCreateProject, onUpdateProject: handleUpdateProject, projectLimits: projectLimits, serviceCatalog: serviceCatalog, serviceCatalogError: serviceCatalogError, onImportServiceCatalog: handleImportServiceCatalog, onCreateServiceCatalog: handleCreateServiceCatalog, onUpdateServiceCatalog: handleUpdateServiceCatalog, onDeleteServiceCatalog: handleDeleteServiceCatalog, onReloadWbs: () => setWbsRefresh((value) => value + 1) }), children: [_jsx(Route, { index: true, element: _jsx(Navigate, { to: "/dashboard", replace: true }) }), _jsx(Route, { path: "checkout", element: _jsx(CheckoutPage, { subscription: subscription, subscriptionError: subscriptionError, onSubscriptionActivated: fetchSubscription }) }), _jsx(Route, { path: "organizacao", element: _jsx(OrganizationSelector, { organizations: organizationCards, onSelect: (organizationId) => {
@@ -1190,7 +1528,7 @@ export const App = () => {
                                     window.localStorage.removeItem(SELECTED_PROJECT_KEY);
                                 }
                                 navigate("/projects", { replace: true });
-                            }, onCreateOrganization: handleCreateOrganization, userEmail: user?.email ?? null, currentOrgRole: currentOrgRole ?? null, organizationLimits: organizationLimits, onReloadOrganizations: () => setOrganizationsRefresh((value) => value + 1) }) }), _jsx(Route, { path: "dashboard", element: _jsx(DashboardPage, {}) }), _jsx(Route, { path: "projects", element: _jsx(ProjectsPage, {}) }), _jsx(Route, { path: "projects/:id", element: _jsx(ProjectDetailsPage, {}) }), _jsx(Route, { path: "projects/:id/edt", element: _jsx(ProjectEDTPage, {}) }), _jsx(Route, { path: "projects/:id/board", element: _jsx(ProjectBoardPage, {}) }), _jsx(Route, { path: "projects/:id/cronograma", element: _jsx(ProjectTimelinePage, {}) }), _jsx(Route, { path: "projects/:id/documentos", element: _jsx(ProjectDocumentsPage, {}) }), _jsx(Route, { path: "projects/:id/atividades", element: _jsx(ProjectActivitiesPage, {}) }), _jsx(Route, { path: "EAP/organizacao/:organizationId/projeto/:projectId", element: _jsx(EDTPage, {}) }), _jsx(Route, { path: "EAP", element: selectedOrganizationId && selectedProjectId ? (_jsx(Navigate, { to: `/EAP/organizacao/${selectedOrganizationId}/projeto/${selectedProjectId}`, replace: true })) : (_jsx(Navigate, { to: "/organizacao", replace: true })) }), _jsx(Route, { path: "edt", element: _jsx(Navigate, { to: "/EAP", replace: true }) }), _jsx(Route, { path: "board", element: _jsx(BoardPage, {}) }), _jsx(Route, { path: "kanban", element: _jsx(KanbanPage, {}) }), _jsx(Route, { path: "cronograma", element: _jsx(TimelinePage, {}) }), _jsx(Route, { path: "relatorios", element: _jsx(ReportsPage, {}) }), _jsx(Route, { path: "documentos", element: _jsx(DocumentsPage, {}) }), _jsx(Route, { path: "atividades", element: _jsx(ActivitiesPage, {}) }), _jsx(Route, { path: "plano", element: _jsx(PlanPage, {}) }), _jsx(Route, { path: "equipe", element: _jsx(TeamPage, {}) })] }), _jsx(Route, { path: "*", element: _jsx(NotFoundPage, {}) })] }));
+                            }, onCreateOrganization: handleCreateOrganization, userEmail: user?.email ?? null, currentOrgRole: currentOrgRole ?? null, organizationLimits: organizationLimits, onReloadOrganizations: () => setOrganizationsRefresh((value) => value + 1) }) }), _jsx(Route, { path: "dashboard", element: _jsx(DashboardPage, {}) }), _jsx(Route, { path: "projects", element: _jsx(ProjectsPage, {}) }), _jsx(Route, { path: "projects/:id", element: _jsx(ProjectDetailsPage, {}) }), _jsx(Route, { path: "projects/:id/edt", element: _jsx(ProjectEDTPage, {}) }), _jsx(Route, { path: "projects/:id/board", element: _jsx(ProjectBoardPage, {}) }), _jsx(Route, { path: "projects/:id/cronograma", element: _jsx(ProjectTimelinePage, {}) }), _jsx(Route, { path: "projects/:id/documentos", element: _jsx(ProjectDocumentsPage, {}) }), _jsx(Route, { path: "projects/:id/atividades", element: _jsx(ProjectActivitiesPage, {}) }), _jsx(Route, { path: "EAP/organizacao/:organizationId/projeto/:projectId", element: _jsx(EDTPage, {}) }), _jsx(Route, { path: "EAP", element: selectedOrganizationId && activeProjectId ? (_jsx(Navigate, { to: `/EAP/organizacao/${selectedOrganizationId}/projeto/${activeProjectId}`, replace: true })) : (_jsx(Navigate, { to: "/organizacao", replace: true })) }), _jsx(Route, { path: "edt", element: _jsx(Navigate, { to: "/EAP", replace: true }) }), _jsx(Route, { path: "board", element: _jsx(BoardPage, {}) }), _jsx(Route, { path: "kanban", element: _jsx(KanbanPage, {}) }), _jsx(Route, { path: "cronograma", element: _jsx(TimelinePage, {}) }), _jsx(Route, { path: "diagrama", element: _jsx(DiagramPage, {}) }), _jsx(Route, { path: "relatorios", element: _jsx(ReportsPage, {}) }), _jsx(Route, { path: "documentos", element: _jsx(DocumentsPage, {}) }), _jsx(Route, { path: "atividades", element: _jsx(ActivitiesPage, {}) }), _jsx(Route, { path: "plano", element: _jsx(PlanPage, {}) }), _jsx(Route, { path: "equipe", element: _jsx(TeamPage, {}) })] }), _jsx(Route, { path: "*", element: _jsx(NotFoundPage, {}) })] }));
 };
 function reorderBoard(columns, source, destination, taskId, newStatus) {
     const nextColumns = columns.map((column) => ({
@@ -1212,6 +1550,69 @@ function reorderBoard(columns, source, destination, taskId, newStatus) {
     };
     destinationColumn.tasks.splice(destination.index, 0, updatedTask);
     return nextColumns;
+}
+function buildWbsTree(nodes) {
+    const codeMap = new Map();
+    nodes.forEach((node) => {
+        if (node.wbsCode) {
+            codeMap.set(String(node.wbsCode).toLowerCase(), node.id);
+        }
+    });
+    const normalized = nodes.map((node) => {
+        if (!node.parentId && node.wbsCode && String(node.wbsCode).includes(".")) {
+            const parentCode = String(node.wbsCode).split(".").slice(0, -1).join(".");
+            const inferredParentId = codeMap.get(parentCode.toLowerCase()) ?? null;
+            if (inferredParentId) {
+                return { ...node, parentId: inferredParentId };
+            }
+        }
+        return node;
+    });
+    const map = new Map();
+    normalized.forEach((node) => {
+        map.set(node.id, { ...node, children: [] });
+    });
+    const roots = [];
+    normalized.forEach((node) => {
+        const current = map.get(node.id);
+        const parentId = current.parentId ?? null;
+        if (parentId && map.has(parentId)) {
+            map.get(parentId).children.push(current);
+        }
+        else {
+            roots.push(current);
+        }
+    });
+    const sortNodes = (items) => {
+        items.sort((a, b) => {
+            const sortA = typeof a.sortOrder === "number" ? a.sortOrder : 0;
+            const sortB = typeof b.sortOrder === "number" ? b.sortOrder : 0;
+            if (sortA != sortB)
+                return sortA - sortB;
+            const orderA = typeof a.order === "number" ? a.order : 0;
+            const orderB = typeof b.order === "number" ? b.order : 0;
+            if (orderA != orderB)
+                return orderA - orderB;
+            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return timeA - timeB;
+        });
+        items.forEach((item) => {
+            if (item.children?.length) {
+                sortNodes(item.children);
+            }
+        });
+    };
+    sortNodes(roots);
+    return roots;
+}
+function ensureWbsTree(nodes) {
+    if (!Array.isArray(nodes))
+        return [];
+    const hasChildren = nodes.some((node) => Array.isArray(node.children) && node.children.length > 0);
+    if (hasChildren)
+        return nodes;
+    return buildWbsTree(nodes);
 }
 function updateNodeParent(nodes, nodeId, parentId, position) {
     const deepClone = (items) => items.map((node) => ({
@@ -1280,4 +1681,64 @@ function findWbsNode(nodes, nodeId) {
         }
     }
     return null;
+}
+function parseWbsDate(value) {
+    if (!value)
+        return null;
+    if (value.includes("/")) {
+        const [day, month, year] = value.split("/");
+        if (!day || !month || !year)
+            return null;
+        const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+function toLocalMidnightIso(value) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate()).toISOString();
+}
+function addDaysToDate(base, days) {
+    return new Date(base.getFullYear(), base.getMonth(), base.getDate() + days);
+}
+function resolveNodeDurationInDays(node) {
+    const start = parseWbsDate(node?.startDate ?? null);
+    const end = parseWbsDate(node?.endDate ?? null);
+    if (start && end) {
+        const diff = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        if (diff > 0)
+            return diff;
+    }
+    const estimateHours = Number(node?.estimateHours ?? 0);
+    if (Number.isFinite(estimateHours) && estimateHours > 0) {
+        return Math.max(1, Math.round(estimateHours / 8));
+    }
+    return 1;
+}
+function resolveDependencySchedule(nodes, dependencyIds, targetNode) {
+    const uniqueDependencyIds = Array.from(new Set((dependencyIds ?? []).map((value) => String(value).trim()).filter(Boolean)));
+    if (!uniqueDependencyIds.length)
+        return null;
+    let latestDependencyDate = null;
+    uniqueDependencyIds.forEach((dependencyId) => {
+        const dependencyNode = findWbsNode(nodes, dependencyId);
+        if (!dependencyNode)
+            return;
+        const referenceDate = parseWbsDate(dependencyNode.endDate ?? null) ?? parseWbsDate(dependencyNode.startDate ?? null);
+        if (!referenceDate)
+            return;
+        if (!latestDependencyDate || referenceDate.getTime() > latestDependencyDate.getTime()) {
+            latestDependencyDate = referenceDate;
+        }
+    });
+    if (!latestDependencyDate)
+        return null;
+    const durationInDays = resolveNodeDurationInDays(targetNode);
+    const nextStart = addDaysToDate(latestDependencyDate, 1);
+    const nextEnd = addDaysToDate(nextStart, Math.max(durationInDays - 1, 0));
+    return {
+        startDate: toLocalMidnightIso(nextStart),
+        endDate: toLocalMidnightIso(nextEnd),
+        estimateHours: durationInDays * 8
+    };
 }

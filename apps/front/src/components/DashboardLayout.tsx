@@ -46,6 +46,7 @@ import { CSS } from "@dnd-kit/utilities";
 
 import clsx from "clsx";
 import { DependenciesDropdown, type DependencyOption } from "./DependenciesDropdown";
+import { CleanDatePicker } from "./CleanDatePicker";
 import type { PortfolioProject } from "./ProjectPortfolio";
 
 import {
@@ -182,6 +183,20 @@ const TreeIcon: KPIIcon = (props) => (
     <circle cx="12" cy="18" r="2" />
     <path d="M8 6h8" />
     <path d="M12 8v6" />
+  </svg>
+);
+
+const CollapseAllIcon: KPIIcon = (props) => (
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+    <path d="m7 14 5-5 5 5" />
+    <path d="m7 20 5-5 5 5" />
+  </svg>
+);
+
+const ExpandAllIcon: KPIIcon = (props) => (
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+    <path d="m7 4 5 5 5-5" />
+    <path d="m7 10 5 5 5-5" />
   </svg>
 );
 
@@ -649,12 +664,13 @@ const MenuDotsIcon: KPIIcon = (props) => (
 
 
 const sidebarNavigation = [
-  { id: "organizacao", label: "Organizacoes", icon: BuildingIcon, path: "/organizacao" },
+  { id: "organizacao", label: "Organizações", icon: BuildingIcon, path: "/organizacao" },
   { id: "dashboard", label: "Dashboard", icon: InsightIcon, path: "/dashboard" },
   { id: "projects", label: "Projetos", icon: ProjectFolderIcon, path: "/projects" },
   { id: "edt", label: "EAP", icon: TreeIcon, path: "/EAP" },
   { id: "board", label: "Kanban", icon: LayoutColumnsIcon, path: "/kanban" },
   { id: "cronograma", label: "Cronograma", icon: CalendarSmallIcon, path: "/cronograma" },
+  { id: "diagrama", label: "Diagrama", icon: MenuDotsIcon, path: "/diagrama" },
   { id: "atividades", label: "Orçamento", icon: BudgetIcon, path: "/atividades" },
   { id: "documentos", label: "Documentos", icon: FileIcon, path: "/documentos" },
   { id: "relatorios", label: "Relatórios", icon: ReportIcon, path: "/relatorios" },
@@ -1980,6 +1996,50 @@ const getDurationInputValue = (node: any): string => {
 
 
 };
+const shouldAutoDateFromChildren = (
+  row: { level?: number; hasChildren?: boolean; node?: any } | null | undefined
+): boolean => {
+  return Boolean(row?.hasChildren);
+};
+const toLocalMidnightIso = (value: Date): string => {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate()).toISOString();
+};
+const summarizeDatesFromChildren = (children: any[]): { startDate: string | null; endDate: string | null } => {
+  let minStart: Date | null = null;
+  let maxEnd: Date | null = null;
+  const collect = (node: any): { startDate: string | null; endDate: string | null } => {
+    const childNodes = Array.isArray(node?.children) ? node.children : [];
+    if (childNodes.length > 0) {
+      return summarizeDatesFromChildren(childNodes);
+    }
+    return {
+      startDate: node?.startDate ?? null,
+      endDate: node?.endDate ?? null
+    };
+  };
+  (Array.isArray(children) ? children : []).forEach((child) => {
+    const summary = collect(child);
+    const start = parseDate(summary.startDate ?? null);
+    const end = parseDate(summary.endDate ?? null);
+    const candidateStart = start ?? end;
+    const candidateEnd = end ?? start;
+    if (candidateStart && (!minStart || candidateStart.getTime() < minStart.getTime())) {
+      minStart = candidateStart;
+    }
+    if (candidateEnd && (!maxEnd || candidateEnd.getTime() > maxEnd.getTime())) {
+      maxEnd = candidateEnd;
+    }
+  });
+  if (!minStart && !maxEnd) {
+    return { startDate: null, endDate: null };
+  }
+  const resolvedStart = minStart ?? maxEnd;
+  const resolvedEnd = maxEnd ?? minStart;
+  return {
+    startDate: resolvedStart ? toLocalMidnightIso(resolvedStart) : null,
+    endDate: resolvedEnd ? toLocalMidnightIso(resolvedEnd) : null
+  };
+};
 
 
 
@@ -2037,6 +2097,7 @@ type WbsTreeViewProps = {
   filterService?: string;
   filterOwner?: string;
   filterOverdue?: "ALL" | "OVERDUE";
+  filterLevel?: string;
 };
 
 const PRIORITY_OPTIONS = [
@@ -2054,6 +2115,13 @@ const normalizePriorityValue = (value?: string | null) => {
   if (raw === "MEDIA" || raw === "MÉDIA" || raw === "MEDIUM") return "MEDIUM";
   if (raw === "BAIXA" || raw === "LOW") return "LOW";
   return "MEDIUM";
+};
+
+const getPriorityTone = (value: string): "urgent" | "high" | "medium" | "low" => {
+  if (value === "CRITICAL") return "urgent";
+  if (value === "HIGH") return "high";
+  if (value === "LOW") return "low";
+  return "medium";
 };
 
 
@@ -2100,7 +2168,8 @@ export const WbsTreeView = ({
   filterStatus,
   filterService,
   filterOwner,
-  filterOverdue
+  filterOverdue,
+  filterLevel
 
 }: WbsTreeViewProps) => {
 
@@ -2161,6 +2230,7 @@ export const WbsTreeView = ({
 
 
   const [statusPickerId, setStatusPickerId] = useState<string | null>(null);
+  const [priorityPickerId, setPriorityPickerId] = useState<string | null>(null);
 
 
 
@@ -2199,6 +2269,7 @@ export const WbsTreeView = ({
     bullets: false,
     numbered: false
   });
+  const clearedParentDependencyIdsRef = useRef<Set<string>>(new Set());
 
 
 
@@ -2471,12 +2542,12 @@ export const WbsTreeView = ({
   }, [openChatTaskId]);
 
   const emojiList = [
-    "😀","😁","😂","🤣","😊","😍","😘","😎","🤩","🥳","😇","🙂","😉","😌","😅","😆","😋","😜","🤗","🤔",
-    "😐","🙄","😏","😬","😴","🤤","😷","🤒","🤕","🤢","🤮","🥶","🥵","🤯","😵","😱","😤","😡","🤬","😢",
-    "😭","😥","😓","😪","😮","😲","😳","🥺","🤧","🤫","🤭","🫢","🫣","🤐","🫡","🤝","👏","🙌","👍","👎",
-    "👊","✊","🤞","✌️","🤘","👌","🙏","💪","🧠","👀","👁️","🫶","💙","💜","💚","💛","🧡","❤️","🖤","🤍",
-    "💔","✨","⭐","🔥","💥","💡","🎯","✅","❌","⚠️","⏰","📌","📎","📝","📢","🔔","💼","🧩","🚀","🧪",
-    "🏁","📅","🕒","💬","🗂️","📈","📉","🧾","🧭","🔗","🎉","🎁","🎨","🧷","🛠️","🔧","💻","📱","🖥️","🌐"
+    "??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??",
+    "??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??",
+    "??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??","??",
+    "??","?","??","??","??","??","??","??","??","??","???","??","??","??","??","??","??","??","??","??",
+    "??","?","?","??","??","??","??","?","?","??","?","??","??","??","??","??","??","??","??","??",
+    "??","??","??","??","???","??","??","??","??","??","??","??","??","??","???","??","??","??","???","??"
   ];
 
   type Row = {
@@ -2601,11 +2672,62 @@ export const WbsTreeView = ({
 
   }, [allRows]);
 
+  const expandableNodeIds = useMemo(
+    () => allRows.filter((row) => row.hasChildren).map((row) => row.node.id),
+    [allRows]
+  );
+
+  const hasExpandableLevels = expandableNodeIds.length > 0;
+
+  const handleCollapseAllLevels = useCallback(() => {
+    setExpandedNodes(() => {
+      const next: Record<string, boolean> = {};
+      expandableNodeIds.forEach((nodeId) => {
+        next[nodeId] = false;
+      });
+      return next;
+    });
+  }, [expandableNodeIds]);
+
+  const handleExpandAllLevels = useCallback(() => {
+    setExpandedNodes(() => {
+      const next: Record<string, boolean> = {};
+      expandableNodeIds.forEach((nodeId) => {
+        next[nodeId] = true;
+      });
+      return next;
+    });
+  }, [expandableNodeIds]);
 
 
 
 
 
+
+  const autoDateSummaryById = useMemo(() => {
+    const map = new Map<string, { startDate: string | null; endDate: string | null }>();
+    allRows.forEach((row) => {
+      if (!shouldAutoDateFromChildren(row)) return;
+      map.set(
+        String(row.node.id),
+        summarizeDatesFromChildren(Array.isArray(row.node.children) ? row.node.children : [])
+      );
+    });
+    return map;
+  }, [allRows]);
+  useEffect(() => {
+    allRows.forEach((row) => {
+      const rowId = String(row.node.id);
+      const hasDependencies = Array.isArray(row.node.dependencies) && row.node.dependencies.length > 0;
+      if (!shouldAutoDateFromChildren(row) || !hasDependencies) {
+        clearedParentDependencyIdsRef.current.delete(rowId);
+        return;
+      }
+      if (clearedParentDependencyIdsRef.current.has(rowId)) return;
+      clearedParentDependencyIdsRef.current.add(rowId);
+      onUpdate(rowId, { dependencies: [] });
+    });
+  }, [allRows, onUpdate]);
   const updateSiblingsInTree = useCallback(
 
     (list: any[], parentId: string | null, updatedSiblings: any[]): any[] => {
@@ -2726,6 +2848,7 @@ export const WbsTreeView = ({
 
 
     setStatusPickerId(null);
+    setPriorityPickerId(null);
 
 
 
@@ -2838,10 +2961,10 @@ export const WbsTreeView = ({
 
 
     cancelTitleEdit();
-
-
-
-    setStatusPickerId(nodeId);
+    closeDependencyEditor();
+    setOpenMenuId(null);
+    setPriorityPickerId(null);
+    setStatusPickerId((current) => (current === nodeId ? null : nodeId));
 
 
 
@@ -2862,14 +2985,15 @@ export const WbsTreeView = ({
 
 
     setStatusPickerId(null);
+    setPriorityPickerId(null);
 
 
 
-    const normalized = statusValue.toUpperCase();
+    const normalized = normalizeStatus(statusValue);
 
 
 
-    const current = (rowMap.get(nodeId)?.node.status ?? "").toUpperCase();
+    const current = normalizeStatus(rowMap.get(nodeId)?.node.status);
 
 
 
@@ -2881,6 +3005,26 @@ export const WbsTreeView = ({
 
 
 
+  };
+
+  const handlePriorityToggle = (event: { stopPropagation: () => void }, nodeId: string) => {
+    event.stopPropagation();
+    cancelTitleEdit();
+    closeDependencyEditor();
+    setOpenMenuId(null);
+    setStatusPickerId(null);
+    setPriorityPickerId((current) => (current === nodeId ? null : nodeId));
+  };
+
+  const handlePriorityChange = (event: { stopPropagation: () => void }, nodeId: string, priorityValue: string) => {
+    event.stopPropagation();
+    setStatusPickerId(null);
+    setPriorityPickerId(null);
+    const current = normalizePriorityValue(
+      rowMap.get(nodeId)?.node.priority ?? rowMap.get(nodeId)?.node.prioridade ?? rowMap.get(nodeId)?.node.task_priority
+    );
+    if (current === priorityValue) return;
+    onUpdate(nodeId, { priority: priorityValue });
   };
 
 
@@ -2898,6 +3042,7 @@ export const WbsTreeView = ({
 
 
     setStatusPickerId(null);
+    setPriorityPickerId(null);
 
 
 
@@ -2906,6 +3051,7 @@ export const WbsTreeView = ({
 
 
     if (!row) return;
+    if (shouldAutoDateFromChildren(row)) return;
 
 
 
@@ -2962,6 +3108,7 @@ export const WbsTreeView = ({
 
 
     setStatusPickerId(null);
+    setPriorityPickerId(null);
 
 
 
@@ -2986,6 +3133,7 @@ export const WbsTreeView = ({
 
 
     if (!row) return;
+    if (shouldAutoDateFromChildren(row)) return;
 
 
 
@@ -3271,6 +3419,32 @@ export const WbsTreeView = ({
 
   }, [editingDependenciesId]);
 
+  useEffect(() => {
+    if (!statusPickerId && !priorityPickerId) return;
+
+    const handleDocumentMouseDown = (event: globalThis.MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".wbs-inline-picker")) return;
+      setStatusPickerId(null);
+      setPriorityPickerId(null);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setStatusPickerId(null);
+        setPriorityPickerId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleDocumentMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleDocumentMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [statusPickerId, priorityPickerId]);
+
 
   useEffect(() => {
 
@@ -3463,6 +3637,7 @@ export const WbsTreeView = ({
   const filteredRows = useMemo(() => {
     const q = filterText?.trim().toLowerCase();
     const normalizedFilter = filterStatus && filterStatus !== "ALL" ? normalizeStatus(filterStatus) : null;
+    const selectedLevel = filterLevel && filterLevel !== "ALL" ? Number(filterLevel) : null;
 
     return visibleRows.filter((row) => {
       const node = row.node || {};
@@ -3481,6 +3656,12 @@ export const WbsTreeView = ({
 
       // overdue filter
       if (filterOverdue === "OVERDUE" && !isOverdue(node)) return false;
+
+      // level filter (displayed level starts at 1)
+      if (selectedLevel && Number.isFinite(selectedLevel)) {
+        const rowLevel = Number.isFinite(row.level) ? row.level + 1 : Number(node.level ?? 0) + 1;
+        if (rowLevel !== selectedLevel) return false;
+      }
 
       if (!q) return true;
 
@@ -3505,7 +3686,7 @@ export const WbsTreeView = ({
         service.includes(q)
       );
     });
-  }, [filterText, filterOverdue, filterOwner, filterService, filterStatus, resolveDisplayCode, visibleRows]);
+  }, [filterLevel, filterText, filterOverdue, filterOwner, filterService, filterStatus, resolveDisplayCode, visibleRows]);
 
   const plannedHoursTotal = useMemo(
     () =>
@@ -3964,6 +4145,7 @@ export const WbsTreeView = ({
 
 
     setStatusPickerId(null);
+    setPriorityPickerId(null);
 
 
 
@@ -4239,6 +4421,7 @@ export const WbsTreeView = ({
 
 
     setStatusPickerId(null);
+    setPriorityPickerId(null);
 
 
 
@@ -4267,6 +4450,7 @@ export const WbsTreeView = ({
 
 
     setStatusPickerId(null);
+    setPriorityPickerId(null);
 
 
 
@@ -4439,6 +4623,7 @@ export const WbsTreeView = ({
 
 
     setStatusPickerId(null);
+    setPriorityPickerId(null);
 
 
 
@@ -4760,8 +4945,8 @@ export const WbsTreeView = ({
             <col style={{ width: "320px" }} />
             <col style={{ width: "180px" }} />
             <col style={{ width: "170px" }} />
-            <col style={{ width: "240px" }} />
-            <col style={{ width: "240px" }} />
+            <col style={{ width: "200px" }} />
+            <col style={{ width: "200px" }} />
             <col style={{ width: "120px" }} />
             <col style={{ width: "180px" }} />
             <col style={{ width: "200px" }} />
@@ -4785,18 +4970,44 @@ export const WbsTreeView = ({
             <th className="px-1 py-2 text-center align-middle">ID</th>
             <th className="px-1 py-2 text-center align-middle" title="Comentários da tarefa">Chat</th>
             <th className="px-1 py-2 text-center align-middle">Nível</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Nome da tarefa</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">
+              <div className="wbs-name-header">
+                <span>Nome da tarefa</span>
+                <div className="wbs-name-header__actions">
+                  <button
+                    type="button"
+                    className="wbs-name-header__action"
+                    onClick={handleCollapseAllLevels}
+                    aria-label="Recolher todos os níveis"
+                    title="Recolher todos os níveis"
+                    disabled={!hasExpandableLevels}
+                  >
+                    <CollapseAllIcon width={14} height={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="wbs-name-header__action"
+                    onClick={handleExpandAllLevels}
+                    aria-label="Expandir todos os níveis"
+                    title="Expandir todos os níveis"
+                    disabled={!hasExpandableLevels}
+                  >
+                    <ExpandAllIcon width={14} height={14} />
+                  </button>
+                </div>
+              </div>
+            </th>
             <th className="w-[180px] px-3 py-2 text-left align-middle wbs-status-col">Status</th>
             <th className="w-[170px] px-3 py-2 text-left align-middle wbs-priority-col">Prioridade</th>
-            <th className="wbs-date-col wbs-date-col-start w-[240px] px-2 py-2 text-left text-xs font-semibold text-slate-500">Início</th>
-            <th className="wbs-date-col wbs-date-col-end w-[240px] px-2 py-2 text-left text-xs font-semibold text-slate-500">Término</th>
+            <th className="wbs-date-col wbs-date-col-start w-[200px] px-2 py-2 text-left text-xs font-semibold text-slate-500">Início</th>
+            <th className="wbs-date-col wbs-date-col-end w-[200px] px-2 py-2 text-left text-xs font-semibold text-slate-500">Término</th>
             <th className="w-[120px] px-2 py-2 text-left align-middle wbs-quantity-col">Quantidade</th>
             <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Responsável</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Catálogo de Serviços</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Multi.</th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">
               <div className="flex flex-col leading-tight">
-                <span>Horas Prevista</span>
+                <span>Horas Previstas</span>
                 <span className="text-[10px] text-slate-400 font-medium normal-case">
                   Total {plannedHoursLabel}
                 </span>
@@ -4821,6 +5032,15 @@ export const WbsTreeView = ({
 
 
               const visualLevel = Number.isFinite(row.level) ? row.level : typeof row.node.level === "number" ? row.node.level : 0;
+              const autoDateFromChildren = shouldAutoDateFromChildren(row);
+              const autoDateSummary = autoDateFromChildren ? autoDateSummaryById.get(String(row.node.id)) : null;
+              const effectiveStartDate = autoDateSummary?.startDate ?? row.node.startDate ?? null;
+              const effectiveEndDate = autoDateSummary?.endDate ?? row.node.endDate ?? null;
+              const durationInputValue = getDurationInputValue({
+                ...row.node,
+                startDate: effectiveStartDate,
+                endDate: effectiveEndDate
+              });
               const displayLevel = visualLevel + 1;
 
 
@@ -4843,7 +5063,11 @@ export const WbsTreeView = ({
 
 
 
-              const dependencyBadges = Array.isArray(row.node.dependencies) ? row.node.dependencies : [];
+              const dependencyBadges = autoDateFromChildren
+                ? []
+                : Array.isArray(row.node.dependencies)
+                ? row.node.dependencies
+                : [];
               const dependencyOptionsList: DependencyOption[] = allRows
                 .filter((optionRow) => optionRow.node.id !== row.node.id)
                 .map((optionRow) => {
@@ -4880,29 +5104,30 @@ export const WbsTreeView = ({
               });
 
               const applyDependencyDownChain = () => {
-                const baseParentId = row.node.parentId ?? null;
-                const baseLevel = visualLevel;
-                const siblings = allRows.filter((sibling) => {
-                  const siblingLevel = Number.isFinite(sibling.level)
-                    ? sibling.level
-                    : typeof sibling.node.level === "number"
-                    ? sibling.node.level
-                    : 0;
-                  return (sibling.node.parentId ?? null) === baseParentId && siblingLevel === baseLevel;
-                });
-                const startIndex = siblings.findIndex((sibling) => sibling.node.id === row.node.id);
-                if (startIndex < 0) return;
-                let previousId = row.node.id;
-                for (let i = startIndex + 1; i < siblings.length; i += 1) {
-                  const target = siblings[i];
+                const fromIndex = filteredRows.findIndex((candidate) => candidate.node.id === row.node.id);
+                if (fromIndex < 0 || fromIndex >= filteredRows.length - 1) return;
+                for (let index = fromIndex + 1; index < filteredRows.length; index += 1) {
+                  const target = filteredRows[index];
+                  const targetIsParent = shouldAutoDateFromChildren(target);
                   const currentDeps = Array.isArray(target.node.dependencies)
-                    ? target.node.dependencies.map((dep: any) => String(dep))
+                    ? target.node.dependencies.map((dep: unknown) => String(dep))
                     : [];
-                  if (!currentDeps.includes(previousId)) {
-                    const nextDeps = [...currentDeps, previousId];
-                    onUpdate(target.node.id, { dependencies: nextDeps });
+                  if (targetIsParent) {
+                    if (currentDeps.length > 0) {
+                      onUpdate(target.node.id, { dependencies: [] });
+                    }
+                    continue;
                   }
-                  previousId = target.node.id;
+                  let previousIndex = index - 1;
+                  while (previousIndex >= 0 && shouldAutoDateFromChildren(filteredRows[previousIndex])) {
+                    previousIndex -= 1;
+                  }
+                  if (previousIndex < 0) continue;
+                  const previous = filteredRows[previousIndex];
+                  const previousId = String(previous.node.id);
+                  if (currentDeps.length !== 1 || currentDeps[0] !== previousId) {
+                    onUpdate(target.node.id, { dependencies: [previousId] });
+                  }
                 }
               };
 
@@ -4971,7 +5196,7 @@ export const WbsTreeView = ({
               const statusClass = STATUS_CLASS[normalizedStatus] ?? STATUS_CLASS.default;
               const today = new Date();
               today.setHours(0, 0, 0, 0);
-              const endDateOnly = toLocalDateOnly(row.node.endDate);
+              const endDateOnly = toLocalDateOnly(effectiveEndDate);
               const daysToEnd = endDateOnly ? Math.round((endDateOnly.getTime() - today.getTime()) / MS_IN_DAY) : null;
               const isEndDateOverdue = Boolean(
                 endDateOnly && endDateOnly.getTime() < today.getTime() && normalizedStatus !== "Finalizado"
@@ -4981,19 +5206,12 @@ export const WbsTreeView = ({
               );
               const isDoneStatus = normalizedStatus === "Finalizado";
               const isInProgressStatus = normalizedStatus === "Em andamento";
-              const durationInDays = calcDurationInDays(row.node.startDate, row.node.endDate);
+              const durationInDays = calcDurationInDays(effectiveStartDate, effectiveEndDate);
               const isStatusPickerOpen = statusPickerId === row.node.id;
               const priorityValue = normalizePriorityValue(
                 row.node.priority ?? row.node.prioridade ?? row.node.task_priority
               );
-              const priorityTone =
-                priorityValue === "CRITICAL"
-                  ? "urgent"
-                  : priorityValue === "HIGH"
-                    ? "high"
-                    : priorityValue === "LOW"
-                      ? "low"
-                      : "medium";
+              const priorityTone = getPriorityTone(priorityValue);
 
 
 
@@ -5319,83 +5537,134 @@ export const WbsTreeView = ({
 
 
                     <td className="px-3 py-2 align-middle wbs-status-cell">
-                      <select
-                        value={normalizeStatus(row.node.status)}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) => {
-                          event.stopPropagation();
-                          onUpdate(row.node.id, { status: event.target.value });
-                        }}
-                        aria-label="Alterar situação da tarefa"
-                        className={clsx(
-                          "wbs-status-select",
-                          STATUS_CLASS[normalizeStatus(row.node.status)] ?? STATUS_CLASS.default
+                      <div className="wbs-inline-picker">
+                        <button
+                          type="button"
+                          className={clsx("wbs-status-select wbs-choice-trigger", statusClass)}
+                          onClick={(event) => handleStatusToggle(event, row.node.id)}
+                          aria-label="Alterar situação da tarefa"
+                          aria-haspopup="listbox"
+                          aria-expanded={isStatusPickerOpen}
+                        >
+                          <span className="wbs-choice-trigger__text">{normalizedStatus}</span>
+                          <span className="wbs-choice-trigger__caret" aria-hidden="true">
+                            v
+                          </span>
+                        </button>
+                        {isStatusPickerOpen && (
+                          <div className="wbs-choice-menu wbs-choice-menu--status" role="listbox" aria-label="Opções de status">
+                            {STATUS_ORDER.map((statusOption) => {
+                              const tone = STATUS_TONE[statusOption];
+                              const isSelected = normalizedStatus === statusOption;
+                              return (
+                                <button
+                                  key={statusOption}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={isSelected}
+                                  className={clsx(
+                                    "wbs-choice-option",
+                                    `wbs-choice-option--${tone}`,
+                                    isSelected && "is-selected"
+                                  )}
+                                  onClick={(event) => handleStatusChange(event, row.node.id, statusOption)}
+                                >
+                                  {statusOption}
+                                </button>
+                              );
+                            })}
+                          </div>
                         )}
-                      >
-                        {STATUS_ORDER.map((statusOption) => (
-                          <option key={statusOption} value={statusOption}>
-                            {statusOption}
-                          </option>
-                        ))}
-                      </select>
+                      </div>
                     </td>
 
                     <td className="px-3 py-2 align-middle wbs-priority-cell">
-                      <select
-                        className={clsx("wbs-priority-select", `wbs-priority-${priorityTone}`)}
-                        value={priorityValue}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) => {
-                          event.stopPropagation();
-                          onUpdate(row.node.id, { priority: event.target.value });
-                        }}
-                        aria-label="Alterar prioridade da tarefa"
-                      >
-                        {PRIORITY_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="wbs-inline-picker">
+                        <button
+                          type="button"
+                          className={clsx("wbs-priority-select wbs-choice-trigger", `wbs-priority-${priorityTone}`)}
+                          onClick={(event) => handlePriorityToggle(event, row.node.id)}
+                          aria-label="Alterar prioridade da tarefa"
+                          aria-haspopup="listbox"
+                          aria-expanded={priorityPickerId === row.node.id}
+                        >
+                          <span className="wbs-choice-trigger__text">
+                            {PRIORITY_OPTIONS.find((option) => option.value === priorityValue)?.label ?? "Média"}
+                          </span>
+                          <span className="wbs-choice-trigger__caret" aria-hidden="true">
+                            v
+                          </span>
+                        </button>
+                        {priorityPickerId === row.node.id && (
+                          <div
+                            className="wbs-choice-menu wbs-choice-menu--priority"
+                            role="listbox"
+                            aria-label="Opções de prioridade"
+                          >
+                            {PRIORITY_OPTIONS.map((option) => {
+                              const optionTone = getPriorityTone(option.value);
+                              const isSelected = priorityValue === option.value;
+                              return (
+                                <button
+                                  key={option.value}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={isSelected}
+                                  className={clsx(
+                                    "wbs-choice-option",
+                                    `wbs-choice-option--${optionTone}`,
+                                    isSelected && "is-selected"
+                                  )}
+                                  onClick={(event) => handlePriorityChange(event, row.node.id, option.value)}
+                                >
+                                  {option.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </td>
 
 
 
-                    <td className="wbs-date-col wbs-date-col-start px-2 py-2 align-middle w-[240px]">
+                    <td className="wbs-date-col wbs-date-col-start px-2 py-2 align-middle w-[200px]">
                       <div className="wbs-date-input-wrapper">
-                        <input
-                          type="date"
-                          value={formatDateInputValue(row.node.startDate)}
-                          onChange={(event) => handleDateFieldChange(row.node.id, "startDate", event.target.value)}
-                          onClick={(event) => event.stopPropagation()}
+                        <CleanDatePicker
+                          value={formatDateInputValue(effectiveStartDate)}
+                          onChange={(nextValue) => handleDateFieldChange(row.node.id, "startDate", nextValue)}
                           placeholder="dd/mm/aaaa"
                           className="wbs-date-input"
+                          disabled={autoDateFromChildren}
+                          title={autoDateFromChildren ? "Resumo automático do nível 1 com base nos filhos." : undefined}
                         />
                       </div>
                     </td>
 
 
 
-                    <td className="wbs-date-col wbs-date-col-end px-2 py-2 align-middle w-[240px]">
+                    <td className="wbs-date-col wbs-date-col-end px-2 py-2 align-middle w-[200px]">
                       <div className="wbs-date-input-wrapper">
-                        <input
-                          type="date"
-                          value={formatDateInputValue(row.node.endDate)}
-                          onChange={(event) => handleDateFieldChange(row.node.id, "endDate", event.target.value)}
-                          onClick={(event) => event.stopPropagation()}
+                        <CleanDatePicker
+                          value={formatDateInputValue(effectiveEndDate)}
+                          onChange={(nextValue) => handleDateFieldChange(row.node.id, "endDate", nextValue)}
                           placeholder="dd/mm/aaaa"
                           className={clsx(
                             "wbs-date-input",
                             isEndDateOverdue && "wbs-date-input--overdue",
-                            isEndDateSoon && "wbs-date-input--warning",
+                            !isEndDateOverdue && isEndDateSoon && "wbs-date-input--warning",
                             isDoneStatus && "wbs-date-input--done",
-                            !isDoneStatus && isInProgressStatus && "wbs-date-input--progress"
+                            !isDoneStatus && !isEndDateOverdue && isInProgressStatus && "wbs-date-input--progress"
                           )}
+                          disabled={autoDateFromChildren}
+                          title={autoDateFromChildren ? "Resumo automático do nível 1 com base nos filhos." : undefined}
                         />
                         {isEndDateOverdue && <span className="wbs-date-alert">!</span>}
-                        {isEndDateSoon && <span className="wbs-date-clock">⏰</span>}
-                        {isDoneStatus && <span className="wbs-date-check">✓</span>}
-                        {!isDoneStatus && isInProgressStatus && <span className="wbs-date-progress">⏳</span>}
+                        {!isEndDateOverdue && isEndDateSoon && <span className="wbs-date-clock">{"\u23F0"}</span>}
+                        {isDoneStatus && <span className="wbs-date-check">{"\u2713"}</span>}
+                        {!isDoneStatus && !isEndDateOverdue && isInProgressStatus && (
+                          <span className="wbs-date-progress">{"\u25B6"}</span>
+                        )}
                       </div>
                     </td>
 
@@ -5407,10 +5676,12 @@ export const WbsTreeView = ({
                         type="number"
                         min={1}
                         step={1}
-                        value={getDurationInputValue(row.node)}
+                        value={durationInputValue}
                         onChange={(event) => handleDurationInputChange(row.node.id, event.target.value)}
                         onClick={(event) => event.stopPropagation()}
                         className="wbs-duration-input"
+                        disabled={autoDateFromChildren}
+                        title={autoDateFromChildren ? "Duracao calculada automaticamente pelos filhos." : undefined}
                         aria-label="Quantidade de dias"
                       />
                     </td>
@@ -5526,14 +5797,29 @@ export const WbsTreeView = ({
 
 
                     <td className="wbs-dependencies-cell w-[150px] px-3 py-2 align-middle">
-
-                      <DependenciesDropdown
-                        options={dependencyOptionsList}
-                        selectedIds={dependencyBadges}
-                        onChange={(newSelected) => onUpdate(row.node.id, { dependencies: newSelected })}
-                        onApplyDownChain={applyDependencyDownChain}
-                      />
-
+                      {autoDateFromChildren ? (
+                        <span
+                          className="wbs-dependencies-placeholder"
+                          aria-hidden="true"
+                          title="Linha pai de resumo automático."
+                        >
+                          &nbsp;
+                        </span>
+                      ) : (
+                        <DependenciesDropdown
+                          options={dependencyOptionsList}
+                          selectedIds={dependencyBadges}
+                          onChange={(newSelected) => {
+                            if (autoDateFromChildren) return;
+                            onUpdate(row.node.id, { dependencies: newSelected });
+                          }}
+                          onApplyDownChain={autoDateFromChildren ? undefined : applyDependencyDownChain}
+                          currentTaskName={row.node.title ?? row.node.name ?? "Tarefa sem nome"}
+                          currentTaskCode={displayId}
+                          disabled={autoDateFromChildren}
+                          disabledReason="Tarefa com filhos e resumida automaticamente nao pode ter dependencia."
+                        />
+                      )}
                     </td>
 
 
@@ -5850,7 +6136,7 @@ export const WbsTreeView = ({
                   onMouseDown={handleChatToolMouseDown}
                   onClick={() => handleChatTool("checklist")}
                 >
-                  ☑
+                  ?
                 </button>
                 <div className="wbs-chat-textcolor">
                   <button
@@ -5898,7 +6184,7 @@ export const WbsTreeView = ({
                   onMouseDown={handleChatToolMouseDown}
                   onClick={() => handleChatTool("link")}
                 >
-                  🔗
+                  ??
                 </button>
                 <button
                   type="button"
@@ -5914,7 +6200,7 @@ export const WbsTreeView = ({
                   onMouseDown={handleChatToolMouseDown}
                   onClick={() => setShowEmojiPicker((prev) => !prev)}
                 >
-                  🙂
+                  ??
                 </button>
               </div>
               {showEmojiPicker && (
@@ -8637,7 +8923,7 @@ export const ProjectDetailsTabs = ({
 
 
 
-              descrição
+              Descrição
 
 
 
@@ -10952,8 +11238,16 @@ export const DashboardLayout = ({
   const location = useLocation();
   const lowerPath = location.pathname.toLowerCase();
   const isEapRoute = lowerPath.includes("/eap") || lowerPath.includes("/edt");
-  const isBudgetRoute = lowerPath.includes("/atividades");
   const isReportsRoute = lowerPath.includes("/relatorios");
+  const eapRouteProjectId = useMemo(() => {
+    const match = location.pathname.match(/^\/EAP\/organizacao\/[^/]+\/projeto\/([^/?#]+)/i);
+    if (!match?.[1]) return null;
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  }, [location.pathname]);
 
   const navigate = useNavigate();
 
@@ -10962,16 +11256,18 @@ export const DashboardLayout = ({
   const [isProjectModalOpen, setProjectModalOpen] = useState(false);
 
   useEffect(() => {
+    const needsProject = !selectedProjectId || selectedProjectId === "all";
     if (isReportsRoute) {
-      if (selectedProjectId !== "all") {
-        onSelectProject("all");
+      if (needsProject && projects?.length) {
+        onSelectProject(projects[0].id);
       }
       return;
     }
-    if (!isEapRoute || selectedProjectId !== "all") return;
+    if (!isEapRoute || !needsProject) return;
+    if (eapRouteProjectId) return;
     if (!projects?.length) return;
     onSelectProject(projects[0].id);
-  }, [isEapRoute, isReportsRoute, selectedProjectId, projects, onSelectProject]);
+  }, [isEapRoute, isReportsRoute, selectedProjectId, projects, onSelectProject, eapRouteProjectId]);
 
 
 
@@ -11002,6 +11298,34 @@ export const DashboardLayout = ({
   const [taskModalLoading, setTaskModalLoading] = useState(false);
 
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isProjectSelectorOpen, setProjectSelectorOpen] = useState(false);
+  const [projectSearchTerm, setProjectSearchTerm] = useState("");
+  const projectSelectorRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!isProjectSelectorOpen) return;
+    const handlePointerDown = (event: globalThis.MouseEvent) => {
+      const target = event.target as Node | null;
+      if (projectSelectorRef.current && target && !projectSelectorRef.current.contains(target)) {
+        setProjectSelectorOpen(false);
+      }
+    };
+    const handleEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setProjectSelectorOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isProjectSelectorOpen]);
+  useEffect(() => {
+    if (!isProjectSelectorOpen && projectSearchTerm) {
+      setProjectSearchTerm("");
+    }
+  }, [isProjectSelectorOpen, projectSearchTerm]);
 
 
 
@@ -11808,6 +12132,21 @@ export const DashboardLayout = ({
 
   const appShellClassName = `app-shell ${isCollapsed ? "app-shell--collapsed" : ""}`.trim();
   const currentOrganization = organizations.find((org) => org.id === selectedOrganizationId) ?? null;
+  const selectedProjectName = useMemo(() => {
+    if (!selectedProjectId) return "Selecione um projeto";
+    return projects.find((project) => project.id === selectedProjectId)?.name ?? "Selecione um projeto";
+  }, [projects, selectedProjectId]);
+  const filteredProjects = useMemo(() => {
+    const query = projectSearchTerm.trim().toLowerCase();
+    if (!query) return projects || [];
+    return (projects || []).filter((project) => (project.name ?? "").toLowerCase().includes(query));
+  }, [projects, projectSearchTerm]);
+  const isProjectSelectorDisabled = !projects?.length || isReportsRoute;
+  const handleProjectSelectFromMenu = (projectId: string) => {
+    onSelectProject(projectId);
+    setProjectSelectorOpen(false);
+    setProjectSearchTerm("");
+  };
 
 
 
@@ -11827,11 +12166,11 @@ export const DashboardLayout = ({
             onClick={() => setIsCollapsed((prev) => !prev)}
             aria-label={isCollapsed ? "Expandir menu" : "Recolher menu"}
           >
-            <img src="/logo.png" alt="G&P Gesto de Projetos" className="sidebar-logo-img" />
+            <img src="/logo.png" alt="G&P Gestão de Projetos" className="sidebar-logo-img" />
             {!isCollapsed && (
               <div className="sidebar-brand-text">
                 <span className="brand-sigla">Meu G&P</span>
-                <span className="brand-subtitle">Gesto de Projetos</span>
+                <span className="brand-subtitle">Gestão de Projetos</span>
               </div>
             )}
             <span className={`sidebar-toggle-icon ${isCollapsed ? "is-collapsed" : ""}`}>
@@ -11871,7 +12210,7 @@ export const DashboardLayout = ({
             return (
               <Fragment key={item.id}>
                 {link}
-                {item.id === "cronograma" ? <div className="sidebar-divider" /> : null}
+                {item.id === "diagrama" ? <div className="sidebar-divider" /> : null}
               </Fragment>
             );
           })}
@@ -11917,37 +12256,63 @@ export const DashboardLayout = ({
                 <span className="context-label">Organização</span>
                 <span className="context-value">{currentOrganization?.name ?? "Nenhuma selecionada"}</span>
               </div>
-              <div className="context-item">
+              <div className="context-item context-item--project-selector">
                 <span className="context-label">Projeto atual</span>
-                <select
-                  className="context-select"
-                  value={selectedProjectId || ""}
-                  onChange={(event) => {
-                    const newId = event.target.value;
-                    if (newId === "all") {
-                      onSelectProject(newId);
-                      return;
-                    }
-                    if (newId) {
-                      onSelectProject(newId);
-                    }
-                  }}
-                  disabled={!projects?.length || isReportsRoute}
+                <div
+                  className={`project-selector ${isProjectSelectorOpen ? "is-open" : ""} ${isProjectSelectorDisabled ? "is-disabled" : ""}`}
+                  ref={projectSelectorRef}
                 >
-                  {isReportsRoute ? (
-                    <option value="all">Todos</option>
-                  ) : (
-                    <>
-                      {!selectedProjectId && <option value="">Selecione um projeto</option>}
-                      {!isEapRoute && !isBudgetRoute && projects?.length ? <option value="all">Todos</option> : null}
-                      {(projects || []).map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.name}
-                        </option>
-                      ))}
-                    </>
+                  <button
+                    type="button"
+                    className="project-selector-trigger"
+                    onClick={() => {
+                      if (isProjectSelectorDisabled) return;
+                      setProjectSelectorOpen((prev) => !prev);
+                    }}
+                    disabled={isProjectSelectorDisabled}
+                    aria-haspopup="listbox"
+                    aria-expanded={isProjectSelectorOpen}
+                  >
+                    <span className="project-selector-value">{selectedProjectName}</span>
+                    <span className="project-selector-caret" aria-hidden="true">
+                      v
+                    </span>
+                  </button>
+                  {isProjectSelectorOpen && !isProjectSelectorDisabled && (
+                    <div className="project-selector-dropdown" role="listbox" aria-label="Lista de projetos">
+                      <div className="project-selector-search">
+                        <Search className="project-selector-search-icon" aria-hidden="true" />
+                        <input
+                          className="project-selector-search-input"
+                          type="search"
+                          placeholder="Buscar projeto..."
+                          value={projectSearchTerm}
+                          onChange={(event) => setProjectSearchTerm(event.target.value)}
+                          autoFocus
+                        />
+                      </div>
+                      <div className="project-selector-options">
+                        {filteredProjects.length ? (
+                          filteredProjects.map((project) => (
+                            <button
+                              key={project.id}
+                              type="button"
+                              className={`project-selector-option ${project.id === selectedProjectId ? "is-active" : ""}`}
+                              onClick={() => handleProjectSelectFromMenu(project.id)}
+                            >
+                              <span className="project-selector-option-name">{project.name}</span>
+                              {project.id === selectedProjectId ? (
+                                <span className="project-selector-option-check">Atual</span>
+                              ) : null}
+                            </button>
+                          ))
+                        ) : (
+                          <p className="project-selector-empty">Nenhum projeto encontrado</p>
+                        )}
+                      </div>
+                    </div>
                   )}
-                </select>
+                </div>
                 {!projects?.length && <small className="muted">Nenhum projeto cadastrado</small>}
               </div>
             </div>
@@ -12015,7 +12380,7 @@ export const DashboardLayout = ({
 
 
 
-                  <h3>{projectModalMode === "edit" ? "Atualize as informções principais" : "Planeje um novo trabalho"}</h3>
+                  <h3>{projectModalMode === "edit" ? "Atualize as informações principais" : "Planeje um novo trabalho"}</h3>
 
 
 
@@ -12335,7 +12700,7 @@ export const DashboardLayout = ({
 
 
 
-                  descrição
+                  Descrição
 
 
 
@@ -15536,3 +15901,12 @@ export const TemplatesPanel = ({
 
 
 };
+
+
+
+
+
+
+
+
+

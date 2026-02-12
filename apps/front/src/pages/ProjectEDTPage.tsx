@@ -261,6 +261,8 @@ export const ProjectEDTPage = () => {
     ? selectedTask.dependencies.map((dep: any) => String(dep))
     : [];
   const detailsDependenciesLabel = formatDependenciesLabel(selectedDependencyIds);
+  const currentDetailsTaskName = selectedTask?.title ?? selectedTask?.name ?? "";
+  const currentDetailsTaskCode = selectedTask ? String(resolveDisplayCode(selectedTask) ?? selectedTask.id ?? "") : "";
 
   return (
     <section className="project-edt-page">
@@ -421,6 +423,8 @@ export const ProjectEDTPage = () => {
                     onChange={(newSelected) =>
                       setDetailsDraft((prev) => (prev ? { ...prev, dependencies: newSelected } : prev))
                     }
+                    currentTaskName={currentDetailsTaskName}
+                    currentTaskCode={currentDetailsTaskCode}
                   />
                 ) : (
                   <p className="detail-value">{detailsDependenciesLabel}</p>

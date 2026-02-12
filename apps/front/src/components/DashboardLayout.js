@@ -5,12 +5,14 @@ import { useAuth } from "../contexts/AuthContext";
 import { apiUrl } from "../config/api";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, BarChart, Bar } from "recharts";
 import { Fragment, useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { LogOut, Search } from "lucide-react";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import { normalizeStatus, STATUS_ORDER } from "../utils/status";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
 import { DependenciesDropdown } from "./DependenciesDropdown";
+import { CleanDatePicker } from "./CleanDatePicker";
 import { KanbanBoard as CustomKanbanBoard } from "./KanbanBoard";
 const formatDate = (value) => {
     if (!value)
@@ -25,6 +27,15 @@ const svgStrokeProps = {
     strokeLinejoin: "round"
 };
 const BriefcaseIcon = (props) => (_jsxs("svg", { viewBox: "0 0 24 24", ...svgStrokeProps, ...props, children: [_jsx("path", { d: "M6 7V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" }), _jsx("rect", { x: "3", y: "7", width: "18", height: "13", rx: "2" }), _jsx("path", { d: "M16 7H8" }), _jsx("path", { d: "M12 12v3" })] }));
+const BudgetIcon = (props) => (_jsxs("svg", { viewBox: "0 0 24 24", ...svgStrokeProps, ...props, children: [_jsx("circle", { cx: "12", cy: "12", r: "8.5" }), _jsx("path", { d: "M12 7.5v9" }), _jsx("path", { d: "M15 9.5c0-1.1-1.3-2-3-2s-3 .9-3 2 1.3 2 3 2 3 .9 3 2-1.3 2-3 2-3-.9-3-2" })] }));
+const LayoutColumnsIcon = (props) => (_jsxs("svg", { viewBox: "0 0 24 24", ...svgStrokeProps, ...props, children: [_jsx("rect", { x: "3", y: "4", width: "7", height: "16", rx: "2" }), _jsx("rect", { x: "14", y: "4", width: "7", height: "16", rx: "2" })] }));
+const ProjectFolderIcon = (props) => (_jsx("svg", { viewBox: "0 0 24 24", ...svgStrokeProps, ...props, children: _jsx("path", { d: "M4 6h6l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" }) }));
+const TreeIcon = (props) => (_jsxs("svg", { viewBox: "0 0 24 24", ...svgStrokeProps, ...props, children: [_jsx("circle", { cx: "6", cy: "6", r: "2" }), _jsx("circle", { cx: "18", cy: "6", r: "2" }), _jsx("circle", { cx: "12", cy: "18", r: "2" }), _jsx("path", { d: "M8 6h8" }), _jsx("path", { d: "M12 8v6" })] }));
+const CollapseAllIcon = (props) => (_jsxs("svg", { viewBox: "0 0 24 24", ...svgStrokeProps, ...props, children: [_jsx("path", { d: "m7 14 5-5 5 5" }), _jsx("path", { d: "m7 20 5-5 5 5" })] }));
+const ExpandAllIcon = (props) => (_jsxs("svg", { viewBox: "0 0 24 24", ...svgStrokeProps, ...props, children: [_jsx("path", { d: "m7 4 5 5 5-5" }), _jsx("path", { d: "m7 10 5 5 5-5" })] }));
+const CalendarSmallIcon = (props) => (_jsxs("svg", { viewBox: "0 0 24 24", ...svgStrokeProps, ...props, children: [_jsx("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2" }), _jsx("path", { d: "M16 2v4" }), _jsx("path", { d: "M8 2v4" }), _jsx("path", { d: "M3 10h18" })] }));
+const ReportIcon = (props) => (_jsxs("svg", { viewBox: "0 0 24 24", ...svgStrokeProps, ...props, children: [_jsx("rect", { x: "4", y: "4", width: "16", height: "16", rx: "2" }), _jsx("path", { d: "M8 16v-5" }), _jsx("path", { d: "M12 16v-8" }), _jsx("path", { d: "M16 16v-3" })] }));
+const PlanIcon = (props) => (_jsxs("svg", { viewBox: "0 0 24 24", ...svgStrokeProps, ...props, children: [_jsx("rect", { x: "3", y: "7", width: "18", height: "12", rx: "2" }), _jsx("path", { d: "M3 11h18" }), _jsx("path", { d: "M7 15h4" })] }));
 const ListChecksIcon = (props) => (_jsxs("svg", { viewBox: "0 0 24 24", ...svgStrokeProps, ...props, children: [_jsx("rect", { x: "3", y: "4", width: "10", height: "16", rx: "2" }), _jsx("path", { d: "M8 8h3" }), _jsx("path", { d: "M8 12h3" }), _jsx("path", { d: "M8 16h3" }), _jsx("path", { d: "M17 8l2 2 3-3" }), _jsx("path", { d: "M17 14l2 2 3-3" })] }));
 const AlertTriangleIcon = (props) => (_jsxs("svg", { viewBox: "0 0 24 24", ...svgStrokeProps, ...props, children: [_jsx("path", { d: "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" }), _jsx("line", { x1: "12", y1: "9", x2: "12", y2: "13" }), _jsx("line", { x1: "12", y1: "17", x2: "12.01", y2: "17" })] }));
 function SortableRow({ id, children, dragDisabled, className, ...rest }) {
@@ -51,17 +62,18 @@ const DownloadIcon = (props) => (_jsxs("svg", { viewBox: "0 0 24 24", ...svgStro
 const TrashIcon = (props) => (_jsxs("svg", { viewBox: "0 0 24 24", ...svgStrokeProps, ...props, children: [_jsx("path", { d: "M3 6h18" }), _jsx("path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" }), _jsx("path", { d: "M14 10v8" }), _jsx("path", { d: "M10 10v8" }), _jsx("path", { d: "M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" })] }));
 const MenuDotsIcon = (props) => (_jsxs("svg", { viewBox: "0 0 24 24", ...svgStrokeProps, strokeWidth: 2.4, ...props, children: [_jsx("circle", { cx: "5", cy: "12", r: "1.5" }), _jsx("circle", { cx: "12", cy: "12", r: "1.5" }), _jsx("circle", { cx: "19", cy: "12", r: "1.5" })] }));
 const sidebarNavigation = [
-    { id: "organizacao", label: "Organizacoes", icon: BuildingIcon, path: "/organizacao" },
-    { id: "dashboard", label: "Dashboard", icon: BriefcaseIcon, path: "/dashboard" },
-    { id: "projects", label: "Projetos", icon: ListChecksIcon, path: "/projects" },
-    { id: "edt", label: "EAP", icon: UsersIcon, path: "/EAP" },
-    { id: "board", label: "Kanban", icon: ListChecksIcon, path: "/kanban" },
-    { id: "cronograma", label: "Cronograma", icon: ClockIcon, path: "/cronograma" },
-    { id: "atividades", label: "Timeline", icon: CommentIcon, path: "/atividades" },
+    { id: "organizacao", label: "Organizações", icon: BuildingIcon, path: "/organizacao" },
+    { id: "dashboard", label: "Dashboard", icon: InsightIcon, path: "/dashboard" },
+    { id: "projects", label: "Projetos", icon: ProjectFolderIcon, path: "/projects" },
+    { id: "edt", label: "EAP", icon: TreeIcon, path: "/EAP" },
+    { id: "board", label: "Kanban", icon: LayoutColumnsIcon, path: "/kanban" },
+    { id: "cronograma", label: "Cronograma", icon: CalendarSmallIcon, path: "/cronograma" },
+    { id: "diagrama", label: "Diagrama", icon: MenuDotsIcon, path: "/diagrama" },
+    { id: "atividades", label: "Orçamento", icon: BudgetIcon, path: "/atividades" },
     { id: "documentos", label: "Documentos", icon: FileIcon, path: "/documentos" },
-    { id: "Relatórios", label: "Relatórios", icon: BarChartIcon, path: "/Relatórios" },
+    { id: "relatorios", label: "Relatórios", icon: ReportIcon, path: "/relatorios" },
     { id: "equipe", label: "Equipes", icon: UsersIcon, path: "/equipe" },
-    { id: "plano", label: "Meu plano", icon: BriefcaseIcon, path: "/plano" }
+    { id: "plano", label: "Meu plano", icon: PlanIcon, path: "/plano" }
 ];
 export const EmptyStateCard = ({ icon: Icon, title, description, actionLabel, onAction }) => (_jsxs("article", { className: "empty-state-card", children: [_jsx("div", { className: "empty-state-card__icon", children: _jsx(Icon, { width: 32, height: 32 }) }), _jsxs("div", { className: "empty-state-card__body", children: [_jsx("h4", { children: title }), _jsx("p", { children: description })] }), actionLabel ? (_jsx("button", { type: "button", className: "primary-button empty-state-card__cta", onClick: onAction, children: actionLabel })) : null] }));
 const createEmptyProjectForm = () => ({
@@ -89,13 +101,13 @@ const STATUS_TONE = {
     "Finalizado": "success",
 };
 const STATUS_CLASS = {
-    "Não iniciado": "bg-slate-50 text-slate-700 border-slate-300",
-    "Em andamento": "bg-blue-50 text-blue-700 border-blue-300",
-    "Em atraso": "bg-red-50 text-red-700 border-red-300",
-    "Em risco": "bg-amber-50 text-amber-800 border-amber-300",
-    "Homologação": "bg-indigo-50 text-indigo-800 border-indigo-300",
-    "Finalizado": "bg-emerald-50 text-emerald-700 border-emerald-300",
-    default: "bg-slate-50 text-slate-700 border-slate-300",
+    "Não iniciado": "bg-slate-200 text-slate-700 border-slate-300 font-semibold",
+    "Em andamento": "bg-blue-500 text-white border-blue-500 font-semibold",
+    "Em atraso": "bg-red-500 text-white border-red-500 font-semibold",
+    "Em risco": "bg-amber-400 text-white border-amber-400 font-semibold",
+    "Homologação": "bg-indigo-500 text-white border-indigo-500 font-semibold",
+    "Finalizado": "bg-emerald-500 text-white border-emerald-500 font-semibold",
+    default: "bg-slate-200 text-slate-700 border-slate-300 font-semibold",
 };
 const WORKDAY_HOURS = 8;
 const MS_IN_DAY = 1000 * 60 * 60 * 24;
@@ -108,6 +120,13 @@ const formatDateInputValue = (value) => {
     const offset = date.getTimezoneOffset();
     const local = new Date(date.getTime() - offset * 60000);
     return local.toISOString().slice(0, 10);
+};
+const toLocalDateOnly = (value) => {
+    const formatted = formatDateInputValue(value);
+    if (!formatted)
+        return null;
+    const date = new Date(`${formatted}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? null : date;
 };
 const isoFromDateInput = (value) => {
     if (!value)
@@ -154,6 +173,48 @@ const getDurationInputValue = (node) => {
     }
     return "";
 };
+const shouldAutoDateFromChildren = (row) => {
+    return Boolean(row?.hasChildren);
+};
+const toLocalMidnightIso = (value) => {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate()).toISOString();
+};
+const summarizeDatesFromChildren = (children) => {
+    let minStart = null;
+    let maxEnd = null;
+    const collect = (node) => {
+        const childNodes = Array.isArray(node?.children) ? node.children : [];
+        if (childNodes.length > 0) {
+            return summarizeDatesFromChildren(childNodes);
+        }
+        return {
+            startDate: node?.startDate ?? null,
+            endDate: node?.endDate ?? null
+        };
+    };
+    (Array.isArray(children) ? children : []).forEach((child) => {
+        const summary = collect(child);
+        const start = parseDate(summary.startDate ?? null);
+        const end = parseDate(summary.endDate ?? null);
+        const candidateStart = start ?? end;
+        const candidateEnd = end ?? start;
+        if (candidateStart && (!minStart || candidateStart.getTime() < minStart.getTime())) {
+            minStart = candidateStart;
+        }
+        if (candidateEnd && (!maxEnd || candidateEnd.getTime() > maxEnd.getTime())) {
+            maxEnd = candidateEnd;
+        }
+    });
+    if (!minStart && !maxEnd) {
+        return { startDate: null, endDate: null };
+    }
+    const resolvedStart = minStart ?? maxEnd;
+    const resolvedEnd = maxEnd ?? minStart;
+    return {
+        startDate: resolvedStart ? toLocalMidnightIso(resolvedStart) : null,
+        endDate: resolvedEnd ? toLocalMidnightIso(resolvedEnd) : null
+    };
+};
 const PRIORITY_OPTIONS = [
     { value: "CRITICAL", label: "Urgente" },
     { value: "HIGH", label: "Alta" },
@@ -174,11 +235,23 @@ const normalizePriorityValue = (value) => {
         return "LOW";
     return "MEDIUM";
 };
-export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelete, onRestore, onMove, members = [], onChangeResponsible, selectedNodeId, onSelect, dependencyOptions, onUpdateDependency, onOpenDetails, serviceCatalog = [], onSelectionChange, clearSelectionKey, filterText, filterStatus, filterService, filterOwner, filterOverdue }) => {
+const getPriorityTone = (value) => {
+    if (value === "CRITICAL")
+        return "urgent";
+    if (value === "HIGH")
+        return "high";
+    if (value === "LOW")
+        return "low";
+    return "medium";
+};
+export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelete, onRestore, onMove, members = [], onChangeResponsible, selectedNodeId, onSelect, dependencyOptions, onUpdateDependency, onOpenDetails, serviceCatalog = [], onSelectionChange, clearSelectionKey, filterText, filterStatus, filterService, filterOwner, filterOverdue, filterLevel }) => {
     const { selectedOrganizationId: currentOrganizationId, selectedProjectId, onReloadWbs } = useOutletContext();
     const { token: authToken, user: currentUser } = useAuth();
+    const currentUserName = currentUser?.name ??
+        currentUser?.email ??
+        null;
+    const currentUserId = currentUser?.id ?? null;
     const [treeNodes, setTreeNodes] = useState(nodes);
-    const [priorityOverrides, setPriorityOverrides] = useState({});
     useEffect(() => {
         setTreeNodes(nodes);
     }, [nodes]);
@@ -189,6 +262,7 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
     const [editingNodeId, setEditingNodeId] = useState(null);
     const [editingTitle, setEditingTitle] = useState("");
     const [statusPickerId, setStatusPickerId] = useState(null);
+    const [priorityPickerId, setPriorityPickerId] = useState(null);
     const [editingDependenciesId, setEditingDependenciesId] = useState(null);
     const [pendingDependencies, setPendingDependencies] = useState([]);
     const dependencyEditorRef = useRef(null);
@@ -202,6 +276,285 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
     const [isChatLoading, setIsChatLoading] = useState(false);
     const [chatError, setChatError] = useState(null);
     const lastClearKeyRef = useRef(undefined);
+    const chatEditorRef = useRef(null);
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [showTextStyleMenu, setShowTextStyleMenu] = useState(false);
+    const [showTextColorPicker, setShowTextColorPicker] = useState(false);
+    const [editingCommentId, setEditingCommentId] = useState(null);
+    const editingDraftRef = useRef("");
+    const [pendingDeleteCommentId, setPendingDeleteCommentId] = useState(null);
+    const [chatFormatState, setChatFormatState] = useState({
+        bold: false,
+        italic: false,
+        underline: false,
+        bullets: false,
+        numbered: false
+    });
+    const clearedParentDependencyIdsRef = useRef(new Set());
+    const getInitials = (value) => {
+        if (!value)
+            return "?";
+        const parts = value.trim().split(/\s+/).filter(Boolean);
+        if (!parts.length)
+            return "?";
+        return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
+    };
+    const escapeChatHtml = (value) => value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    const formatChatInline = (value) => {
+        let result = value;
+        result = result.replace(/\*([^*]+)\*/g, "<strong>$1</strong>");
+        result = result.replace(/_([^_]+)_/g, "<em>$1</em>");
+        result = result.replace(/\+([^+]+)\+/g, "<u>$1</u>");
+        result = result.replace(/(^|\\s)@([\\w.-]+)/g, '$1<span class="wbs-chat-mention">@$2</span>');
+        result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+        return result;
+    };
+    const formatChatMessage = (value) => {
+        const escaped = escapeChatHtml(value);
+        const lines = escaped.split(/\r?\n/);
+        let html = "";
+        let inUl = false;
+        let inOl = false;
+        const closeLists = () => {
+            if (inUl) {
+                html += "</ul>";
+                inUl = false;
+            }
+            if (inOl) {
+                html += "</ol>";
+                inOl = false;
+            }
+        };
+        lines.forEach((rawLine) => {
+            const line = rawLine.trim();
+            if (!line) {
+                closeLists();
+                html += "<p></p>";
+                return;
+            }
+            const checklistMatch = line.match(/^- \\[ \\] (.+)/);
+            if (checklistMatch) {
+                if (!inUl) {
+                    closeLists();
+                    html += '<ul class="wbs-chat-list wbs-chat-list--check">';
+                    inUl = true;
+                }
+                html += `<li><span class="wbs-chat-checkbox"></span>${formatChatInline(checklistMatch[1])}</li>`;
+                return;
+            }
+            const bulletMatch = line.match(/^[*•-]\\s+(.+)/);
+            if (bulletMatch) {
+                if (!inUl) {
+                    closeLists();
+                    html += '<ul class="wbs-chat-list">';
+                    inUl = true;
+                }
+                html += `<li>${formatChatInline(bulletMatch[1])}</li>`;
+                return;
+            }
+            const numberMatch = line.match(/^\\d+\\.\\s+(.+)/);
+            if (numberMatch) {
+                if (!inOl) {
+                    closeLists();
+                    html += "<ol class=\"wbs-chat-list\">";
+                    inOl = true;
+                }
+                html += `<li>${formatChatInline(numberMatch[1])}</li>`;
+                return;
+            }
+            closeLists();
+            html += `<p>${formatChatInline(line)}</p>`;
+        });
+        closeLists();
+        return html;
+    };
+    const sanitizeChatHtml = (html) => {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+        const container = doc.body.firstElementChild;
+        if (!container)
+            return "";
+        const allowedTags = new Set([
+            "B",
+            "STRONG",
+            "I",
+            "EM",
+            "U",
+            "A",
+            "UL",
+            "OL",
+            "LI",
+            "P",
+            "BR",
+            "SPAN",
+            "DIV",
+            "FONT"
+        ]);
+        const walk = (node) => {
+            const children = Array.from(node.children);
+            children.forEach((child) => {
+                if (!allowedTags.has(child.tagName)) {
+                    child.replaceWith(doc.createTextNode(child.textContent ?? ""));
+                    return;
+                }
+                Array.from(child.attributes).forEach((attr) => {
+                    const name = attr.name.toLowerCase();
+                    if (child.tagName === "A") {
+                        if (!["href", "target", "rel"].includes(name))
+                            child.removeAttribute(attr.name);
+                    }
+                    else if (child.tagName === "SPAN") {
+                        if (name === "class") {
+                            if (!child.classList.contains("wbs-chat-mention"))
+                                child.removeAttribute("class");
+                        }
+                        else if (name === "style") {
+                            const colorMatch = attr.value.match(/color\s*:\s*([^;]+)/i);
+                            if (colorMatch) {
+                                child.setAttribute("style", `color: ${colorMatch[1].trim()}`);
+                            }
+                            else {
+                                child.removeAttribute("style");
+                            }
+                        }
+                        else {
+                            child.removeAttribute(attr.name);
+                        }
+                    }
+                    else if (child.tagName === "FONT") {
+                        if (name !== "color")
+                            child.removeAttribute(attr.name);
+                    }
+                    else {
+                        child.removeAttribute(attr.name);
+                    }
+                });
+                walk(child);
+            });
+        };
+        walk(container);
+        return container.innerHTML;
+    };
+    const getPlainTextFromHtml = (html) => {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+        return doc.body.textContent?.replace(/\u00a0/g, " ").trim() ?? "";
+    };
+    const renderChatMessage = (value) => {
+        const hasHtml = /<\/?[a-z][\s\S]*>/i.test(value);
+        if (hasHtml)
+            return sanitizeChatHtml(value);
+        return formatChatMessage(value);
+    };
+    const handleChatTool = (action) => {
+        const editor = chatEditorRef.current;
+        if (!editor)
+            return;
+        editor.focus();
+        switch (action) {
+            case "bold":
+                document.execCommand("bold");
+                break;
+            case "italic":
+                document.execCommand("italic");
+                break;
+            case "underline":
+                document.execCommand("underline");
+                break;
+            case "bullets":
+                document.execCommand("insertUnorderedList");
+                break;
+            case "numbered":
+                document.execCommand("insertOrderedList");
+                break;
+            case "checklist":
+                document.execCommand("insertHTML", false, '<ul class="wbs-chat-list wbs-chat-list--check"><li><span class="wbs-chat-checkbox"></span>&nbsp;</li></ul>');
+                break;
+            case "link": {
+                const url = window.prompt("URL do link") ?? "";
+                if (!url)
+                    return;
+                document.execCommand("createLink", false, url);
+                break;
+            }
+            case "mention":
+                document.execCommand("insertText", false, "@");
+                break;
+            default:
+                break;
+        }
+        setChatDraft(editor.innerHTML);
+        updateChatFormatState();
+    };
+    const applyTextStyle = (style) => {
+        const editor = chatEditorRef.current;
+        if (!editor)
+            return;
+        editor.focus();
+        document.execCommand("formatBlock", false, style);
+        setChatDraft(editor.innerHTML);
+        setShowTextStyleMenu(false);
+    };
+    const handleChatToolMouseDown = (event) => {
+        event.preventDefault();
+    };
+    const setTextColor = (color) => {
+        const editor = chatEditorRef.current;
+        if (!editor)
+            return;
+        editor.focus();
+        document.execCommand("foreColor", false, color);
+        setChatDraft(editor.innerHTML);
+        setShowTextColorPicker(false);
+        updateChatFormatState();
+    };
+    const insertEmoji = (emoji) => {
+        const editor = chatEditorRef.current;
+        if (!editor)
+            return;
+        editor.focus();
+        document.execCommand("insertText", false, emoji);
+        setChatDraft(editor.innerHTML);
+        setShowEmojiPicker(false);
+    };
+    const updateChatFormatState = () => {
+        const editor = chatEditorRef.current;
+        if (!editor || !editor.contains(document.activeElement))
+            return;
+        setChatFormatState({
+            bold: document.queryCommandState("bold"),
+            italic: document.queryCommandState("italic"),
+            underline: document.queryCommandState("underline"),
+            bullets: document.queryCommandState("insertUnorderedList"),
+            numbered: document.queryCommandState("insertOrderedList")
+        });
+    };
+    useEffect(() => {
+        const handler = () => updateChatFormatState();
+        document.addEventListener("selectionchange", handler);
+        return () => document.removeEventListener("selectionchange", handler);
+    }, []);
+    useEffect(() => {
+        if (!openChatTaskId)
+            return;
+        const editor = chatEditorRef.current;
+        if (!editor)
+            return;
+        editor.innerHTML = chatDraft || "";
+    }, [openChatTaskId]);
+    const emojiList = [
+        "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??",
+        "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??",
+        "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??", "??",
+        "??", "?", "??", "??", "??", "??", "??", "??", "??", "??", "???", "??", "??", "??", "??", "??", "??", "??", "??", "??",
+        "??", "?", "?", "??", "??", "??", "??", "?", "?", "??", "?", "??", "??", "??", "??", "??", "??", "??", "??", "??",
+        "??", "??", "??", "??", "???", "??", "??", "??", "??", "??", "??", "??", "??", "??", "???", "??", "??", "??", "???", "??"
+    ];
     const allRows = useMemo(() => {
         const buildRows = (tree, marker = [], parentId = null, level = 0) => tree.flatMap((node, index) => {
             const wbsMarker = [...marker, index + 1];
@@ -222,6 +575,49 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
         allRows.forEach((row) => map.set(row.node.id, row));
         return map;
     }, [allRows]);
+    const expandableNodeIds = useMemo(() => allRows.filter((row) => row.hasChildren).map((row) => row.node.id), [allRows]);
+    const hasExpandableLevels = expandableNodeIds.length > 0;
+    const handleCollapseAllLevels = useCallback(() => {
+        setExpandedNodes(() => {
+            const next = {};
+            expandableNodeIds.forEach((nodeId) => {
+                next[nodeId] = false;
+            });
+            return next;
+        });
+    }, [expandableNodeIds]);
+    const handleExpandAllLevels = useCallback(() => {
+        setExpandedNodes(() => {
+            const next = {};
+            expandableNodeIds.forEach((nodeId) => {
+                next[nodeId] = true;
+            });
+            return next;
+        });
+    }, [expandableNodeIds]);
+    const autoDateSummaryById = useMemo(() => {
+        const map = new Map();
+        allRows.forEach((row) => {
+            if (!shouldAutoDateFromChildren(row))
+                return;
+            map.set(String(row.node.id), summarizeDatesFromChildren(Array.isArray(row.node.children) ? row.node.children : []));
+        });
+        return map;
+    }, [allRows]);
+    useEffect(() => {
+        allRows.forEach((row) => {
+            const rowId = String(row.node.id);
+            const hasDependencies = Array.isArray(row.node.dependencies) && row.node.dependencies.length > 0;
+            if (!shouldAutoDateFromChildren(row) || !hasDependencies) {
+                clearedParentDependencyIdsRef.current.delete(rowId);
+                return;
+            }
+            if (clearedParentDependencyIdsRef.current.has(rowId))
+                return;
+            clearedParentDependencyIdsRef.current.add(rowId);
+            onUpdate(rowId, { dependencies: [] });
+        });
+    }, [allRows, onUpdate]);
     const updateSiblingsInTree = useCallback((list, parentId, updatedSiblings) => {
         if (parentId === null) {
             return updatedSiblings.map((child) => ({
@@ -257,6 +653,7 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
     const handleBeginTitleEdit = (event, node) => {
         event.stopPropagation();
         setStatusPickerId(null);
+        setPriorityPickerId(null);
         setEditingNodeId(node.id);
         setEditingTitle(node.title ?? "");
     };
@@ -284,22 +681,46 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
     const handleStatusToggle = (event, nodeId) => {
         event.stopPropagation();
         cancelTitleEdit();
-        setStatusPickerId(nodeId);
+        closeDependencyEditor();
+        setOpenMenuId(null);
+        setPriorityPickerId(null);
+        setStatusPickerId((current) => (current === nodeId ? null : nodeId));
     };
     const handleStatusChange = (event, nodeId, statusValue) => {
         event.stopPropagation();
         setStatusPickerId(null);
-        const normalized = statusValue.toUpperCase();
-        const current = (rowMap.get(nodeId)?.node.status ?? "").toUpperCase();
+        setPriorityPickerId(null);
+        const normalized = normalizeStatus(statusValue);
+        const current = normalizeStatus(rowMap.get(nodeId)?.node.status);
         if (current === normalized)
             return;
         onUpdate(nodeId, { status: normalized });
     };
+    const handlePriorityToggle = (event, nodeId) => {
+        event.stopPropagation();
+        cancelTitleEdit();
+        closeDependencyEditor();
+        setOpenMenuId(null);
+        setStatusPickerId(null);
+        setPriorityPickerId((current) => (current === nodeId ? null : nodeId));
+    };
+    const handlePriorityChange = (event, nodeId, priorityValue) => {
+        event.stopPropagation();
+        setStatusPickerId(null);
+        setPriorityPickerId(null);
+        const current = normalizePriorityValue(rowMap.get(nodeId)?.node.priority ?? rowMap.get(nodeId)?.node.prioridade ?? rowMap.get(nodeId)?.node.task_priority);
+        if (current === priorityValue)
+            return;
+        onUpdate(nodeId, { priority: priorityValue });
+    };
     const handleDateFieldChange = (nodeId, field, inputValue) => {
         cancelTitleEdit();
         setStatusPickerId(null);
+        setPriorityPickerId(null);
         const row = rowMap.get(nodeId);
         if (!row)
+            return;
+        if (shouldAutoDateFromChildren(row))
             return;
         const isoValue = isoFromDateInput(inputValue);
         const nextStart = field === "startDate" ? isoValue : row.node.startDate ?? null;
@@ -319,6 +740,7 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
     const handleDurationInputChange = (nodeId, value) => {
         cancelTitleEdit();
         setStatusPickerId(null);
+        setPriorityPickerId(null);
         if (!value)
             return;
         const parsed = Number(value);
@@ -327,6 +749,8 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
         const DurationDays = Math.max(1, Math.round(parsed));
         const row = rowMap.get(nodeId);
         if (!row)
+            return;
+        if (shouldAutoDateFromChildren(row))
             return;
         const updates = {
             estimateHours: DurationDays * WORKDAY_HOURS
@@ -398,6 +822,29 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
         };
     }, [editingDependenciesId]);
     useEffect(() => {
+        if (!statusPickerId && !priorityPickerId)
+            return;
+        const handleDocumentMouseDown = (event) => {
+            const target = event.target;
+            if (target?.closest(".wbs-inline-picker"))
+                return;
+            setStatusPickerId(null);
+            setPriorityPickerId(null);
+        };
+        const handleKeyDown = (event) => {
+            if (event.key === "Escape") {
+                setStatusPickerId(null);
+                setPriorityPickerId(null);
+            }
+        };
+        document.addEventListener("mousedown", handleDocumentMouseDown);
+        document.addEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("mousedown", handleDocumentMouseDown);
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [statusPickerId, priorityPickerId]);
+    useEffect(() => {
         if (!openMenuId)
             return;
         const handleDocumentMouseDown = (event) => {
@@ -466,9 +913,29 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
         end.setHours(0, 0, 0, 0);
         return end < now;
     };
+    const resolveServiceHours = useCallback((node) => {
+        if (!node)
+            return null;
+        const multiplier = Number(node.serviceMultiplier ?? 1) || 1;
+        const selectedService = serviceCatalog.find((service) => service.id === node.serviceCatalogId) ?? null;
+        const serviceBaseHours = selectedService && selectedService.hoursBase !== undefined
+            ? Number(selectedService.hoursBase ?? 0)
+            : selectedService && selectedService.hours !== undefined
+                ? Number(selectedService.hours ?? 0)
+                : null;
+        const computed = typeof node.serviceHours === "number"
+            ? node.serviceHours
+            : serviceBaseHours !== null
+                ? serviceBaseHours * multiplier
+                : null;
+        if (computed === null || Number.isNaN(computed))
+            return null;
+        return computed;
+    }, [serviceCatalog]);
     const filteredRows = useMemo(() => {
         const q = filterText?.trim().toLowerCase();
         const normalizedFilter = filterStatus && filterStatus !== "ALL" ? normalizeStatus(filterStatus) : null;
+        const selectedLevel = filterLevel && filterLevel !== "ALL" ? Number(filterLevel) : null;
         return visibleRows.filter((row) => {
             const node = row.node || {};
             // status filter
@@ -485,6 +952,12 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
             // overdue filter
             if (filterOverdue === "OVERDUE" && !isOverdue(node))
                 return false;
+            // level filter (displayed level starts at 1)
+            if (selectedLevel && Number.isFinite(selectedLevel)) {
+                const rowLevel = Number.isFinite(row.level) ? row.level + 1 : Number(node.level ?? 0) + 1;
+                if (rowLevel !== selectedLevel)
+                    return false;
+            }
             if (!q)
                 return true;
             const code = String(resolveDisplayCode(node, row.displayId) ?? "").toLowerCase();
@@ -504,7 +977,17 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
                 owner.includes(q) ||
                 service.includes(q));
         });
-    }, [filterText, filterOverdue, filterOwner, filterService, filterStatus, resolveDisplayCode, visibleRows]);
+    }, [filterLevel, filterText, filterOverdue, filterOwner, filterService, filterStatus, resolveDisplayCode, visibleRows]);
+    const plannedHoursTotal = useMemo(() => filteredRows.reduce((sum, row) => {
+        const hours = resolveServiceHours(row.node);
+        return sum + (typeof hours === "number" ? hours : 0);
+    }, 0), [filteredRows, resolveServiceHours]);
+    const plannedHoursLabel = useMemo(() => {
+        const rounded = Math.round(plannedHoursTotal * 100) / 100;
+        if (!rounded)
+            return "0h";
+        return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(2)}h`;
+    }, [plannedHoursTotal]);
     const visibleIds = useMemo(() => filteredRows.map((row) => row.node.id), [filteredRows]);
     const handleDragEnd = useCallback(async (event) => {
         const { active, over } = event;
@@ -535,10 +1018,10 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
         // usa o moved (ou reorderedSiblings) mas com tipo garantido
         const orderedIds = moved.map((item) => String(item.id));
         setTreeNodes((prev) => updateSiblingsInTree(prev, activeParentId, reorderedSiblings));
-        if (!authToken || !selectedProjectId)
+        if (!authToken || !selectedProjectId || selectedProjectId === "all")
             return;
         try {
-            await fetch(apiUrl("/wbs/reorder"), {
+            const response = await fetch(apiUrl("/wbs/reorder"), {
                 method: "PATCH",
                 headers: {
                     "Content-Type": "application/json",
@@ -551,6 +1034,13 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
                     orderedIds
                 })
             });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => null);
+                throw new Error(payload?.message ?? "Falha ao reordenar");
+            }
+            if (typeof onReloadWbs === "function") {
+                await onReloadWbs();
+            }
         }
         catch (error) {
             console.error("Failed to reorder WBS", error);
@@ -640,10 +1130,29 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
         return () => controller.abort();
     }, [visibleRows, authToken, currentOrganizationId, chatCounts]);
     const openChatRow = openChatTaskId ? rowMap.get(openChatTaskId) ?? null : null;
+    const chatStatus = openChatRow ? normalizeStatus(openChatRow.node.status) : null;
+    const chatStatusTone = chatStatus ? STATUS_TONE[chatStatus] ?? "neutral" : "neutral";
+    const chatPriorityValue = openChatRow
+        ? normalizePriorityValue(openChatRow.node.priority ?? openChatRow.node.prioridade ?? openChatRow.node.task_priority)
+        : "MEDIUM";
+    const chatPriorityLabel = PRIORITY_OPTIONS.find((option) => option.value === chatPriorityValue)?.label ?? "Média";
+    const chatPriorityTone = chatPriorityValue === "CRITICAL"
+        ? "urgent"
+        : chatPriorityValue === "HIGH"
+            ? "high"
+            : chatPriorityValue === "LOW"
+                ? "low"
+                : "medium";
     useEffect(() => {
         if (!openChatTaskId) {
             setChatMessages([]);
             setChatError(null);
+            setEditingCommentId(null);
+            editingDraftRef.current = "";
+            setShowEmojiPicker(false);
+            setShowTextStyleMenu(false);
+            setShowTextColorPicker(false);
+            setPendingDeleteCommentId(null);
             return;
         }
         let active = true;
@@ -687,12 +1196,13 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
     }, [openChatTaskId]);
     const chatMessagesForModal = openChatTaskId ? chatMessages : [];
     const handleSendChat = async () => {
-        const trimmed = chatDraft.trim();
+        const trimmed = getPlainTextFromHtml(chatDraft);
         if (!trimmed || !openChatTaskId)
             return;
         setIsChatLoading(true);
         setChatError(null);
         try {
+            const sanitizedMessage = sanitizeChatHtml(chatDraft);
             const response = await fetch(apiUrl(`/wbs/${openChatTaskId}/comments`), {
                 method: "POST",
                 headers: {
@@ -700,7 +1210,7 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
                     "Content-Type": "application/json",
                     "X-Organization-Id": currentOrganizationId
                 },
-                body: JSON.stringify({ message: trimmed, authorName: currentUser?.name ?? null })
+                body: JSON.stringify({ message: sanitizedMessage, authorName: currentUser?.name ?? null })
             });
             if (!response.ok) {
                 console.error("Erro na API de Comentários (POST)", response.status, await response.text());
@@ -711,6 +1221,9 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
             setChatMessages((prev) => [...prev, created]);
             setChatCounts((prev) => ({ ...prev, [openChatTaskId]: (prev[openChatTaskId] ?? 0) + 1 }));
             setChatDraft("");
+            if (chatEditorRef.current)
+                chatEditorRef.current.innerHTML = "";
+            setShowEmojiPicker(false);
             setChatError(null);
         }
         catch (error) {
@@ -721,10 +1234,91 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
             setIsChatLoading(false);
         }
     };
+    const handleStartEditComment = (message) => {
+        editingDraftRef.current = message.message;
+        setEditingCommentId(message.id);
+    };
+    const handleCancelEditComment = () => {
+        editingDraftRef.current = "";
+        setEditingCommentId(null);
+    };
+    const handleSaveEditComment = async () => {
+        if (!openChatTaskId || !editingCommentId)
+            return;
+        const trimmed = getPlainTextFromHtml(editingDraftRef.current);
+        if (!trimmed)
+            return;
+        setIsChatLoading(true);
+        setChatError(null);
+        try {
+            const response = await fetch(apiUrl(`/wbs/${openChatTaskId}/comments/${editingCommentId}`), {
+                method: "PATCH",
+                headers: {
+                    Authorization: `Bearer ${authToken ?? ""}`,
+                    "Content-Type": "application/json",
+                    "X-Organization-Id": currentOrganizationId
+                },
+                body: JSON.stringify({ message: sanitizeChatHtml(editingDraftRef.current) })
+            });
+            if (!response.ok) {
+                console.error("Erro na API de Comentários (PATCH)", response.status, await response.text());
+                setChatError("Erro ao editar comentário");
+                return;
+            }
+            const updated = (await response.json());
+            setChatMessages((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+            handleCancelEditComment();
+        }
+        catch (error) {
+            console.error("Erro na API de Comentários (PATCH)", error);
+            setChatError("Erro ao editar comentário");
+        }
+        finally {
+            setIsChatLoading(false);
+        }
+    };
+    const handleDeleteComment = async (commentId) => {
+        if (!openChatTaskId)
+            return;
+        setPendingDeleteCommentId(commentId);
+    };
+    const confirmDeleteComment = async () => {
+        if (!openChatTaskId || !pendingDeleteCommentId)
+            return;
+        setIsChatLoading(true);
+        setChatError(null);
+        try {
+            const response = await fetch(apiUrl(`/wbs/${openChatTaskId}/comments/${pendingDeleteCommentId}`), {
+                method: "DELETE",
+                headers: {
+                    Authorization: `Bearer ${authToken ?? ""}`,
+                    "X-Organization-Id": currentOrganizationId
+                }
+            });
+            if (!response.ok) {
+                console.error("Erro na API de Comentários (DELETE)", response.status, await response.text());
+                setChatError("Erro ao excluir comentário");
+                return;
+            }
+            setChatMessages((prev) => prev.filter((item) => item.id !== pendingDeleteCommentId));
+            setChatCounts((prev) => ({ ...prev, [openChatTaskId]: Math.max((prev[openChatTaskId] ?? 1) - 1, 0) }));
+            if (editingCommentId === pendingDeleteCommentId)
+                handleCancelEditComment();
+            setPendingDeleteCommentId(null);
+        }
+        catch (error) {
+            console.error("Erro na API de Comentários (DELETE)", error);
+            setChatError("Erro ao excluir comentário");
+        }
+        finally {
+            setIsChatLoading(false);
+        }
+    };
     const handleLevelAdjust = (event, nodeId, direction) => {
         event.stopPropagation();
         cancelTitleEdit();
         setStatusPickerId(null);
+        setPriorityPickerId(null);
         const currentRow = rowMap.get(nodeId);
         if (!currentRow)
             return;
@@ -792,12 +1386,14 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
         onSelect(isSame ? null : nodeId);
         setOpenMenuId(null);
         setStatusPickerId(null);
+        setPriorityPickerId(null);
         cancelTitleEdit();
         closeDependencyEditor();
     };
     const openDependencyEditorForNode = (nodeId, dependencies) => {
         cancelTitleEdit();
         setStatusPickerId(null);
+        setPriorityPickerId(null);
         setOpenMenuId(null);
         if (editingDependenciesId === nodeId) {
             closeDependencyEditor();
@@ -838,6 +1434,7 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
         event.stopPropagation();
         cancelTitleEdit();
         setStatusPickerId(null);
+        setPriorityPickerId(null);
         closeDependencyEditor();
         const target = event.currentTarget;
         const rect = target.getBoundingClientRect();
@@ -857,7 +1454,7 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
         });
     };
     const moveRow = useCallback(async (nodeId, direction) => {
-        if (!selectedProjectId || !authToken || !currentOrganizationId)
+        if (!selectedProjectId || selectedProjectId === "all" || !authToken || !currentOrganizationId)
             return;
         const row = rowMap.get(nodeId);
         if (!row)
@@ -876,7 +1473,7 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
         reordered.splice(targetIndex, 0, moved);
         const orderedIds = reordered.map((s) => s.id);
         try {
-            await fetch(apiUrl("/wbs/reorder"), {
+            const response = await fetch(apiUrl("/wbs/reorder"), {
                 method: "PATCH",
                 headers: {
                     "Content-Type": "application/json",
@@ -889,6 +1486,10 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
                     orderedIds
                 })
             });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => null);
+                throw new Error(payload?.message ?? "Falha ao reordenar");
+            }
             if (typeof onReloadWbs === "function") {
                 await onReloadWbs();
             }
@@ -899,7 +1500,7 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
     }, [authToken, currentOrganizationId, onReloadWbs, rowMap, selectedProjectId, treeNodes]);
     const handleMenuAction = async (event, action, node) => {
         event.stopPropagation();
-        if (!selectedProjectId || !authToken || !currentOrganizationId) {
+        if (!selectedProjectId || selectedProjectId === "all" || !authToken || !currentOrganizationId) {
             setOpenMenuId(null);
             return;
         }
@@ -1004,7 +1605,7 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
         setOpenMenuId(null);
     };
     const handleBulkTrash = async () => {
-        if (!selectedProjectId || !authToken || !currentOrganizationId)
+        if (!selectedProjectId || selectedProjectId === "all" || !authToken || !currentOrganizationId)
             return;
         if (selectedTaskIds.length === 0)
             return;
@@ -1048,16 +1649,30 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
     if (!treeNodes.length) {
         return _jsx("p", { className: "muted", children: "Nenhum item cadastrado." });
     }
-    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: "wbs-table-card", "data-has-selection": selectedTaskIds.length > 0, children: [_jsx(DndContext, { collisionDetection: closestCenter, onDragEnd: handleDragEnd, children: _jsx("div", { className: "edt-horizontal-scroll", children: _jsxs("table", { className: "wbs-table w-full border-collapse table-fixed", style: { borderSpacing: 0 }, children: [_jsxs("colgroup", { children: [_jsx("col", { style: { width: "28px" } }), _jsx("col", { style: { width: "32px" } }), _jsx("col", { style: { width: "50px" } }), _jsx("col", { style: { width: "70px" } }), _jsx("col", { style: { width: "90px" } }), _jsx("col", { style: { width: "320px" } }), _jsx("col", { style: { width: "170px" } }), _jsx("col", { style: { width: "140px" } }), _jsx("col", { style: { width: "85px" } }), _jsx("col", { style: { width: "180px" } }), _jsx("col", { style: { width: "180px" } }), _jsx("col", { style: { width: "180px" } }), _jsx("col", { style: { width: "200px" } }), _jsx("col", { style: { width: "110px" } }), _jsx("col", { style: { width: "90px" } }), _jsx("col", { style: { width: "150px" } }), _jsx("col", { style: { width: "150px" } })] }), _jsx("thead", { children: _jsxs("tr", { className: "bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase", children: [_jsx("th", { className: "px-1 py-2 text-center align-middle", "aria-hidden": "true" }), _jsx("th", { className: "px-1 py-2 text-center align-middle", children: _jsx("input", { type: "checkbox", "aria-label": "Selecionar todas as tarefas", ref: selectAllRef, checked: isAllVisibleSelected, onChange: (event) => handleSelectAllVisible(event.target.checked) }) }), _jsx("th", { className: "px-1 py-2 text-center align-middle", children: "ID" }), _jsx("th", { className: "px-1 py-2 text-center align-middle", title: "Coment\u00E1rios da tarefa", children: "Chat" }), _jsx("th", { className: "px-1 py-2 text-center align-middle", children: "Nvel" }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: "Nome da tarefa" }), _jsx("th", { className: "w-[150px] px-3 py-2 text-left align-middle", children: "Situa\u00E7\u00E3o" }), _jsx("th", { className: "w-[140px] px-3 py-2 text-left align-middle", children: "Prioridade" }), _jsx("th", { className: "w-[140px] px-3 py-2 text-left align-middle", children: "Durao" }), _jsx("th", { className: "w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500", children: "Incio" }), _jsx("th", { className: "w-[220px] px-4 py-2 text-left text-xs font-semibold text-slate-500", children: "Trmino" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-semibold text-slate-500", children: "Respons\u00E1vel" }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: "Cat\u00E1logo de Servi\u00E7os" }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: "Multiplicador" }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: "HR" }), _jsx("th", { className: "w-[150px] px-3 py-2 text-left align-middle", children: "Dependncias" }), _jsx("th", { className: "w-[150px] px-3 py-2 text-center align-middle", children: "Detalhes" })] }) }), _jsx(SortableContext, { items: visibleIds, strategy: verticalListSortingStrategy, children: _jsx("tbody", { children: filteredRows.map((row) => {
+    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: "wbs-table-card", "data-has-selection": selectedTaskIds.length > 0, children: [_jsx(DndContext, { collisionDetection: closestCenter, onDragEnd: handleDragEnd, children: _jsx("div", { className: "edt-horizontal-scroll", children: _jsxs("table", { className: "wbs-table w-full table-fixed", children: [_jsxs("colgroup", { children: [_jsx("col", { style: { width: "28px" } }), _jsx("col", { style: { width: "32px" } }), _jsx("col", { style: { width: "60px" } }), _jsx("col", { style: { width: "70px" } }), _jsx("col", { style: { width: "120px" } }), _jsx("col", { style: { width: "320px" } }), _jsx("col", { style: { width: "180px" } }), _jsx("col", { style: { width: "170px" } }), _jsx("col", { style: { width: "200px" } }), _jsx("col", { style: { width: "200px" } }), _jsx("col", { style: { width: "120px" } }), _jsx("col", { style: { width: "180px" } }), _jsx("col", { style: { width: "200px" } }), _jsx("col", { style: { width: "110px" } }), _jsx("col", { style: { width: "120px" } }), _jsx("col", { style: { width: "150px" } }), _jsx("col", { style: { width: "150px" } })] }), _jsx("thead", { children: _jsxs("tr", { className: "bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase", children: [_jsx("th", { className: "px-1 py-2 text-center align-middle", "aria-hidden": "true" }), _jsx("th", { className: "px-1 py-2 text-center align-middle", children: _jsx("input", { type: "checkbox", "aria-label": "Selecionar todas as tarefas", ref: selectAllRef, checked: isAllVisibleSelected, onChange: (event) => handleSelectAllVisible(event.target.checked) }) }), _jsx("th", { className: "px-1 py-2 text-center align-middle", children: "ID" }), _jsx("th", { className: "px-1 py-2 text-center align-middle", title: "Coment\u00E1rios da tarefa", children: "Chat" }), _jsx("th", { className: "px-1 py-2 text-center align-middle", children: "N\u00EDvel" }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: _jsxs("div", { className: "wbs-name-header", children: [_jsx("span", { children: "Nome da tarefa" }), _jsxs("div", { className: "wbs-name-header__actions", children: [_jsx("button", { type: "button", className: "wbs-name-header__action", onClick: handleCollapseAllLevels, "aria-label": "Recolher todos os n\u00EDveis", title: "Recolher todos os n\u00EDveis", disabled: !hasExpandableLevels, children: _jsx(CollapseAllIcon, { width: 14, height: 14 }) }), _jsx("button", { type: "button", className: "wbs-name-header__action", onClick: handleExpandAllLevels, "aria-label": "Expandir todos os n\u00EDveis", title: "Expandir todos os n\u00EDveis", disabled: !hasExpandableLevels, children: _jsx(ExpandAllIcon, { width: 14, height: 14 }) })] })] }) }), _jsx("th", { className: "w-[180px] px-3 py-2 text-left align-middle wbs-status-col", children: "Status" }), _jsx("th", { className: "w-[170px] px-3 py-2 text-left align-middle wbs-priority-col", children: "Prioridade" }), _jsx("th", { className: "wbs-date-col wbs-date-col-start w-[200px] px-2 py-2 text-left text-xs font-semibold text-slate-500", children: "In\u00EDcio" }), _jsx("th", { className: "wbs-date-col wbs-date-col-end w-[200px] px-2 py-2 text-left text-xs font-semibold text-slate-500", children: "T\u00E9rmino" }), _jsx("th", { className: "w-[120px] px-2 py-2 text-left align-middle wbs-quantity-col", children: "Quantidade" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-semibold text-slate-500", children: "Respons\u00E1vel" }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: "Cat\u00E1logo de Servi\u00E7os" }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: "Multi." }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: _jsxs("div", { className: "flex flex-col leading-tight", children: [_jsx("span", { children: "Horas Previstas" }), _jsxs("span", { className: "text-[10px] text-slate-400 font-medium normal-case", children: ["Total ", plannedHoursLabel] })] }) }), _jsx("th", { className: "w-[150px] px-3 py-2 text-left align-middle", children: "Depend\u00EAncia" }), _jsx("th", { className: "w-[150px] px-3 py-2 text-center align-middle", children: "Detalhes" })] }) }), _jsx(SortableContext, { items: visibleIds, strategy: verticalListSortingStrategy, children: _jsx("tbody", { children: filteredRows.map((row) => {
                                                 const displayId = resolveDisplayCode(row.node, row.displayId);
-                                                const visualLevel = typeof row.node.level === "number" ? row.node.level : row.level;
+                                                const visualLevel = Number.isFinite(row.level) ? row.level : typeof row.node.level === "number" ? row.node.level : 0;
+                                                const autoDateFromChildren = shouldAutoDateFromChildren(row);
+                                                const autoDateSummary = autoDateFromChildren ? autoDateSummaryById.get(String(row.node.id)) : null;
+                                                const effectiveStartDate = autoDateSummary?.startDate ?? row.node.startDate ?? null;
+                                                const effectiveEndDate = autoDateSummary?.endDate ?? row.node.endDate ?? null;
+                                                const durationInputValue = getDurationInputValue({
+                                                    ...row.node,
+                                                    startDate: effectiveStartDate,
+                                                    endDate: effectiveEndDate
+                                                });
+                                                const displayLevel = visualLevel + 1;
                                                 const status = resolveStatus(row.node.status);
                                                 const isExpanded = row.hasChildren
                                                     ? (expandedNodes[row.node.id] ?? visualLevel < 1)
                                                     : false;
                                                 const isActive = selectedNodeId === row.node.id;
                                                 const responsibleMembershipId = row.node.responsible?.membershipId ?? "";
-                                                const dependencyBadges = Array.isArray(row.node.dependencies) ? row.node.dependencies : [];
+                                                const dependencyBadges = autoDateFromChildren
+                                                    ? []
+                                                    : Array.isArray(row.node.dependencies)
+                                                        ? row.node.dependencies
+                                                        : [];
                                                 const dependencyOptionsList = allRows
                                                     .filter((optionRow) => optionRow.node.id !== row.node.id)
                                                     .map((optionRow) => {
@@ -1087,6 +1702,35 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
                                                         row: dependencyRow
                                                     };
                                                 });
+                                                const applyDependencyDownChain = () => {
+                                                    const fromIndex = filteredRows.findIndex((candidate) => candidate.node.id === row.node.id);
+                                                    if (fromIndex < 0 || fromIndex >= filteredRows.length - 1)
+                                                        return;
+                                                    for (let index = fromIndex + 1; index < filteredRows.length; index += 1) {
+                                                        const target = filteredRows[index];
+                                                        const targetIsParent = shouldAutoDateFromChildren(target);
+                                                        const currentDeps = Array.isArray(target.node.dependencies)
+                                                            ? target.node.dependencies.map((dep) => String(dep))
+                                                            : [];
+                                                        if (targetIsParent) {
+                                                            if (currentDeps.length > 0) {
+                                                                onUpdate(target.node.id, { dependencies: [] });
+                                                            }
+                                                            continue;
+                                                        }
+                                                        let previousIndex = index - 1;
+                                                        while (previousIndex >= 0 && shouldAutoDateFromChildren(filteredRows[previousIndex])) {
+                                                            previousIndex -= 1;
+                                                        }
+                                                        if (previousIndex < 0)
+                                                            continue;
+                                                        const previous = filteredRows[previousIndex];
+                                                        const previousId = String(previous.node.id);
+                                                        if (currentDeps.length !== 1 || currentDeps[0] !== previousId) {
+                                                            onUpdate(target.node.id, { dependencies: [previousId] });
+                                                        }
+                                                    }
+                                                };
                                                 const selectedService = serviceCatalog.find((service) => service.id === row.node.serviceCatalogId) ?? null;
                                                 const serviceMultiplierValue = Number(row.node.serviceMultiplier ?? 1) || 1;
                                                 const serviceBaseHours = selectedService && selectedService.hoursBase !== undefined
@@ -1109,15 +1753,21 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
                                                 const isEditingTitle = editingNodeId === row.node.id;
                                                 const normalizedStatus = normalizeStatus(row.node.status);
                                                 const statusClass = STATUS_CLASS[normalizedStatus] ?? STATUS_CLASS.default;
-                                                const durationInDays = calcDurationInDays(row.node.startDate, row.node.endDate);
+                                                const today = new Date();
+                                                today.setHours(0, 0, 0, 0);
+                                                const endDateOnly = toLocalDateOnly(effectiveEndDate);
+                                                const daysToEnd = endDateOnly ? Math.round((endDateOnly.getTime() - today.getTime()) / MS_IN_DAY) : null;
+                                                const isEndDateOverdue = Boolean(endDateOnly && endDateOnly.getTime() < today.getTime() && normalizedStatus !== "Finalizado");
+                                                const isEndDateSoon = Boolean(!isEndDateOverdue && (daysToEnd === 1 || daysToEnd === 0) && normalizedStatus !== "Finalizado");
+                                                const isDoneStatus = normalizedStatus === "Finalizado";
+                                                const isInProgressStatus = normalizedStatus === "Em andamento";
+                                                const durationInDays = calcDurationInDays(effectiveStartDate, effectiveEndDate);
                                                 const isStatusPickerOpen = statusPickerId === row.node.id;
-                                                const priorityValue = normalizePriorityValue(priorityOverrides[row.node.id] ??
-                                                    row.node.priority ??
-                                                    row.node.prioridade ??
-                                                    row.node.task_priority);
+                                                const priorityValue = normalizePriorityValue(row.node.priority ?? row.node.prioridade ?? row.node.task_priority);
+                                                const priorityTone = getPriorityTone(priorityValue);
                                                 const progressValue = progressMap.get(row.node.id) ?? 0;
                                                 const isRootLevel = visualLevel === 0;
-                                                const formattedLevel = `${visualLevel}`;
+                                                const formattedLevel = `${displayLevel}`;
                                                 return (_jsx(SortableRow, { id: row.node.id, className: `wbs-row level-${limitedLevel} ${isActive ? "is-active" : ""}`, "data-progress": progressValue, "data-node-id": row.node.id, children: ({ attributes, listeners, isDragging }) => (_jsxs(_Fragment, { children: [_jsx("td", { className: "px-1 py-2 text-center align-middle", children: _jsx("button", { type: "button", className: "wbs-drag-handle", onClick: (event) => event.stopPropagation(), ...attributes, ...listeners, "data-dragging": isDragging || undefined, "aria-label": "Arrastar para reordenar", children: "::" }) }), _jsx("td", { className: "px-1 py-2 text-center align-middle", children: _jsx("input", { type: "checkbox", "aria-label": `Selecionar tarefa ${displayId}`, checked: selectedTaskIds.includes(row.node.id), onChange: (event) => {
                                                                         event.stopPropagation();
                                                                         handleSelectRow(event.target.checked, row.node.id);
@@ -1146,7 +1796,7 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
                                                                                 textAlign: "center",
                                                                                 fontSize: "14px",
                                                                                 fontWeight: 600
-                                                                            }, children: row.node.level }), _jsx("button", { type: "button", onClick: (event) => handleLevelAdjust(event, row.node.id, "down"), style: {
+                                                                            }, children: displayLevel }), _jsx("button", { type: "button", onClick: (event) => handleLevelAdjust(event, row.node.id, "down"), style: {
                                                                                 border: "none",
                                                                                 background: "transparent",
                                                                                 padding: 0,
@@ -1156,17 +1806,15 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
                                                                                 alignItems: "center",
                                                                                 justifyContent: "center",
                                                                                 fontSize: "14px"
-                                                                            }, children: ">" })] }) }), _jsx("td", { className: "w-[140px] px-3 py-2 align-middle", children: _jsxs("div", { className: `flex w-full items-center gap-2 flex-1 min-w-[380px] max-w-none wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""} ${levelClass}`, children: [row.hasChildren ? (_jsx("button", { type: "button", className: `wbs-toggle ${isExpanded ? "is-open" : ""}`, onClick: (event) => handleToggle(event, row.node.id, visualLevel), "aria-label": isExpanded ? "Recolher subtarefas" : "Expandir subtarefas", "aria-expanded": isExpanded, children: isExpanded ? "v" : ">" })) : (_jsx("span", { className: "wbs-toggle placeholder" })), _jsxs("div", { className: "flex items-center gap-2 flex-1 min-w-[380px] max-w-none", children: [_jsx("span", { className: `wbs-node-icon ${row.hasChildren ? "is-folder" : "is-task"}`, children: row.hasChildren ? _jsx(FolderIcon, {}) : _jsx(TaskIcon, {}) }), _jsx("div", { className: "wbs-task-text", title: row.node.title ?? "Tarefa sem nome", onDoubleClick: (event) => handleBeginTitleEdit(event, row.node), children: isEditingTitle ? (_jsx("input", { className: "wbs-title-input", value: editingTitle, onChange: (event) => setEditingTitle(event.target.value), onBlur: commitTitleEdit, onKeyDown: handleTitleKeyDown, onClick: (event) => event.stopPropagation(), autoFocus: true, placeholder: "Nome da tarefa" })) : (_jsx(_Fragment, { children: _jsx("span", { className: clsx("wbs-task-text", row.node.level === 0 ? "font-semibold" : "font-normal"), children: row.node.title ?? row.node.name ?? "Tarefa sem nome" }) })) })] })] }) }), _jsx("td", { className: "px-3 py-2 align-middle", children: _jsx("select", { value: normalizeStatus(row.node.status), onClick: (event) => event.stopPropagation(), onChange: (event) => {
-                                                                        event.stopPropagation();
-                                                                        onUpdate(row.node.id, { status: event.target.value });
-                                                                    }, "aria-label": "Alterar situa\u00E7\u00E3o da tarefa", className: clsx("wbs-status-select", STATUS_CLASS[normalizeStatus(row.node.status)] ?? STATUS_CLASS.default), children: STATUS_ORDER.map((statusOption) => (_jsx("option", { value: statusOption, children: statusOption }, statusOption))) }) }), _jsx("td", { className: "px-3 py-2 align-middle", children: _jsx("select", { className: "wbs-priority-select", value: priorityValue, onClick: (event) => event.stopPropagation(), onChange: (event) => {
-                                                                        event.stopPropagation();
-                                                                        setPriorityOverrides((current) => ({
-                                                                            ...current,
-                                                                            [row.node.id]: event.target.value
-                                                                        }));
-                                                                        // TODO: Persistir prioridade quando o backend aceitar updates no /wbs/:id.
-                                                                    }, "aria-label": "Alterar prioridade da tarefa", children: PRIORITY_OPTIONS.map((option) => (_jsx("option", { value: option.value, children: option.label }, option.value))) }) }), _jsx("td", { className: "w-[140px] px-3 py-2 align-middle", children: _jsxs("span", { className: "inline-flex items-center whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700", children: [durationInDays, " ", durationInDays === 1 ? "dia" : "dias"] }) }), _jsx("td", { className: "px-4 py-2 align-middle w-[220px]", children: _jsx("div", { className: "wbs-date-input-wrapper", children: _jsx("input", { type: "date", value: formatDateInputValue(row.node.startDate), onChange: (event) => handleDateFieldChange(row.node.id, "startDate", event.target.value), onClick: (event) => event.stopPropagation(), placeholder: "dd/mm/aaaa", className: "wbs-date-input" }) }) }), _jsx("td", { className: "px-4 py-2 align-middle w-[220px]", children: _jsx("div", { className: "wbs-date-input-wrapper", children: _jsx("input", { type: "date", value: formatDateInputValue(row.node.endDate), onChange: (event) => handleDateFieldChange(row.node.id, "endDate", event.target.value), onClick: (event) => event.stopPropagation(), placeholder: "dd/mm/aaaa", className: "wbs-date-input" }) }) }), _jsx("td", { className: "px-4 py-2 align-middle min-w-[180px]", children: _jsxs("select", { className: "wbs-responsible-select", value: responsibleMembershipId, onClick: (event) => event.stopPropagation(), onChange: (event) => onChangeResponsible?.(row.node.id, event.target.value || null), children: [_jsx("option", { value: "", children: "Sem Respons\u00E1vel" }), members.map((member) => (_jsx("option", { value: member.id, children: member.name ?? member.email ?? member.userId }, member.id)))] }) }), _jsx("td", { className: "px-3 py-2 align-middle min-w-[200px]", children: _jsxs("select", { className: "wbs-service-select", value: row.node.serviceCatalogId ?? "", disabled: !serviceCatalog?.length, title: serviceCatalog?.length
+                                                                            }, children: "\u003e" })] }) }), _jsx("td", { className: "w-[140px] px-3 py-2 align-middle", children: _jsxs("div", { className: `flex w-full items-center gap-2 flex-1 min-w-[220px] max-w-none wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""} ${levelClass}`, children: [row.hasChildren ? (_jsx("button", { type: "button", className: `wbs-toggle ${isExpanded ? "is-open" : ""}`, onClick: (event) => handleToggle(event, row.node.id, visualLevel), "aria-label": isExpanded ? "Recolher subtarefas" : "Expandir subtarefas", "aria-expanded": isExpanded, children: ">" })) : (_jsx("span", { className: "wbs-toggle placeholder" })), _jsxs("div", { className: "flex items-center gap-2 flex-1 min-w-[220px] max-w-none", children: [_jsx("span", { className: `wbs-node-icon ${row.hasChildren ? "is-folder" : "is-task"}`, children: row.hasChildren ? _jsx(FolderIcon, {}) : _jsx(TaskIcon, {}) }), _jsx("div", { className: "wbs-task-text", title: row.node.title ?? "Tarefa sem nome", onDoubleClick: (event) => handleBeginTitleEdit(event, row.node), children: isEditingTitle ? (_jsx("input", { className: "wbs-title-input", value: editingTitle, onChange: (event) => setEditingTitle(event.target.value), onBlur: commitTitleEdit, onKeyDown: handleTitleKeyDown, onClick: (event) => event.stopPropagation(), autoFocus: true, placeholder: "Nome da tarefa" })) : (_jsx(_Fragment, { children: _jsx("span", { className: clsx("wbs-task-text", row.node.level === 0 ? "font-semibold" : "font-normal"), children: row.node.title ?? row.node.name ?? "Tarefa sem nome" }) })) })] })] }) }), _jsx("td", { className: "px-3 py-2 align-middle wbs-status-cell", children: _jsxs("div", { className: "wbs-inline-picker", children: [_jsxs("button", { type: "button", className: clsx("wbs-status-select wbs-choice-trigger", statusClass), onClick: (event) => handleStatusToggle(event, row.node.id), "aria-label": "Alterar situa\u00E7\u00E3o da tarefa", "aria-haspopup": "listbox", "aria-expanded": isStatusPickerOpen, children: [_jsx("span", { className: "wbs-choice-trigger__text", children: normalizedStatus }), _jsx("span", { className: "wbs-choice-trigger__caret", "aria-hidden": "true", children: "v" })] }), isStatusPickerOpen && (_jsx("div", { className: "wbs-choice-menu wbs-choice-menu--status", role: "listbox", "aria-label": "Op\u00E7\u00F5es de status", children: STATUS_ORDER.map((statusOption) => {
+                                                                                const tone = STATUS_TONE[statusOption];
+                                                                                const isSelected = normalizedStatus === statusOption;
+                                                                                return (_jsx("button", { type: "button", role: "option", "aria-selected": isSelected, className: clsx("wbs-choice-option", `wbs-choice-option--${tone}`, isSelected && "is-selected"), onClick: (event) => handleStatusChange(event, row.node.id, statusOption), children: statusOption }, statusOption));
+                                                                            }) }))] }) }), _jsx("td", { className: "px-3 py-2 align-middle wbs-priority-cell", children: _jsxs("div", { className: "wbs-inline-picker", children: [_jsxs("button", { type: "button", className: clsx("wbs-priority-select wbs-choice-trigger", `wbs-priority-${priorityTone}`), onClick: (event) => handlePriorityToggle(event, row.node.id), "aria-label": "Alterar prioridade da tarefa", "aria-haspopup": "listbox", "aria-expanded": priorityPickerId === row.node.id, children: [_jsx("span", { className: "wbs-choice-trigger__text", children: PRIORITY_OPTIONS.find((option) => option.value === priorityValue)?.label ?? "Média" }), _jsx("span", { className: "wbs-choice-trigger__caret", "aria-hidden": "true", children: "v" })] }), priorityPickerId === row.node.id && (_jsx("div", { className: "wbs-choice-menu wbs-choice-menu--priority", role: "listbox", "aria-label": "Op\u00E7\u00F5es de prioridade", children: PRIORITY_OPTIONS.map((option) => {
+                                                                                const optionTone = getPriorityTone(option.value);
+                                                                                const isSelected = priorityValue === option.value;
+                                                                                return (_jsx("button", { type: "button", role: "option", "aria-selected": isSelected, className: clsx("wbs-choice-option", `wbs-choice-option--${optionTone}`, isSelected && "is-selected"), onClick: (event) => handlePriorityChange(event, row.node.id, option.value), children: option.label }, option.value));
+                                                                            }) }))] }) }), _jsx("td", { className: "wbs-date-col wbs-date-col-start px-2 py-2 align-middle w-[200px]", children: _jsx("div", { className: "wbs-date-input-wrapper", children: _jsx(CleanDatePicker, { value: formatDateInputValue(effectiveStartDate), onChange: (nextValue) => handleDateFieldChange(row.node.id, "startDate", nextValue), placeholder: "dd/mm/aaaa", className: "wbs-date-input", disabled: autoDateFromChildren, title: autoDateFromChildren ? "Resumo automático do nível 1 com base nos filhos." : undefined }) }) }), _jsx("td", { className: "wbs-date-col wbs-date-col-end px-2 py-2 align-middle w-[200px]", children: _jsxs("div", { className: "wbs-date-input-wrapper", children: [_jsx(CleanDatePicker, { value: formatDateInputValue(effectiveEndDate), onChange: (nextValue) => handleDateFieldChange(row.node.id, "endDate", nextValue), placeholder: "dd/mm/aaaa", className: clsx("wbs-date-input", isEndDateOverdue && "wbs-date-input--overdue", !isEndDateOverdue && isEndDateSoon && "wbs-date-input--warning", isDoneStatus && "wbs-date-input--done", !isDoneStatus && !isEndDateOverdue && isInProgressStatus && "wbs-date-input--progress"), disabled: autoDateFromChildren, title: autoDateFromChildren ? "Resumo automático do nível 1 com base nos filhos." : undefined }), isEndDateOverdue && _jsx("span", { className: "wbs-date-alert", children: "!" }), !isEndDateOverdue && isEndDateSoon && _jsx("span", { className: "wbs-date-clock", children: "\u23F0" }), isDoneStatus && _jsx("span", { className: "wbs-date-check", children: "\u2713" }), !isDoneStatus && !isEndDateOverdue && isInProgressStatus && (_jsx("span", { className: "wbs-date-progress", children: "\u25B6" }))] }) }), _jsx("td", { className: "w-[120px] px-2 py-2 align-middle wbs-quantity-cell wbs-duration-cell", "data-duration-label": durationInDays === 1 ? "dia" : "dias", children: _jsx("input", { type: "number", min: 1, step: 1, value: durationInputValue, onChange: (event) => handleDurationInputChange(row.node.id, event.target.value), onClick: (event) => event.stopPropagation(), className: "wbs-duration-input", disabled: autoDateFromChildren, title: autoDateFromChildren ? "Duracao calculada automaticamente pelos filhos." : undefined, "aria-label": "Quantidade de dias" }) }), _jsx("td", { className: "px-4 py-2 align-middle min-w-[180px]", children: _jsxs("select", { className: "wbs-responsible-select", value: responsibleMembershipId, onClick: (event) => event.stopPropagation(), onChange: (event) => onChangeResponsible?.(row.node.id, event.target.value || null), children: [_jsx("option", { value: "", children: "Sem Respons\u00E1vel" }), members.map((member) => (_jsx("option", { value: member.id, children: member.name ?? member.email ?? member.userId }, member.id)))] }) }), _jsx("td", { className: "px-3 py-2 align-middle min-w-[200px]", children: _jsxs("select", { className: "wbs-service-select", value: row.node.serviceCatalogId ?? "", disabled: !serviceCatalog?.length, title: serviceCatalog?.length
                                                                         ? "Selecione um serviço"
                                                                         : "Use 'Importar serviços' para carregar o catálogo", onClick: (event) => event.stopPropagation(), onChange: (event) => {
                                                                         event.stopPropagation();
@@ -1204,7 +1852,11 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
                                                                         });
                                                                     } }) }), _jsx("td", { className: "px-3 py-2 align-middle text-center", children: _jsx("span", { className: "wbs-hr-badge", children: computedServiceHours !== null && computedServiceHours !== undefined
                                                                         ? `${Math.max(0, Math.round(computedServiceHours * 100) / 100)}h`
-                                                                        : "-" }) }), _jsx("td", { className: "wbs-dependencies-cell w-[150px] px-3 py-2 align-middle", children: _jsx(DependenciesDropdown, { options: dependencyOptionsList, selectedIds: dependencyBadges, onChange: (newSelected) => onUpdate(row.node.id, { dependencies: newSelected }) }) }), _jsx("td", { className: "wbs-details-cell w-[150px] px-3 py-2 align-middle text-center", children: _jsx("div", { className: "wbs-details-actions", children: _jsxs("button", { type: "button", className: `wbs-details-button ${isActive ? "is-active" : ""}`, onClick: (event) => handleDetailsButton(event, row.node.id), "aria-label": "Ver detalhes da tarefa", children: [_jsx(DetailsIcon, {}), _jsx("span", { className: "details-label", children: "Detalhes" })] }) }) })] })) }, row.node.id));
+                                                                        : "-" }) }), _jsx("td", { className: "wbs-dependencies-cell w-[150px] px-3 py-2 align-middle", children: autoDateFromChildren ? (_jsx("span", { className: "wbs-dependencies-placeholder", "aria-hidden": "true", title: "Linha pai de resumo autom\u00E1tico.", children: "\u00A0" })) : (_jsx(DependenciesDropdown, { options: dependencyOptionsList, selectedIds: dependencyBadges, onChange: (newSelected) => {
+                                                                        if (autoDateFromChildren)
+                                                                            return;
+                                                                        onUpdate(row.node.id, { dependencies: newSelected });
+                                                                    }, onApplyDownChain: autoDateFromChildren ? undefined : applyDependencyDownChain, currentTaskName: row.node.title ?? row.node.name ?? "Tarefa sem nome", currentTaskCode: displayId, disabled: autoDateFromChildren, disabledReason: "Tarefa com filhos e resumida automaticamente nao pode ter dependencia." })) }), _jsx("td", { className: "wbs-details-cell w-[150px] px-3 py-2 align-middle text-center", children: _jsx("div", { className: "wbs-details-actions", children: _jsxs("button", { type: "button", className: `wbs-details-button ${isActive ? "is-active" : ""}`, onClick: (event) => handleDetailsButton(event, row.node.id), "aria-label": "Ver detalhes da tarefa", children: [_jsx(DetailsIcon, {}), _jsx("span", { className: "details-label", children: "Detalhes" })] }) }) })] })) }, row.node.id));
                                             }) }) })] }) }) }), selectedTaskIds.length > 0 && (_jsxs("div", { className: "wbs-bulk-bar", children: [_jsxs("span", { className: "wbs-bulk-info", children: [selectedTaskIds.length, " selecionada(s)"] }), _jsxs("div", { className: "wbs-bulk-actions", children: [_jsx("button", { type: "button", className: "btn-secondary", onClick: () => setSelectedTaskIds([]), children: "Limpar sele\u00E7\u00E3o" }), _jsx("button", { type: "button", className: "btn-danger-ghost", onClick: handleBulkTrash, children: "Enviar para lixeira" })] })] })), openMenuId && menuPosition && activeMenuNode &&
                         createPortal(_jsx("div", { className: "wbs-actions-menu-overlay", style: {
                                 position: "fixed",
@@ -1218,42 +1870,107 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
                                     { label: "Adicionar subtarefa", action: "ADD_CHILD" },
                                     { label: "Duplicar", action: "DUPLICATE" },
                                     { label: "Enviar para lixeira", action: "TRASH" }
-                                ].map((item) => (_jsx("button", { type: "button", className: "wbs-actions-item", onClick: (event) => handleMenuAction(event, item.action, activeMenuNode), children: item.label }, item.action))) }) }), document.body)] }), openChatRow && (_jsx("div", { className: "gp-modal-backdrop", onClick: () => setOpenChatTaskId(null), children: _jsxs("div", { className: "gp-modal", role: "dialog", "aria-modal": "true", "aria-labelledby": "wbs-chat-title", onClick: (event) => event.stopPropagation(), children: [_jsxs("div", { className: "gp-modal-header", children: [_jsxs("h2", { id: "wbs-chat-title", children: ["Chat da tarefa ", openChatRow.node.wbsCode ?? openChatRow.displayId, " - ", openChatRow.node.title ?? "Tarefa"] }), _jsx("button", { type: "button", className: "gp-modal-close", "aria-label": "Fechar", onClick: () => setOpenChatTaskId(null), children: "X" })] }), _jsxs("div", { className: "gp-modal-body wbs-chat-body", children: [_jsxs("div", { className: "wbs-chat-messages", children: [isChatLoading && _jsx("p", { className: "muted", children: "Carregando Coment\u00E1rios..." }), !isChatLoading &&
-                                            chatMessagesForModal.map((message) => (_jsxs("div", { className: "wbs-chat-message", children: [_jsxs("div", { className: "wbs-chat-message__meta", children: [_jsx("strong", { children: message.authorName ?? "Autor" }), _jsx("span", { children: message.createdAt ? new Date(message.createdAt).toLocaleString("pt-BR") : "" })] }), _jsx("p", { children: message.message })] }, message.id))), !isChatLoading && chatMessagesForModal.length === 0 && _jsx("p", { className: "muted", children: "Nenhum coment\u00E1rio ainda." }), chatError && _jsx("p", { className: "error-text", children: chatError })] }), _jsxs("div", { className: "wbs-chat-composer", children: [_jsx("textarea", { value: chatDraft, onChange: (event) => setChatDraft(event.target.value), placeholder: "Escreva um coment\u00E1rio\u2026 use @ para mencionar algu\u00E9m", rows: 3 }), _jsxs("div", { className: "wbs-chat-actions", children: [_jsx("button", { type: "button", className: "btn-secondary", onClick: () => setOpenChatTaskId(null), children: "Fechar" }), _jsx("button", { type: "button", className: "btn-primary", onClick: handleSendChat, disabled: !chatDraft.trim() || isChatLoading, children: "Enviar" })] })] })] })] }) }))] }));
+                                ].map((item) => (_jsx("button", { type: "button", className: "wbs-actions-item", onClick: (event) => handleMenuAction(event, item.action, activeMenuNode), children: item.label }, item.action))) }) }), document.body)] }), openChatRow && (_jsx("div", { className: "gp-modal-backdrop", onClick: () => setOpenChatTaskId(null), children: _jsxs("div", { className: "gp-modal", role: "dialog", "aria-modal": "true", "aria-labelledby": "wbs-chat-title", onClick: (event) => event.stopPropagation(), children: [_jsxs("div", { className: "gp-modal-header wbs-chat-header", children: [_jsxs("div", { className: "wbs-chat-title-wrapper", children: [_jsx("h2", { id: "wbs-chat-title", className: "wbs-chat-title", children: openChatRow.node.title ?? "Tarefa" }), _jsxs("p", { className: "wbs-chat-subtitle", children: ["Tarefa ", openChatRow.node.wbsCode ?? openChatRow.displayId] })] }), _jsxs("div", { className: "wbs-chat-header-actions", children: [_jsxs("div", { className: "wbs-chat-pills", children: [_jsx("span", { className: `wbs-chat-pill wbs-chat-pill--${chatStatusTone}`, children: chatStatus ?? "Status" }), _jsx("span", { className: `wbs-chat-pill wbs-chat-pill--${chatPriorityTone}`, children: chatPriorityLabel })] }), _jsx("button", { type: "button", className: "gp-modal-close", "aria-label": "Fechar", onClick: () => setOpenChatTaskId(null), children: "X" })] })] }), _jsxs("div", { className: "gp-modal-body wbs-chat-body", children: [_jsxs("div", { className: "wbs-chat-messages", children: [isChatLoading && _jsx("p", { className: "wbs-chat-empty", children: "Carregando coment\u00E1rios..." }), !isChatLoading &&
+                                            chatMessagesForModal.map((message) => {
+                                                const isAuthor = Boolean(currentUserId && message.authorId && message.authorId === currentUserId);
+                                                const isMe = Boolean(currentUserId && message.authorId && message.authorId === currentUserId) ||
+                                                    (currentUserName &&
+                                                        message.authorName &&
+                                                        message.authorName.trim().toLowerCase() === currentUserName.trim().toLowerCase());
+                                                return (_jsxs("div", { className: `wbs-chat-message ${isMe ? "is-me" : "is-other"}`, children: [_jsx("div", { className: "wbs-chat-avatar", children: getInitials(message.authorName ?? "Autor") }), _jsxs("div", { className: "wbs-chat-bubble", children: [_jsxs("div", { className: "wbs-chat-message__meta", children: [_jsxs("div", { className: "wbs-chat-meta-left", children: [_jsx("span", { className: "wbs-chat-author", children: message.authorName ?? "Autor" }), _jsx("span", { className: "wbs-chat-time", children: message.createdAt
+                                                                                        ? new Date(message.createdAt).toLocaleString("pt-BR", {
+                                                                                            day: "2-digit",
+                                                                                            month: "2-digit",
+                                                                                            year: "numeric",
+                                                                                            hour: "2-digit",
+                                                                                            minute: "2-digit"
+                                                                                        })
+                                                                                        : "" })] }), isAuthor && (_jsxs("div", { className: "wbs-chat-message-actions", children: [_jsx("button", { type: "button", onClick: () => handleStartEditComment(message), children: "Editar" }), _jsx("button", { type: "button", onClick: () => handleDeleteComment(message.id), children: "Excluir" })] }))] }), editingCommentId === message.id ? (_jsxs("div", { className: "wbs-chat-edit", children: [_jsx("div", { className: "wbs-chat-editor wbs-chat-editor--inline", contentEditable: true, role: "textbox", "aria-multiline": "true", suppressContentEditableWarning: true, onInput: (event) => {
+                                                                                editingDraftRef.current = event.target.innerHTML;
+                                                                            }, dangerouslySetInnerHTML: { __html: editingDraftRef.current } }), _jsxs("div", { className: "wbs-chat-edit-actions", children: [_jsx("button", { type: "button", className: "btn-secondary", onClick: handleCancelEditComment, children: "Cancelar" }), _jsx("button", { type: "button", className: "btn-primary", onClick: handleSaveEditComment, children: "Salvar" })] })] })) : (_jsx("div", { className: "wbs-chat-text", dangerouslySetInnerHTML: { __html: renderChatMessage(message.message) } }))] })] }, message.id));
+                                            }), !isChatLoading && chatMessagesForModal.length === 0 && (_jsx("p", { className: "wbs-chat-empty", children: "Nenhum coment\u00E1rio ainda." })), chatError && _jsx("p", { className: "error-text", children: chatError })] }), _jsxs("div", { className: "wbs-chat-composer", children: [_jsxs("div", { className: "wbs-chat-toolbar", children: [_jsxs("div", { className: "wbs-chat-textstyle", children: [_jsxs("button", { type: "button", className: "wbs-chat-tool wbs-chat-tool--text", onMouseDown: handleChatToolMouseDown, onClick: () => setShowTextStyleMenu((prev) => !prev), children: ["T", _jsx("span", { children: "Texto" })] }), showTextStyleMenu && (_jsxs("div", { className: "wbs-chat-textstyle-menu", children: [_jsx("button", { type: "button", onMouseDown: handleChatToolMouseDown, onClick: () => applyTextStyle("p"), children: "Normal text" }), _jsx("button", { type: "button", onMouseDown: handleChatToolMouseDown, onClick: () => applyTextStyle("h1"), children: "Heading 1" }), _jsx("button", { type: "button", onMouseDown: handleChatToolMouseDown, onClick: () => applyTextStyle("h2"), children: "Heading 2" }), _jsx("button", { type: "button", onMouseDown: handleChatToolMouseDown, onClick: () => applyTextStyle("h3"), children: "Heading 3" }), _jsx("button", { type: "button", onMouseDown: handleChatToolMouseDown, onClick: () => applyTextStyle("h4"), children: "Heading 4" })] }))] }), _jsx("button", { type: "button", className: `wbs-chat-tool is-bold ${chatFormatState.bold ? "is-active" : ""}`, onMouseDown: handleChatToolMouseDown, onClick: () => handleChatTool("bold"), children: "B" }), _jsx("button", { type: "button", className: `wbs-chat-tool is-italic ${chatFormatState.italic ? "is-active" : ""}`, onMouseDown: handleChatToolMouseDown, onClick: () => handleChatTool("italic"), children: "I" }), _jsx("button", { type: "button", className: `wbs-chat-tool is-underline ${chatFormatState.underline ? "is-active" : ""}`, onMouseDown: handleChatToolMouseDown, onClick: () => handleChatTool("underline"), children: "U" }), _jsx("span", { className: "wbs-chat-sep" }), _jsx("button", { type: "button", className: `wbs-chat-tool ${chatFormatState.bullets ? "is-active" : ""}`, onMouseDown: handleChatToolMouseDown, onClick: () => handleChatTool("bullets"), children: "\u2022" }), _jsx("button", { type: "button", className: `wbs-chat-tool ${chatFormatState.numbered ? "is-active" : ""}`, onMouseDown: handleChatToolMouseDown, onClick: () => handleChatTool("numbered"), children: "1." }), _jsx("button", { type: "button", className: "wbs-chat-tool", onMouseDown: handleChatToolMouseDown, onClick: () => handleChatTool("checklist"), children: "?" }), _jsxs("div", { className: "wbs-chat-textcolor", children: [_jsx("button", { type: "button", className: "wbs-chat-tool wbs-chat-tool--color", onMouseDown: handleChatToolMouseDown, onClick: () => setShowTextColorPicker((prev) => !prev), children: "A" }), showTextColorPicker && (_jsx("div", { className: "wbs-chat-color-menu", children: [
+                                                                "#111827",
+                                                                "#1f3b6d",
+                                                                "#0f766e",
+                                                                "#15803d",
+                                                                "#f59e0b",
+                                                                "#dc2626",
+                                                                "#7c3aed",
+                                                                "#6b7280",
+                                                                "#2563eb",
+                                                                "#0891b2",
+                                                                "#16a34a",
+                                                                "#f97316",
+                                                                "#ef4444",
+                                                                "#9333ea",
+                                                                "#111827",
+                                                                "#e2e8f0"
+                                                            ].map((color) => (_jsx("button", { type: "button", className: "wbs-chat-color", style: { background: color }, onClick: () => setTextColor(color) }, color))) }))] }), _jsx("button", { type: "button", className: "wbs-chat-tool", onMouseDown: handleChatToolMouseDown, onClick: () => handleChatTool("link"), children: "??" }), _jsx("button", { type: "button", className: "wbs-chat-tool", onMouseDown: handleChatToolMouseDown, onClick: () => handleChatTool("mention"), children: "@" }), _jsx("button", { type: "button", className: "wbs-chat-tool", onMouseDown: handleChatToolMouseDown, onClick: () => setShowEmojiPicker((prev) => !prev), children: "??" })] }), showEmojiPicker && (_jsx("div", { className: "wbs-chat-emoji-picker", children: emojiList.map((emoji) => (_jsx("button", { type: "button", className: "wbs-chat-emoji", onClick: () => insertEmoji(emoji), children: emoji }, emoji))) })), _jsx("div", { ref: chatEditorRef, className: "wbs-chat-editor", contentEditable: true, role: "textbox", "aria-multiline": "true", "data-placeholder": "Escreva um coment\u00E1rio\u2026 use @ para mencionar algu\u00E9m", onInput: (event) => {
+                                                setChatDraft(event.target.innerHTML);
+                                                updateChatFormatState();
+                                            }, onKeyUp: updateChatFormatState, onMouseUp: updateChatFormatState }), _jsxs("div", { className: "wbs-chat-actions", children: [_jsx("button", { type: "button", className: "btn-secondary", onClick: () => setOpenChatTaskId(null), children: "Fechar" }), _jsx("button", { type: "button", className: "btn-primary", onClick: handleSendChat, disabled: !getPlainTextFromHtml(chatDraft) || isChatLoading, children: "Enviar" })] })] })] })] }) })), pendingDeleteCommentId && (_jsx("div", { className: "gp-modal-backdrop", onClick: () => setPendingDeleteCommentId(null), children: _jsxs("div", { className: "gp-modal gp-modal--compact", role: "dialog", "aria-modal": "true", onClick: (event) => event.stopPropagation(), children: [_jsxs("div", { className: "gp-modal-header", children: [_jsx("h2", { children: "Excluir coment\u00E1rio" }), _jsx("button", { type: "button", className: "gp-modal-close", "aria-label": "Fechar", onClick: () => setPendingDeleteCommentId(null), children: "X" })] }), _jsxs("div", { className: "gp-modal-body", children: [_jsx("p", { className: "muted", children: "Tem certeza que deseja excluir este coment\u00E1rio? Esta a\u00E7\u00E3o n\u00E3o pode ser desfeita." }), _jsxs("div", { className: "wbs-chat-confirm-actions", children: [_jsx("button", { type: "button", className: "btn-secondary", onClick: () => setPendingDeleteCommentId(null), children: "Cancelar" }), _jsx("button", { type: "button", className: "btn-danger", onClick: confirmDeleteComment, disabled: isChatLoading, children: "Excluir" })] })] })] }) }))] }));
 };
-export const GanttTimeline = ({ tasks, milestones }) => {
-    if (!tasks.length)
-        return _jsx("p", { className: "muted", children: "Nenhuma tarefa com datas definidas." });
-    const allDates = [
-        ...tasks.flatMap((task) => [task.startDate, task.endDate]),
-        ...milestones.map((milestone) => milestone.dueDate)
-    ]
-        .filter(Boolean)
-        .map((value) => new Date(value));
-    if (!allDates.length) {
-        return _jsx("p", { className: "muted", children: "Defina datas para visualizar o cronograma." });
-    }
-    const minDate = allDates.reduce((acc, date) => (acc.getTime() > date.getTime() ? date : acc), allDates[0]);
-    const maxDate = allDates.reduce((acc, date) => (acc.getTime() < date.getTime() ? date : acc), allDates[0]);
-    const totalDays = Math.max(1, (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
-    const offsetPercent = (value) => {
-        if (!value)
-            return 0;
-        const diff = new Date(value).getTime() - minDate.getTime();
-        return Math.max(0, (diff / (1000 * 60 * 60 * 24)) / totalDays) * 100;
+export const GanttTimeline = ({ tasks, milestones: _milestones }) => {
+    const [viewDate, setViewDate] = useState(() => new Date());
+    const monthStart = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+    const monthEnd = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
+    const daysInMonth = monthEnd.getDate();
+    const dayList = Array.from({ length: daysInMonth }, (_, index) => {
+        const date = new Date(monthStart);
+        date.setDate(index + 1);
+        return date;
+    });
+    const monthLabel = monthStart.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    const today = new Date();
+    const todayKey = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const todayIndex = dayList.findIndex((date) => date.getTime() === todayKey);
+    const visibleTasks = tasks.filter((task) => {
+        if (!task.startDate && !task.endDate)
+            return false;
+        const startDate = task.startDate ? new Date(task.startDate) : task.endDate ? new Date(task.endDate) : null;
+        const endDate = task.endDate ? new Date(task.endDate) : startDate;
+        if (!startDate || !endDate)
+            return false;
+        return startDate <= monthEnd && endDate >= monthStart;
+    });
+    const hasVisibleTasks = visibleTasks.length > 0;
+    const statusTone = (status) => {
+        const normalized = normalizeStatus(status ?? "");
+        if (normalized === "Em andamento")
+            return "in-progress";
+        if (normalized === "Finalizado")
+            return "done";
+        if (normalized === "Em atraso")
+            return "late";
+        if (normalized === "Em risco")
+            return "risk";
+        if (normalized === "Homologação")
+            return "review";
+        if (normalized === "Não iniciado")
+            return "not-started";
+        return "not-started";
     };
-    const widthPercent = (start, end) => {
-        if (!start || !end)
-            return 5;
-        const diff = new Date(end).getTime() - new Date(start).getTime();
-        return Math.max(5, (diff / (1000 * 60 * 60 * 24)) / totalDays * 100);
+    const clampIndex = (value) => Math.min(Math.max(value, 0), daysInMonth - 1);
+    const getBarStyle = (start, end) => {
+        const startDate = start ? new Date(start) : end ? new Date(end) : null;
+        const endDate = end ? new Date(end) : startDate;
+        if (!startDate || !endDate)
+            return { left: "0%", width: "0%" };
+        const startIndex = clampIndex(Math.floor((startDate.getTime() - monthStart.getTime()) / 86400000));
+        const endIndex = clampIndex(Math.floor((endDate.getTime() - monthStart.getTime()) / 86400000));
+        const left = (startIndex / daysInMonth) * 100;
+        const width = ((Math.max(endIndex, startIndex) - startIndex + 1) / daysInMonth) * 100;
+        return { left: `${left}%`, width: `${width}%` };
     };
-    return (_jsxs("div", { className: "gantt", children: [tasks.map((task) => (_jsxs("div", { className: "gantt-row", children: [_jsxs("div", { className: "gantt-row__label", children: [_jsx("strong", { children: task.title }), _jsx("span", { children: task.status })] }), _jsx("div", { className: "gantt-row__bar", children: _jsx("span", { style: {
-                                left: `${offsetPercent(task.startDate)}%`,
-                                width: `${widthPercent(task.startDate, task.endDate)}%`
-                            } }) })] }, task.id))), _jsxs("div", { className: "gantt-milestones", children: [_jsx("strong", { children: "Marcos:" }), " ", milestones.length
-                        ? milestones.map((milestone) => `${milestone.name} (${formatDate(milestone.dueDate)})`).join(", ")
-                        : "Nenhum marco"] })] }));
+    return (_jsxs("div", { className: "timeline-board", children: [_jsxs("div", { className: "timeline-toolbar", children: [_jsxs("div", { className: "timeline-toolbar__nav", children: [_jsx("button", { type: "button", className: "timeline-btn timeline-btn--icon", onClick: () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1)), "aria-label": "M\u00EAs anterior", children: _jsx("svg", { viewBox: "0 0 24 24", "aria-hidden": "true", children: _jsx("path", { d: "M15 18 9 12l6-6" }) }) }), _jsx("button", { type: "button", className: "timeline-btn timeline-btn--icon", onClick: () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1)), "aria-label": "Pr\u00F3ximo m\u00EAs", children: _jsx("svg", { viewBox: "0 0 24 24", "aria-hidden": "true", children: _jsx("path", { d: "M9 6l6 6-6 6" }) }) }), _jsx("button", { type: "button", className: "timeline-btn timeline-btn--ghost", onClick: () => setViewDate(new Date()), children: "Hoje" })] }), _jsxs("div", { className: "timeline-toolbar__title", children: [_jsx("span", { className: "timeline-toolbar__icon", "aria-hidden": "true", children: _jsxs("svg", { viewBox: "0 0 24 24", children: [_jsx("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2" }), _jsx("path", { d: "M16 2v4" }), _jsx("path", { d: "M8 2v4" }), _jsx("path", { d: "M3 10h18" })] }) }), monthLabel] }), _jsxs("div", { className: "timeline-toolbar__legend", children: [_jsx("span", { className: "timeline-legend-item is-not-started", children: "N\u00E3o Iniciado" }), _jsx("span", { className: "timeline-legend-item is-in-progress", children: "Em Andamento" }), _jsx("span", { className: "timeline-legend-item is-done", children: "Conclu\u00EDdo" }), _jsx("span", { className: "timeline-legend-item is-late", children: "Atrasado" }), _jsx("span", { className: "timeline-legend-item is-risk", children: "Em risco" }), _jsx("span", { className: "timeline-legend-item is-review", children: "Homologa\u00E7\u00E3o" })] })] }), _jsxs("div", { className: "timeline-grid", style: {
+                    ["--days"]: daysInMonth,
+                    ["--today-index"]: Math.max(todayIndex, 0),
+                    ["--label-width"]: "240px"
+                }, children: [_jsxs("div", { className: "timeline-header", children: [_jsx("div", { className: "timeline-header__label", children: "Tarefa" }), _jsx("div", { className: "timeline-header__days", children: dayList.map((date) => {
+                                    const isToday = date.getTime() === todayKey;
+                                    const dayName = date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+                                    return (_jsxs("div", { className: `timeline-day ${isToday ? "is-today" : ""}`, children: [_jsx("span", { children: dayName }), _jsx("strong", { children: String(date.getDate()).padStart(2, "0") })] }, date.toISOString()));
+                                }) })] }), _jsxs("div", { className: "timeline-body", children: [todayIndex >= 0 ? _jsx("span", { className: "timeline-today-marker", "aria-hidden": "true" }) : null, hasVisibleTasks ? (visibleTasks.map((task) => (_jsxs("div", { className: "timeline-row", children: [_jsxs("div", { className: "timeline-row__label", children: [_jsx("strong", { children: task.title }), _jsx("span", { children: normalizeStatus(task.status ?? "") || "Sem status" }), task.projectName ? _jsx("span", { className: "timeline-row__project", children: task.projectName }) : null] }), _jsx("div", { className: "timeline-row__track", children: _jsx("div", { className: `timeline-bar ${statusTone(task.status)}`, style: getBarStyle(task.startDate, task.endDate), children: _jsx("span", { children: task.title }) }) })] }, task.id)))) : (_jsxs("div", { className: "timeline-row timeline-row--empty", children: [_jsxs("div", { className: "timeline-row__label", children: [_jsx("strong", { children: "Nenhuma tarefa neste m\u00EAs" }), _jsx("span", { children: "Defina datas para visualizar o cronograma." })] }), _jsx("div", { className: "timeline-row__track" })] }))] })] })] }));
 };
 export const ProjectDetailsTabs = ({ projectMeta, projectLoading, onEditProject, onAddTask, summary, summaryError, filters, onRangeChange, myTasks, members, membersError, attachments, attachmentsError, attachmentsLoading, reportMetrics, reportMetricsError, reportMetricsLoading, boardColumns, kanbanColumns, boardError, onCreateTask, onReloadBoard, onDragTask, newTaskTitle, onTaskTitleChange, newTaskColumn, onTaskColumnChange, newTaskStartDate, onTaskStartDateChange, newTaskEndDate, onTaskEndDateChange, newTaskAssignee, onTaskAssigneeChange, newTaskEstimateHours, onTaskEstimateHoursChange, wbsNodes, wbsError, serviceCatalog, serviceCatalogError, onImportServiceCatalog, onCreateServiceCatalog, onUpdateServiceCatalog, onDeleteServiceCatalog, onReloadWbs, onMoveNode, onUpdateNode, selectedNodeId, onSelectNode, comments, commentsError, onSubmitComment, commentBody, onCommentBodyChange, timeEntryDate, timeEntryHours, timeEntryDescription, timeEntryError, onTimeEntryDateChange, onTimeEntryHoursChange, onTimeEntryDescriptionChange, onLogTime, ganttTasks, ganttMilestones, ganttError, onKanbanTaskClick }) => {
     const navigate = useNavigate();
@@ -1315,7 +2032,11 @@ export const ProjectDetailsTabs = ({ projectMeta, projectLoading, onEditProject,
         if (!value)
             return "-";
         try {
-            return new Date(value).toLocaleDateString("pt-BR", {
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime()))
+                return "-";
+            const safeDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
+            return safeDate.toLocaleDateString("pt-BR", {
                 day: "2-digit",
                 month: "short"
             });
@@ -1401,7 +2122,7 @@ export const ProjectDetailsTabs = ({ projectMeta, projectLoading, onEditProject,
     const ganttContent = (_jsxs("div", { className: "tab-panel", children: [ganttError && _jsx("p", { className: "error-text", children: ganttError }), _jsx(GanttTimeline, { tasks: ganttTasks, milestones: ganttMilestones })] }));
     const calendarContent = (_jsx("div", { className: "tab-panel", children: calendarEvents.length ? (_jsx("ul", { className: "calendar-list", children: calendarEvents.map((event) => (_jsxs("li", { children: [_jsxs("div", { className: "calendar-date", children: [_jsx("span", { children: formatShortDate(event.date) }), _jsx("small", { children: event.type })] }), _jsx("strong", { children: event.title })] }, event.id))) })) : (_jsx("p", { className: "muted", children: "Nenhum evento agendado." })) }));
     const docsContent = (_jsxs("div", { className: "tab-panel", children: [attachmentsError && _jsx("p", { className: "error-text", children: attachmentsError }), attachmentsLoading ? (_jsx("div", { className: "docs-grid", children: [0, 1, 2].map((index) => (_jsxs("article", { className: "doc-card skeleton-card", children: [_jsx("div", { className: "skeleton skeleton-title" }), _jsx("div", { className: "skeleton skeleton-text" }), _jsx("div", { className: "skeleton skeleton-text", style: { width: "40%" } })] }, index))) })) : attachments.length ? (_jsx("div", { className: "docs-grid", children: attachments.map((doc) => (_jsxs("article", { className: "doc-card", children: [_jsxs("div", { children: [_jsx("h4", { children: doc.fileName }), _jsx("p", { className: "subtext", children: doc.category ?? "Documento" })] }), _jsxs("small", { children: [doc.uploadedBy?.fullName ?? doc.uploadedBy?.email ?? "Equipe", " \u00B7 ", formatShortDate(doc.createdAt)] }), _jsxs("small", { children: [formatFileSize(doc.fileSize), " \u00B7 ", doc.targetType === "WBS_NODE" ? "Vinculado à WBS" : "Projeto"] }), _jsx("button", { type: "button", className: "ghost-button", onClick: () => window.alert("Integração de download em breve."), children: "Baixar" })] }, doc.id))) })) : (_jsx(EmptyStateCard, { icon: FileIcon, title: "Nenhum documento enviado", description: "Centralize atas, contratos e anexos importantes para facilitar o acompanhamento.", actionLabel: "Adicionar documento", onAction: handleAddDocument }))] }));
-    const activityContent = (_jsxs("div", { className: "tab-panel activity-panel", children: [_jsxs("article", { className: "card", children: [_jsx("div", { className: "card-header", children: _jsx("h3", { children: "Timeline de atividades" }) }), commentsError && _jsx("p", { className: "error-text", children: commentsError }), activityItems.length ? (_jsx("ul", { className: "activity-timeline", children: activityItems.map((activity) => (_jsxs("li", { children: [_jsx("div", { className: "activity-avatar", children: activity.author?.slice(0, 2).toUpperCase() }), _jsxs("div", { children: [_jsx("strong", { children: activity.author }), _jsx("span", { children: activity.role }), _jsx("p", { children: activity.body }), _jsx("small", { children: formatShortDate(activity.createdAt) })] })] }, activity.id))) })) : (_jsx(EmptyStateCard, { icon: CommentIcon, title: "Nenhuma atividade registrada", description: "Compartilhe atualiza\u00E7\u00F5es ou registre horas para construir o hist\u00F3rico colaborativo do projeto.", actionLabel: "Registrar atualizAo", onAction: focusCommentComposer }))] }), _jsxs("div", { className: "split-grid", children: [_jsxs("article", { className: "card", children: [_jsx("div", { className: "card-header", children: _jsx("h3", { children: "Novo coment\u00E1rio" }) }), _jsxs("form", { onSubmit: onSubmitComment, className: "feedback-form", children: [_jsx("p", { className: "muted", children: "Selecione um item na EDT para vincular o coment\u00E1rio." }), _jsx("textarea", { ref: commentTextareaRef, placeholder: "Anote atualiza\u00E7\u00F5es ou decis\u00F5es...", value: commentBody, onChange: (event) => onCommentBodyChange(event.target.value) }), _jsx("button", { type: "submit", className: "primary-button", disabled: !selectedNodeId || !commentBody.trim(), children: "Registrar coment\u00E1rio" })] })] }), _jsxs("article", { className: "card", children: [_jsx("div", { className: "card-header", children: _jsx("h3", { children: "Registro r\u00E1pido de horas" }) }), _jsxs("form", { onSubmit: onLogTime, className: "time-form", children: [_jsx("p", { className: "muted", children: "Selecione uma tarefa na EDT antes de registrar." }), _jsxs("label", { children: ["Data", _jsx("input", { type: "date", value: timeEntryDate, onChange: (event) => onTimeEntryDateChange(event.target.value) })] }), _jsxs("label", { children: ["Horas", _jsx("input", { type: "number", min: "0.25", step: "0.25", value: timeEntryHours, onChange: (event) => onTimeEntryHoursChange(event.target.value) })] }), _jsxs("label", { children: ["descri\u00E7\u00E3o", _jsx("textarea", { value: timeEntryDescription, onChange: (event) => onTimeEntryDescriptionChange(event.target.value) })] }), timeEntryError && (_jsx("p", { className: "error-text", role: "status", children: timeEntryError })), _jsx("button", { type: "submit", className: "primary-button", disabled: !selectedNodeId, children: "Registrar horas" })] })] })] })] }));
+    const activityContent = (_jsxs("div", { className: "tab-panel activity-panel", children: [_jsxs("article", { className: "card", children: [_jsx("div", { className: "card-header", children: _jsx("h3", { children: "Timeline de atividades" }) }), commentsError && _jsx("p", { className: "error-text", children: commentsError }), activityItems.length ? (_jsx("ul", { className: "activity-timeline", children: activityItems.map((activity) => (_jsxs("li", { children: [_jsx("div", { className: "activity-avatar", children: activity.author?.slice(0, 2).toUpperCase() }), _jsxs("div", { children: [_jsx("strong", { children: activity.author }), _jsx("span", { children: activity.role }), _jsx("p", { children: activity.body }), _jsx("small", { children: formatShortDate(activity.createdAt) })] })] }, activity.id))) })) : (_jsx(EmptyStateCard, { icon: CommentIcon, title: "Nenhuma atividade registrada", description: "Compartilhe atualiza\u00E7\u00F5es ou registre horas para construir o hist\u00F3rico colaborativo do projeto.", actionLabel: "Registrar atualizAo", onAction: focusCommentComposer }))] }), _jsxs("div", { className: "split-grid", children: [_jsxs("article", { className: "card", children: [_jsx("div", { className: "card-header", children: _jsx("h3", { children: "Novo coment\u00E1rio" }) }), _jsxs("form", { onSubmit: onSubmitComment, className: "feedback-form", children: [_jsx("p", { className: "muted", children: "Selecione um item na EDT para vincular o coment\u00E1rio." }), _jsx("textarea", { ref: commentTextareaRef, placeholder: "Anote atualiza\u00E7\u00F5es ou decis\u00F5es...", value: commentBody, onChange: (event) => onCommentBodyChange(event.target.value) }), _jsx("button", { type: "submit", className: "primary-button", disabled: !selectedNodeId || !commentBody.trim(), children: "Registrar coment\u00E1rio" })] })] }), _jsxs("article", { className: "card", children: [_jsx("div", { className: "card-header", children: _jsx("h3", { children: "Registro r\u00E1pido de horas" }) }), _jsxs("form", { onSubmit: onLogTime, className: "time-form", children: [_jsx("p", { className: "muted", children: "Selecione uma tarefa na EDT antes de registrar." }), _jsxs("label", { children: ["Data", _jsx("input", { type: "date", value: timeEntryDate, onChange: (event) => onTimeEntryDateChange(event.target.value) })] }), _jsxs("label", { children: ["Horas", _jsx("input", { type: "number", min: "0.25", step: "0.25", value: timeEntryHours, onChange: (event) => onTimeEntryHoursChange(event.target.value) })] }), _jsxs("label", { children: ["Descri\u00E7\u00E3o", _jsx("textarea", { value: timeEntryDescription, onChange: (event) => onTimeEntryDescriptionChange(event.target.value) })] }), timeEntryError && (_jsx("p", { className: "error-text", role: "status", children: timeEntryError })), _jsx("button", { type: "submit", className: "primary-button", disabled: !selectedNodeId, children: "Registrar horas" })] })] })] })] }));
     const boardTabPlaceholder = (_jsx("div", { className: "tab-panel", children: _jsx("p", { className: "muted", children: "O board deste projeto est\u00E1 em uma p\u00E1gina dedicada." }) }));
     const ganttTabPlaceholder = (_jsx("div", { className: "tab-panel", children: _jsx("p", { className: "muted", children: "O cronograma deste projeto est\u00E1 em uma p\u00E1gina dedicada." }) }));
     const docsTabPlaceholder = (_jsx("div", { className: "tab-panel", children: _jsx("p", { className: "muted", children: "Os documentos deste projeto est\u00E3o em uma p\u00E1gina dedicada." }) }));
@@ -1487,14 +2208,44 @@ const SettingsPanel = () => {
     ];
     return (_jsxs("section", { className: "settings-section", children: [_jsx("header", { children: _jsxs("div", { children: [_jsx("p", { className: "eyebrow", children: "Configura\u00E7\u00F5es" }), _jsx("h2", { children: "Central de ajustes" }), _jsx("p", { className: "subtext", children: "Gerencie perfil, notifica\u00E7\u00F5es, Organiza\u00E7\u00E3o e integra\u00E7\u00F5es." })] }) }), _jsxs("div", { className: "settings-layout", children: [_jsx("nav", { className: "settings-menu", children: sections.map((section) => (_jsx("button", { type: "button", className: activeSection === section.id ? "is-active" : "", onClick: () => setActiveSection(section.id), children: section.label }, section.id))) }), _jsxs("div", { className: "settings-content", children: [activeSection === "profile" && (_jsxs("form", { className: "settings-form", children: [_jsx("h3", { children: "Perfil" }), _jsxs("label", { children: ["Nome completo", _jsx("input", { type: "text", placeholder: "Seu nome" })] }), _jsxs("label", { children: ["E-mail", _jsx("input", { type: "email", placeholder: "voce@empresa.com" })] }), _jsxs("label", { children: ["Idioma", _jsxs("select", { children: [_jsx("option", { children: "Portugu\u00EAs (Brasil)" }), _jsx("option", { children: "Ingl\u00EAs" })] })] }), _jsx("button", { type: "button", className: "primary-button", children: "Atualizar perfil" })] })), activeSection === "notifications" && (_jsxs("div", { className: "settings-form", children: [_jsx("h3", { children: "Notifica\u00E7\u00F5es" }), _jsxs("label", { className: "settings-toggle", children: [_jsx("input", { type: "checkbox", defaultChecked: true }), _jsx("span", { children: "E-mails sobre tarefas atribu\u00EDdas" })] }), _jsxs("label", { className: "settings-toggle", children: [_jsx("input", { type: "checkbox" }), _jsx("span", { children: "Mensagens em canais do Slack" })] }), _jsxs("label", { className: "settings-toggle", children: [_jsx("input", { type: "checkbox", defaultChecked: true }), _jsx("span", { children: "Alertas de riscos" })] })] })), activeSection === "organization" && (_jsxs("div", { className: "settings-form", children: [_jsx("h3", { children: "Organiza\u00E7\u00E3o" }), _jsxs("label", { children: ["Nome da Organiza\u00E7\u00E3o", _jsx("input", { type: "text", placeholder: "Organiza\u00E7\u00E3o Demo" })] }), _jsxs("label", { children: ["Dom\u00EDnio", _jsx("input", { type: "text", placeholder: "demo.local" })] }), _jsx("button", { type: "button", className: "secondary-button", children: "Salvar" })] })), activeSection === "permissions" && (_jsxs("div", { className: "settings-form", children: [_jsx("h3", { children: "Permiss\u00F5es e pap\u00E9is" }), _jsx("p", { className: "muted", children: "Gerencie quem pode criar projetos, alterar WBS e exportar dados." }), _jsxs("table", { className: "settings-table", children: [_jsx("thead", { children: _jsxs("tr", { children: [_jsx("th", { children: "Papel" }), _jsx("th", { children: "Criar projeto" }), _jsx("th", { children: "Editar WBS" }), _jsx("th", { children: "Ver Relat\u00F3rios" })] }) }), _jsx("tbody", { children: ["OWNER", "ADMIN", "MEMBER", "VIEWER"].map((role) => (_jsxs("tr", { children: [_jsx("td", { children: role }), _jsx("td", { children: _jsx("input", { type: "checkbox", defaultChecked: role !== "VIEWER" }) }), _jsx("td", { children: _jsx("input", { type: "checkbox", defaultChecked: role === "OWNER" || role === "ADMIN" }) }), _jsx("td", { children: _jsx("input", { type: "checkbox", defaultChecked: role !== "VIEWER" }) })] }, role))) })] })] })), activeSection === "integrations" && (_jsxs("div", { className: "settings-form", children: [_jsx("h3", { children: "Integra\u00E7\u00F5es" }), _jsx("div", { className: "integrations-grid", children: ["GitHub", "Google Drive", "Slack", "Google Calendar"].map((integration) => (_jsxs("article", { children: [_jsx("strong", { children: integration }), _jsx("p", { className: "muted", children: "Sincronize dados e automatize o fluxo." }), _jsx("button", { type: "button", className: "secondary-button", children: "Conectar" })] }, integration))) })] })), activeSection === "billing" && (_jsxs("div", { className: "settings-form", children: [_jsx("h3", { children: "Faturamento / Plano" }), _jsxs("p", { className: "muted", children: ["Plano atual: ", _jsx("strong", { children: "Pro \u00B7 20/50 projetos" })] }), _jsx("button", { type: "button", className: "secondary-button", children: "Gerenciar plano" })] }))] })] })] }));
 };
-export const DashboardLayout = ({ userEmail, organizations, selectedOrganizationId, onOrganizationChange, currentOrgRole, orgError, onSignOut, projects, selectedProjectId, onProjectChange, onSelectProject, projectLimits, projectsError, filters, onRangeChange, summary, summaryError, members, membersError, attachments, attachmentsError, attachmentsLoading, reportMetrics, reportMetricsError, reportMetricsLoading, boardColumns, kanbanColumns, boardError, onCreateTask, onReloadBoard, onDragTask, newTaskTitle, onTaskTitleChange, newTaskColumn, onTaskColumnChange, newTaskStartDate, onTaskStartDateChange, newTaskEndDate, onTaskEndDateChange, newTaskAssignee, onTaskAssigneeChange, newTaskEstimateHours, onTaskEstimateHoursChange, wbsNodes, wbsError, serviceCatalog, serviceCatalogError, onImportServiceCatalog, onCreateServiceCatalog, onUpdateServiceCatalog, onDeleteServiceCatalog, onReloadWbs, onMoveNode, onUpdateWbsNode, onUpdateWbsResponsible, onCreateWbsItem, selectedNodeId, onSelectNode, comments, commentsError, onSubmitComment, commentBody, onCommentBodyChange, timeEntryDate, timeEntryHours, timeEntryDescription, timeEntryError, onTimeEntryDateChange, onTimeEntryHoursChange, onTimeEntryDescriptionChange, onLogTime, ganttTasks, ganttMilestones, ganttError, portfolio, portfolioError, portfolioLoading, onExportPortfolio, onCreateProject, onUpdateProject, }) => {
+export const DashboardLayout = ({ userEmail, organizations, selectedOrganizationId, onOrganizationChange, currentOrgRole, orgError, onSignOut, projects, selectedProjectId, onProjectChange, onSelectProject, projectLimits, projectsError, filters, onRangeChange, summary, summaryError, members, membersError, attachments, attachmentsError, attachmentsLoading, reportMetrics, reportMetricsError, reportMetricsLoading, boardColumns, kanbanColumns, boardError, onCreateTask, onReloadBoard, onDragTask, newTaskTitle, onTaskTitleChange, newTaskColumn, onTaskColumnChange, newTaskStartDate, onTaskStartDateChange, newTaskEndDate, onTaskEndDateChange, newTaskAssignee, onTaskAssigneeChange, newTaskEstimateHours, onTaskEstimateHoursChange, wbsNodes, wbsError, serviceCatalog, serviceCatalogError, onImportServiceCatalog, onCreateServiceCatalog, onUpdateServiceCatalog, onDeleteServiceCatalog, onReloadWbs, onMoveNode, onUpdateWbsNode, onUpdateWbsResponsible, onCreateWbsItem, selectedNodeId, onSelectNode, comments, commentsError, onSubmitComment, commentBody, onCommentBodyChange, timeEntryDate, timeEntryHours, timeEntryDescription, timeEntryError, onTimeEntryDateChange, onTimeEntryHoursChange, onTimeEntryDescriptionChange, onLogTime, ganttTasks, ganttMilestones, ganttError, portfolio, portfolioError, portfolioLoading, onExportPortfolio, onReloadPortfolio, onCreateProject, onUpdateProject, }) => {
     const flattenedTasks = kanbanColumns.flatMap((column) => column.tasks.map((task) => ({ ...task, column: column.title })));
     const myTasks = flattenedTasks.slice(0, 6);
     const projectMeta = portfolio.find((project) => project.projectId === selectedProjectId) ?? null;
     const location = useLocation();
+    const lowerPath = location.pathname.toLowerCase();
+    const isEapRoute = lowerPath.includes("/eap") || lowerPath.includes("/edt");
+    const isReportsRoute = lowerPath.includes("/relatorios");
+    const eapRouteProjectId = useMemo(() => {
+        const match = location.pathname.match(/^\/EAP\/organizacao\/[^/]+\/projeto\/([^/?#]+)/i);
+        if (!match?.[1])
+            return null;
+        try {
+            return decodeURIComponent(match[1]);
+        }
+        catch {
+            return match[1];
+        }
+    }, [location.pathname]);
     const navigate = useNavigate();
     const { signOut } = useAuth();
     const [isProjectModalOpen, setProjectModalOpen] = useState(false);
+    useEffect(() => {
+        const needsProject = !selectedProjectId || selectedProjectId === "all";
+        if (isReportsRoute) {
+            if (needsProject && projects?.length) {
+                onSelectProject(projects[0].id);
+            }
+            return;
+        }
+        if (!isEapRoute || !needsProject)
+            return;
+        if (eapRouteProjectId)
+            return;
+        if (!projects?.length)
+            return;
+        onSelectProject(projects[0].id);
+    }, [isEapRoute, isReportsRoute, selectedProjectId, projects, onSelectProject, eapRouteProjectId]);
     const [projectForm, setProjectForm] = useState(createEmptyProjectForm());
     const [projectModalError, setProjectModalError] = useState(null);
     const [projectModalLoading, setProjectModalLoading] = useState(false);
@@ -1504,6 +2255,35 @@ export const DashboardLayout = ({ userEmail, organizations, selectedOrganization
     const [isTaskModalOpen, setTaskModalOpen] = useState(false);
     const [taskModalLoading, setTaskModalLoading] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isProjectSelectorOpen, setProjectSelectorOpen] = useState(false);
+    const [projectSearchTerm, setProjectSearchTerm] = useState("");
+    const projectSelectorRef = useRef(null);
+    useEffect(() => {
+        if (!isProjectSelectorOpen)
+            return;
+        const handlePointerDown = (event) => {
+            const target = event.target;
+            if (projectSelectorRef.current && target && !projectSelectorRef.current.contains(target)) {
+                setProjectSelectorOpen(false);
+            }
+        };
+        const handleEscape = (event) => {
+            if (event.key === "Escape") {
+                setProjectSelectorOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handlePointerDown);
+        document.addEventListener("keydown", handleEscape);
+        return () => {
+            document.removeEventListener("mousedown", handlePointerDown);
+            document.removeEventListener("keydown", handleEscape);
+        };
+    }, [isProjectSelectorOpen]);
+    useEffect(() => {
+        if (!isProjectSelectorOpen && projectSearchTerm) {
+            setProjectSearchTerm("");
+        }
+    }, [isProjectSelectorOpen, projectSearchTerm]);
     useEffect(() => {
         if (!newTaskColumn && boardColumns.length) {
             onTaskColumnChange(boardColumns[0].id);
@@ -1649,6 +2429,7 @@ export const DashboardLayout = ({ userEmail, organizations, selectedOrganization
         portfolioError,
         portfolioLoading,
         onExportPortfolio,
+        onReloadPortfolio,
         handleViewProjectDetails,
         kanbanColumns,
         summary,
@@ -1760,24 +2541,40 @@ export const DashboardLayout = ({ userEmail, organizations, selectedOrganization
     };
     const appShellClassName = `app-shell ${isCollapsed ? "app-shell--collapsed" : ""}`.trim();
     const currentOrganization = organizations.find((org) => org.id === selectedOrganizationId) ?? null;
-    return (_jsxs("div", { className: appShellClassName, children: [_jsxs("aside", { className: "dashboard-sidebar sidebar", children: [_jsx("div", { className: "sidebar-header", children: _jsxs("button", { type: "button", className: "sidebar-brand", onClick: () => setIsCollapsed((prev) => !prev), "aria-label": isCollapsed ? "Expandir menu" : "Recolher menu", children: [_jsx("img", { src: "/logo.png", alt: "G&P Gesto de Projetos", className: "sidebar-logo-img" }), !isCollapsed && (_jsxs("div", { className: "sidebar-brand-text", children: [_jsx("span", { className: "brand-sigla", children: "G&P" }), _jsx("span", { className: "brand-subtitle", children: "Gesto de Projetos" })] })), _jsx("span", { className: "sidebar-toggle-icon", children: isCollapsed ? "" : "" })] }) }), _jsxs("nav", { className: "sidebar-nav", children: [_jsx("div", { className: "sidebar-title" }), sidebarNavigation.map((item) => {
+    const selectedProjectName = useMemo(() => {
+        if (!selectedProjectId)
+            return "Selecione um projeto";
+        return projects.find((project) => project.id === selectedProjectId)?.name ?? "Selecione um projeto";
+    }, [projects, selectedProjectId]);
+    const filteredProjects = useMemo(() => {
+        const query = projectSearchTerm.trim().toLowerCase();
+        if (!query)
+            return projects || [];
+        return (projects || []).filter((project) => (project.name ?? "").toLowerCase().includes(query));
+    }, [projects, projectSearchTerm]);
+    const isProjectSelectorDisabled = !projects?.length || isReportsRoute;
+    const handleProjectSelectFromMenu = (projectId) => {
+        onSelectProject(projectId);
+        setProjectSelectorOpen(false);
+        setProjectSearchTerm("");
+    };
+    return (_jsxs("div", { className: appShellClassName, children: [_jsxs("aside", { className: "dashboard-sidebar sidebar", children: [_jsx("div", { className: "sidebar-header", children: _jsxs("button", { type: "button", className: "sidebar-brand", onClick: () => setIsCollapsed((prev) => !prev), "aria-label": isCollapsed ? "Expandir menu" : "Recolher menu", children: [_jsx("img", { src: "/logo.png", alt: "G&P Gest\u00E3o de Projetos", className: "sidebar-logo-img" }), !isCollapsed && (_jsxs("div", { className: "sidebar-brand-text", children: [_jsx("span", { className: "brand-sigla", children: "Meu G&P" }), _jsx("span", { className: "brand-subtitle", children: "Gest\u00E3o de Projetos" })] })), _jsx("span", { className: `sidebar-toggle-icon ${isCollapsed ? "is-collapsed" : ""}`, children: _jsx("svg", { viewBox: "0 0 24 24", "aria-hidden": "true", children: _jsx("path", { d: "M15 18 9 12l6-6" }) }) })] }) }), _jsxs("nav", { className: "sidebar-nav", children: [_jsx("div", { className: "sidebar-title" }), sidebarNavigation.map((item) => {
                                 const Icon = item.icon;
-                                const computedPath = item.id === "edt" && selectedOrganizationId && selectedProjectId
+                                const computedPath = item.id === "edt" && selectedOrganizationId && selectedProjectId && selectedProjectId !== "all"
                                     ? `/EAP/organizacao/${selectedOrganizationId}/projeto/${selectedProjectId}`
                                     : item.path;
                                 const link = (_jsxs(NavLink, { to: computedPath, className: ({ isActive }) => `sidebar-item ${isActive ? "sidebar-item--active" : ""}`, title: isCollapsed ? item.label : undefined, "aria-label": isCollapsed ? item.label : undefined, children: [_jsx("span", { className: "sidebar-item-icon", "aria-hidden": "true", children: _jsx(Icon, { width: 18, height: 18 }) }), _jsx("span", { className: "sidebar-item-label", children: item.label })] }, item.id));
-                                return (_jsxs(Fragment, { children: [link, item.id === "atividades" ? _jsx("div", { className: "sidebar-divider" }) : null] }, item.id));
-                            })] }), _jsx("div", { className: "sidebar-plan", children: _jsxs("p", { children: ["Plano Pro \u00B7 ", _jsx("strong", { children: "20/50" }), " projetos"] }) })] }), _jsxs("div", { className: "app-main", children: [_jsx("header", { className: "dashboard-topbar topbar", children: _jsxs("div", { className: "topbar-inner", children: [_jsx("div", { className: "topbar-left", children: _jsx("div", { className: "header-search-wrapper", children: _jsx("input", { className: "header-search-input", type: "search", placeholder: "Buscar projetos, tarefas, pessoas..." }) }) }), _jsx("div", { className: "topbar-center", children: _jsxs("div", { className: "header-context", children: [_jsxs("div", { className: "context-item", children: [_jsx("span", { className: "context-label", children: "Organiza\u00E7\u00E3o" }), _jsx("span", { className: "context-value", children: currentOrganization?.name ?? "Nenhuma selecionada" })] }), _jsxs("div", { className: "context-item", children: [_jsx("span", { className: "context-label", children: "Projeto atual" }), _jsxs("select", { className: "context-select", value: selectedProjectId || "", onChange: (event) => {
-                                                            const newId = event.target.value;
-                                                            if (newId) {
-                                                                onSelectProject(newId);
-                                                            }
-                                                        }, disabled: !projects?.length, children: [!selectedProjectId && _jsx("option", { value: "", children: "Selecione um projeto" }), (projects || []).map((project) => (_jsx("option", { value: project.id, children: project.name }, project.id)))] }), !projects?.length && _jsx("small", { className: "muted", children: "Nenhum projeto cadastrado" })] })] }) }), _jsx("div", { className: "topbar-right", children: _jsxs("div", { className: "header-user", children: [_jsx("div", { className: "avatar", children: userEmail?.slice(0, 2).toUpperCase() }), _jsx("button", { type: "button", className: "logout-button", onClick: () => {
+                                return (_jsxs(Fragment, { children: [link, item.id === "diagrama" ? _jsx("div", { className: "sidebar-divider" }) : null] }, item.id));
+                            })] })] }), _jsxs("div", { className: "app-main", children: [_jsx("header", { className: "dashboard-topbar topbar", children: _jsxs("div", { className: "topbar-inner", children: [_jsx("div", { className: "topbar-left", children: _jsx("div", { className: "header-search-wrapper", children: _jsxs("div", { className: "header-search", children: [_jsx(Search, { className: "header-search-icon", "aria-hidden": "true" }), _jsx("input", { className: "header-search-input", type: "search", placeholder: "Buscar projetos, tarefas, pessoas..." })] }) }) }), _jsx("div", { className: "topbar-center", children: _jsxs("div", { className: "header-context", children: [_jsxs("div", { className: "context-item", children: [_jsx("span", { className: "context-label", children: "Organiza\u00E7\u00E3o" }), _jsx("span", { className: "context-value", children: currentOrganization?.name ?? "Nenhuma selecionada" })] }), _jsxs("div", { className: "context-item context-item--project-selector", children: [_jsx("span", { className: "context-label", children: "Projeto atual" }), _jsxs("div", { className: `project-selector ${isProjectSelectorOpen ? "is-open" : ""} ${isProjectSelectorDisabled ? "is-disabled" : ""}`, ref: projectSelectorRef, children: [_jsxs("button", { type: "button", className: "project-selector-trigger", onClick: () => {
+                                                                    if (isProjectSelectorDisabled)
+                                                                        return;
+                                                                    setProjectSelectorOpen((prev) => !prev);
+                                                                }, disabled: isProjectSelectorDisabled, "aria-haspopup": "listbox", "aria-expanded": isProjectSelectorOpen, children: [_jsx("span", { className: "project-selector-value", children: selectedProjectName }), _jsx("span", { className: "project-selector-caret", "aria-hidden": "true", children: "v" })] }), isProjectSelectorOpen && !isProjectSelectorDisabled && (_jsxs("div", { className: "project-selector-dropdown", role: "listbox", "aria-label": "Lista de projetos", children: [_jsxs("div", { className: "project-selector-search", children: [_jsx(Search, { className: "project-selector-search-icon", "aria-hidden": "true" }), _jsx("input", { className: "project-selector-search-input", type: "search", placeholder: "Buscar projeto...", value: projectSearchTerm, onChange: (event) => setProjectSearchTerm(event.target.value), autoFocus: true })] }), _jsx("div", { className: "project-selector-options", children: filteredProjects.length ? (filteredProjects.map((project) => (_jsxs("button", { type: "button", className: `project-selector-option ${project.id === selectedProjectId ? "is-active" : ""}`, onClick: () => handleProjectSelectFromMenu(project.id), children: [_jsx("span", { className: "project-selector-option-name", children: project.name }), project.id === selectedProjectId ? (_jsx("span", { className: "project-selector-option-check", children: "Atual" })) : null] }, project.id)))) : (_jsx("p", { className: "project-selector-empty", children: "Nenhum projeto encontrado" })) })] }))] }), !projects?.length && _jsx("small", { className: "muted", children: "Nenhum projeto cadastrado" })] })] }) }), _jsx("div", { className: "topbar-right", children: _jsxs("div", { className: "header-user", children: [_jsx("div", { className: "avatar", children: userEmail?.slice(0, 2).toUpperCase() }), _jsxs("button", { type: "button", className: "logout-button", onClick: () => {
                                                     signOut();
                                                     navigate("/", { replace: true });
-                                                }, children: "Sair" })] }) })] }) }), _jsx("main", { className: "app-content", children: _jsx("div", { className: "page-container", children: _jsx(Outlet, { context: outletContext }) }) }), isProjectModalOpen && (_jsx("div", { className: "modal-overlay", role: "dialog", "aria-modal": "true", children: _jsxs("div", { className: "modal", children: [_jsxs("header", { className: "modal-header", children: [_jsxs("div", { children: [_jsx("p", { className: "eyebrow", children: projectModalMode === "edit" ? "Editar projeto" : "Novo projeto" }), _jsx("h3", { children: projectModalMode === "edit" ? "Atualize as informções principais" : "Planeje um novo trabalho" }), _jsx("p", { className: "subtext", children: projectModalMode === "edit"
+                                                }, children: [_jsx(LogOut, { className: "logout-icon", "aria-hidden": "true" }), "Sair"] })] }) })] }) }), _jsx("main", { className: "app-content", children: _jsx("div", { className: "page-container", children: _jsx(Outlet, { context: outletContext }) }) }), isProjectModalOpen && (_jsx("div", { className: "modal-overlay", role: "dialog", "aria-modal": "true", children: _jsxs("div", { className: "modal", children: [_jsxs("header", { className: "modal-header", children: [_jsxs("div", { children: [_jsx("p", { className: "eyebrow", children: projectModalMode === "edit" ? "Editar projeto" : "Novo projeto" }), _jsx("h3", { children: projectModalMode === "edit" ? "Atualize as informações principais" : "Planeje um novo trabalho" }), _jsx("p", { className: "subtext", children: projectModalMode === "edit"
                                                         ? "Ajuste cliente, datas ou links principais do projeto selecionado."
-                                                        : "Informe dados básicos para criarmos o projeto no portfólio." })] }), _jsx("button", { type: "button", className: "ghost-button", onClick: handleCloseProjectModal, children: "Fechar" })] }), _jsxs("form", { className: "modal-form", onSubmit: handleProjectModalSubmit, children: [_jsxs("label", { children: ["Nome do projeto", _jsx("input", { type: "text", value: projectForm.name, onChange: (event) => handleProjectFieldChange("name", event.target.value), placeholder: "ImplementAo ERP 2025", required: true })] }), _jsxs("label", { children: ["Cliente / unidade", _jsx("input", { type: "text", value: projectForm.clientName, onChange: (event) => handleProjectFieldChange("clientName", event.target.value), placeholder: "Corp Holding", required: true })] }), _jsxs("label", { children: ["Or\u00E7amento aprovado (R$)", _jsx("input", { type: "number", min: "0", step: "1000", value: projectForm.budget, onChange: (event) => handleProjectFieldChange("budget", event.target.value), placeholder: "250000" })] }), _jsxs("label", { children: ["Reposit\u00F3rio GitHub", _jsx("input", { type: "url", value: projectForm.repositoryUrl, onChange: (event) => handleProjectFieldChange("repositoryUrl", event.target.value), placeholder: "https://github.com/org/projeto" })] }), _jsxs("div", { className: "modal-grid", children: [_jsxs("label", { children: ["Incio planejado", _jsx("input", { type: "date", value: projectForm.startDate, onChange: (event) => handleProjectFieldChange("startDate", event.target.value) })] }), _jsxs("label", { children: ["Conclus\u00E3o prevista", _jsx("input", { type: "date", value: projectForm.endDate, onChange: (event) => handleProjectFieldChange("endDate", event.target.value) })] })] }), _jsxs("label", { children: ["Equipe (e-mails separados por v\u00EDrgula)", _jsx("textarea", { value: projectForm.teamMembers, onChange: (event) => handleProjectFieldChange("teamMembers", event.target.value), placeholder: "ana@empresa.com, joao@empresa.com" })] }), _jsxs("label", { children: ["descri\u00E7\u00E3o", _jsx("textarea", { value: projectForm.description, onChange: (event) => handleProjectFieldChange("description", event.target.value), placeholder: "Objetivos, entregas e premissas iniciais..." })] }), projectModalError && _jsx("p", { className: "error-text", children: projectModalError }), _jsxs("footer", { className: "modal-actions", children: [_jsx("button", { type: "button", className: "ghost-button", onClick: handleCloseProjectModal, children: "Cancelar" }), _jsx("button", { type: "submit", className: "primary-button", disabled: projectModalLoading, children: projectModalLoading
+                                                        : "Informe dados básicos para criarmos o projeto no portfólio." })] }), _jsx("button", { type: "button", className: "ghost-button", onClick: handleCloseProjectModal, children: "Fechar" })] }), _jsxs("form", { className: "modal-form", onSubmit: handleProjectModalSubmit, children: [_jsxs("label", { children: ["Nome do projeto", _jsx("input", { type: "text", value: projectForm.name, onChange: (event) => handleProjectFieldChange("name", event.target.value), placeholder: "ImplementAo ERP 2025", required: true })] }), _jsxs("label", { children: ["Cliente / unidade", _jsx("input", { type: "text", value: projectForm.clientName, onChange: (event) => handleProjectFieldChange("clientName", event.target.value), placeholder: "Corp Holding", required: true })] }), _jsxs("label", { children: ["Or\u00E7amento aprovado (R$)", _jsx("input", { type: "number", min: "0", step: "1000", value: projectForm.budget, onChange: (event) => handleProjectFieldChange("budget", event.target.value), placeholder: "250000" })] }), _jsxs("label", { children: ["Reposit\u00F3rio GitHub", _jsx("input", { type: "url", value: projectForm.repositoryUrl, onChange: (event) => handleProjectFieldChange("repositoryUrl", event.target.value), placeholder: "https://github.com/org/projeto" })] }), _jsxs("div", { className: "modal-grid", children: [_jsxs("label", { children: ["Incio planejado", _jsx("input", { type: "date", value: projectForm.startDate, onChange: (event) => handleProjectFieldChange("startDate", event.target.value) })] }), _jsxs("label", { children: ["Conclus\u00E3o prevista", _jsx("input", { type: "date", value: projectForm.endDate, onChange: (event) => handleProjectFieldChange("endDate", event.target.value) })] })] }), _jsxs("label", { children: ["Equipe (e-mails separados por v\u00EDrgula)", _jsx("textarea", { value: projectForm.teamMembers, onChange: (event) => handleProjectFieldChange("teamMembers", event.target.value), placeholder: "ana@empresa.com, joao@empresa.com" })] }), _jsxs("label", { children: ["Descri\u00E7\u00E3o", _jsx("textarea", { value: projectForm.description, onChange: (event) => handleProjectFieldChange("description", event.target.value), placeholder: "Objetivos, entregas e premissas iniciais..." })] }), projectModalError && _jsx("p", { className: "error-text", children: projectModalError }), _jsxs("footer", { className: "modal-actions", children: [_jsx("button", { type: "button", className: "ghost-button", onClick: handleCloseProjectModal, children: "Cancelar" }), _jsx("button", { type: "submit", className: "primary-button", disabled: projectModalLoading, children: projectModalLoading
                                                         ? "Enviando..."
                                                         : projectModalMode === "edit"
                                                             ? "Salvar alterações"
