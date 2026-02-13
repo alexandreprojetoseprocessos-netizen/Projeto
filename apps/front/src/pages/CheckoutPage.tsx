@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { getNetworkErrorMessage } from "../config/api";
+import { apiUrl, getNetworkErrorMessage } from "../config/api";
+import { AlertTriangle, CalendarClock, CheckCircle2, CreditCard, FileText, RefreshCw } from "lucide-react";
 import {
   ANNUAL_DISCOUNT_LABEL,
   PLAN_DEFINITIONS,
@@ -72,10 +73,36 @@ const formatYear = (value: string) => digitsOnly(value).slice(0, 4);
 const formatCvv = (value: string) => digitsOnly(value).slice(0, 4);
 const formatIdentificationNumber = (value: string) => digitsOnly(value).slice(0, 14);
 
+const formatDatePtBr = (value?: string | null) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("pt-BR");
+};
+
+const billingCycleLabels: Record<string, string> = {
+  MONTHLY: "Mensal",
+  ANNUAL: "Anual"
+};
+
+const subscriptionStatusLabels: Record<string, string> = {
+  ACTIVE: "Ativa",
+  PENDING: "Pendente",
+  PAST_DUE: "Em atraso",
+  CANCELED: "Cancelada"
+};
+
+const paymentMethodLabels: Record<string, string> = {
+  card: "Cartao de credito",
+  pix: "Pix",
+  boleto: "Boleto"
+};
+
 export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionActivated }: CheckoutPageProps) => {
   const navigate = useNavigate();
   const { token, user, signOut } = useAuth();
   const [error, setError] = useState<string | null>(subscriptionError ?? null);
+  const [info, setInfo] = useState<string | null>(null);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("MONTHLY");
   const [selectedPlanCode] = useState<string>(() => {
     if (typeof window === "undefined") return "START";
@@ -113,6 +140,8 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
   const mpRef = useRef<any | null>(null);
   const [mpReady, setMpReady] = useState(false);
   const [mpError, setMpError] = useState<string | null>(null);
+  const [manageLoading, setManageLoading] = useState(false);
+  const [manageError, setManageError] = useState<string | null>(null);
 
   const publicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
 
@@ -144,6 +173,16 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
   }, [subscriptionError]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const key = "gp:checkout_reopen_after_cancel";
+    const shouldShowInfo = window.sessionStorage.getItem(key);
+    if (shouldShowInfo === "1") {
+      setInfo("Assinatura cancelada. Escolha abaixo a nova forma de pagamento para reativar seu acesso.");
+      window.sessionStorage.removeItem(key);
+    }
+  }, []);
+
+  useEffect(() => {
     if (typeof window !== "undefined" && selectedPlanCode) {
       window.localStorage.setItem("gp:selectedPlan", selectedPlanCode);
     }
@@ -166,6 +205,16 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
   const amount = Number(((priceCents ?? 0) / 100).toFixed(2));
   const description = `Plano ${plan.name}`;
   const payerEmail = user?.email ?? "";
+  const currentPlanName = subscription?.product?.name ?? subscription?.product?.code ?? selectedPlanCode;
+  const currentStatus = String(subscription?.status ?? "PENDING").toUpperCase();
+  const currentStatusLabel = subscriptionStatusLabels[currentStatus] ?? currentStatus;
+  const currentPaymentMethod = String(subscription?.paymentMethod ?? "").toLowerCase();
+  const currentPaymentMethodLabel = paymentMethodLabels[currentPaymentMethod] ?? "Nao informado";
+  const currentBillingCycleLabel =
+    billingCycleLabels[String(subscription?.billingCycle ?? "").toUpperCase()] ??
+    String(subscription?.billingCycle ?? "Nao informado");
+  const nextBillingDate = formatDatePtBr(subscription?.currentPeriodEnd ?? subscription?.expiresAt ?? null);
+  const startedAtLabel = formatDatePtBr(subscription?.startedAt ?? null);
 
   const resolveCheckoutErrorMessage = useCallback((error: unknown) => {
     if (error instanceof DOMException || error instanceof TypeError) {
@@ -174,6 +223,43 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
     if (error instanceof Error) return error.message;
     return "Falha ao iniciar pagamento.";
   }, []);
+
+  const handleCancelAndReopenCheckout = async () => {
+    if (!token) {
+      setManageError("Sessao expirada. Faca login novamente.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Para trocar cartao ou forma de pagamento, a assinatura atual sera cancelada agora. Deseja continuar?"
+    );
+    if (!confirmed) return;
+
+    setManageLoading(true);
+    setManageError(null);
+
+    try {
+      const response = await fetch(apiUrl("/subscriptions/cancel"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.message ?? "Nao foi possivel cancelar a assinatura atual.");
+      }
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem("gp:checkout_reopen_after_cancel", "1");
+      }
+      await onSubscriptionActivated?.();
+    } catch (cancelError) {
+      setManageError(resolveCheckoutErrorMessage(cancelError));
+    } finally {
+      setManageLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -521,22 +607,114 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
   if (subscription?.status === "ACTIVE") {
     return (
       <div className="checkout-page">
-        <section className="checkout-card">
-          <p className="eyebrow">Assinatura ativa</p>
-          <h2>Voce ja tem acesso liberado</h2>
-          <p className="subtext">
-            Plano {subscription.product?.name ?? subscription.product?.code ?? selectedPlanCode} ativo. Voce pode criar
-            sua organizacao e acessar os projetos normalmente.
-          </p>
-          <div className="payment-actions">
-            <button type="button" className="primary-button" onClick={() => navigate("/organizacao")}>
-              Ir para criacao da organizacao
+        <section className="checkout-card checkout-manage">
+          <header className="checkout-manage-hero">
+            <div>
+              <p className="eyebrow">Gestao de pagamento</p>
+              <h2>Assinatura ativa e pronta para uso</h2>
+              <p className="subtext">
+                Aqui voce acompanha plano, ciclo e metodo atual, alem de executar troca de pagamento quando precisar.
+              </p>
+            </div>
+            <span className="checkout-manage-status">{currentStatusLabel}</span>
+          </header>
+
+          <div className="checkout-manage-grid">
+            <article className="checkout-manage-card">
+              <div className="checkout-manage-card__title">
+                <CreditCard size={16} />
+                <h3>Plano e cobranca</h3>
+              </div>
+              <dl className="checkout-manage-metrics">
+                <div>
+                  <dt>Plano atual</dt>
+                  <dd>{currentPlanName}</dd>
+                </div>
+                <div>
+                  <dt>Ciclo</dt>
+                  <dd>{currentBillingCycleLabel}</dd>
+                </div>
+                <div>
+                  <dt>Metodo atual</dt>
+                  <dd>{currentPaymentMethodLabel}</dd>
+                </div>
+                <div>
+                  <dt>Inicio</dt>
+                  <dd>{startedAtLabel}</dd>
+                </div>
+                <div>
+                  <dt>Proxima cobranca</dt>
+                  <dd>{nextBillingDate}</dd>
+                </div>
+              </dl>
+            </article>
+
+            <article className="checkout-manage-card">
+              <div className="checkout-manage-card__title">
+                <CalendarClock size={16} />
+                <h3>Gerenciar assinatura</h3>
+              </div>
+              <div className="checkout-manage-steps">
+                <p>
+                  Para trocar cartao ou forma de pagamento, o sistema precisa encerrar a assinatura atual e iniciar novo
+                  checkout.
+                </p>
+                <div className="checkout-manage-warning">
+                  <AlertTriangle size={15} />
+                  <span>A troca de pagamento cancela a assinatura atual antes da nova cobranca.</span>
+                </div>
+              </div>
+              <div className="checkout-manage-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleCancelAndReopenCheckout}
+                  disabled={manageLoading}
+                >
+                  {manageLoading ? "Preparando checkout..." : "Trocar forma de pagamento"}
+                </button>
+                <button type="button" className="secondary-button" onClick={() => navigate("/plano")}>
+                  Ver detalhes do plano
+                </button>
+              </div>
+              {manageError ? <p className="error-text">{manageError}</p> : null}
+            </article>
+          </div>
+
+          <div className="checkout-manage-footer">
+            <button type="button" className="ghost-button" onClick={() => navigate("/dashboard")}>
+              <CheckCircle2 size={16} />
+              Ir para dashboard
             </button>
-            <button type="button" className="secondary-button" onClick={() => navigate("/dashboard")}>
-              Ver dashboard
+            <button type="button" className="ghost-button" onClick={() => navigate("/organizacao")}>
+              <FileText size={16} />
+              Criar/selecionar organizacao
+            </button>
+            <button type="button" className="ghost-button" onClick={onSubscriptionActivated}>
+              <RefreshCw size={16} />
+              Atualizar status
             </button>
           </div>
         </section>
+
+        <aside className="checkout-sidebar checkout-manage-sidebar">
+          <h4>Resumo rapido</h4>
+          <ul>
+            <li>
+              <strong>Plano:</strong> {currentPlanName}
+            </li>
+            <li>
+              <strong>Metodo:</strong> {currentPaymentMethodLabel}
+            </li>
+            <li>
+              <strong>Ciclo:</strong> {currentBillingCycleLabel}
+            </li>
+            <li>
+              <strong>Proxima cobranca:</strong> {nextBillingDate}
+            </li>
+          </ul>
+          <p className="muted">Pagamento processado via provedor seguro e com atualizacao automatica da assinatura.</p>
+        </aside>
       </div>
     );
   }
@@ -591,6 +769,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
           </button>
         </div>
 
+        {info && <p className="warning-text">{info}</p>}
         {error && <p className="error-text">{error}</p>}
 
         <div className="payment-tabs">

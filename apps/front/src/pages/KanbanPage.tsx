@@ -177,6 +177,11 @@ const KanbanPage: React.FC = () => {
     }));
   }, [filtered, mapToTaskStatus, projectNameMap, selectedProjectId]);
 
+  const totalTasks = filtered.length;
+  const inProgressCount = kanbanColumns.find((column) => column.id === "IN_PROGRESS")?.tasks.length ?? 0;
+  const delayedCount = kanbanColumns.find((column) => column.id === "DELAYED")?.tasks.length ?? 0;
+  const doneCount = kanbanColumns.find((column) => column.id === "DONE")?.tasks.length ?? 0;
+
   const handleDragEnd = async (result: any) => {
     const { destination, source, draggableId } = result;
     if (!destination || destination.droppableId === source.droppableId) return;
@@ -225,10 +230,28 @@ const KanbanPage: React.FC = () => {
   return (
     <section className="kanbanPage">
       <header className="page-header">
-        <div>
+        <div className="kanbanHeroMain">
           <p className="eyebrow">EAP</p>
           <h1>Kanban</h1>
-          <p className="subtext">Visualização por status</p>
+          <p className="subtext">Visualizacao por status</p>
+          <div className="kanbanHeroStats" aria-label="Resumo do quadro">
+            <span className="kanbanHeroStat">
+              <strong>{totalTasks}</strong>
+              <small>Tarefas</small>
+            </span>
+            <span className="kanbanHeroStat is-progress">
+              <strong>{inProgressCount}</strong>
+              <small>Em andamento</small>
+            </span>
+            <span className="kanbanHeroStat is-delayed">
+              <strong>{delayedCount}</strong>
+              <small>Em atraso</small>
+            </span>
+            <span className="kanbanHeroStat is-done">
+              <strong>{doneCount}</strong>
+              <small>Finalizadas</small>
+            </span>
+          </div>
           {wbsError && <p className="error-text">{wbsError}</p>}
         </div>
 

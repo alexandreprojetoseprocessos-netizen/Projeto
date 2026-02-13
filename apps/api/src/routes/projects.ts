@@ -164,6 +164,160 @@ const ensureBoardColumns = async (projectId: string) => {
   });
 };
 
+const BUDGET_CONFIG_CATEGORY = "__BUDGET_CONFIG__";
+const BUDGET_ITEM_KIND = "BUDGET_ITEM";
+const BUDGET_CONFIG_KIND = "BUDGET_CONFIG";
+const BUDGET_CATEGORIES = ["Mao de Obra", "Material", "Equipamento", "Custos Indiretos", "Outros"] as const;
+
+type BudgetCategory = (typeof BUDGET_CATEGORIES)[number];
+
+type BudgetItemMeta = {
+  kind: typeof BUDGET_ITEM_KIND;
+  description: string;
+  quantity: number;
+  unitValue: number;
+  order: number;
+};
+
+type BudgetConfigMeta = {
+  kind: typeof BUDGET_CONFIG_KIND;
+  notes: string;
+  contingency: number;
+};
+
+type BudgetItemInput = {
+  id?: string;
+  category: BudgetCategory;
+  description: string;
+  quantity: number;
+  unitValue: number;
+  order: number;
+};
+
+const toFiniteNumber = (value: unknown, fallback = 0) => {
+  const numberValue =
+    value instanceof Prisma.Decimal
+      ? Number(value.toString())
+      : typeof value === "number"
+      ? value
+      : typeof value === "string"
+      ? Number(value)
+      : NaN;
+  return Number.isFinite(numberValue) ? numberValue : fallback;
+};
+
+const toMoneyDecimal = (value: number) => new Prisma.Decimal(toFiniteNumber(value, 0).toFixed(2));
+
+const clampNumber = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const normalizeBudgetCategory = (value: unknown): BudgetCategory => {
+  if (typeof value !== "string") return "Outros";
+  const trimmed = value.trim();
+  if (!trimmed) return "Outros";
+  if (trimmed === "Mão de Obra") return "Mao de Obra";
+  if ((BUDGET_CATEGORIES as readonly string[]).includes(trimmed)) {
+    return trimmed as BudgetCategory;
+  }
+  return "Outros";
+};
+
+const parseJsonValue = (value?: string | null) => {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+};
+
+const parseBudgetItemMeta = (value?: string | null): BudgetItemMeta | null => {
+  const json = parseJsonValue(value);
+  if (!json || json.kind !== BUDGET_ITEM_KIND) return null;
+  return {
+    kind: BUDGET_ITEM_KIND,
+    description: typeof json.description === "string" ? json.description : "",
+    quantity: clampNumber(toFiniteNumber(json.quantity, 1), 0, 1000000),
+    unitValue: clampNumber(toFiniteNumber(json.unitValue, 0), 0, 1000000000),
+    order: clampNumber(Math.trunc(toFiniteNumber(json.order, 0)), 0, 10000)
+  };
+};
+
+const parseBudgetConfigMeta = (value?: string | null): BudgetConfigMeta | null => {
+  const json = parseJsonValue(value);
+  if (!json || json.kind !== BUDGET_CONFIG_KIND) return null;
+  return {
+    kind: BUDGET_CONFIG_KIND,
+    notes: typeof json.notes === "string" ? json.notes : "",
+    contingency: clampNumber(toFiniteNumber(json.contingency, 10), 0, 100)
+  };
+};
+
+const buildBudgetItemNotes = (meta: Omit<BudgetItemMeta, "kind">) =>
+  JSON.stringify({
+    kind: BUDGET_ITEM_KIND,
+    description: meta.description,
+    quantity: meta.quantity,
+    unitValue: meta.unitValue,
+    order: meta.order
+  });
+
+const buildBudgetConfigNotes = (meta: Omit<BudgetConfigMeta, "kind">) =>
+  JSON.stringify({
+    kind: BUDGET_CONFIG_KIND,
+    notes: meta.notes,
+    contingency: meta.contingency
+  });
+
+const buildBudgetResponse = (project: {
+  id: string;
+  name: string;
+  budgetPlanned: Prisma.Decimal | null;
+  costs: Array<{
+    id: string;
+    category: string;
+    plannedValue: Prisma.Decimal;
+    actualValue: Prisma.Decimal | null;
+    notes: string | null;
+    createdAt: Date;
+  }>;
+}) => {
+  const configRow = project.costs.find((cost) => cost.category === BUDGET_CONFIG_CATEGORY) ?? null;
+  const configMeta = parseBudgetConfigMeta(configRow?.notes ?? null);
+
+  const budgetItems = project.costs
+    .filter((cost) => cost.category !== BUDGET_CONFIG_CATEGORY)
+    .map((cost) => ({
+      cost,
+      meta: parseBudgetItemMeta(cost.notes)
+    }))
+    .filter((entry) => entry.meta !== null)
+    .sort((left, right) => {
+      const leftOrder = left.meta?.order ?? 0;
+      const rightOrder = right.meta?.order ?? 0;
+      if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+      return left.cost.createdAt.getTime() - right.cost.createdAt.getTime();
+    })
+    .map(({ cost, meta }) => {
+      const safeMeta = meta as BudgetItemMeta;
+      return {
+        id: cost.id,
+        category: normalizeBudgetCategory(cost.category),
+        description: safeMeta.description || "Item de custo",
+        quantity: clampNumber(toFiniteNumber(safeMeta.quantity, 1), 0, 1000000),
+        unitValue: clampNumber(toFiniteNumber(safeMeta.unitValue, 0), 0, 1000000000)
+      };
+    });
+
+  return {
+    projectId: project.id,
+    projectName: project.name,
+    projectValue: toFiniteNumber(project.budgetPlanned, 0),
+    contingency: configMeta?.contingency ?? clampNumber(toFiniteNumber(configRow?.actualValue, 10), 0, 100),
+    notes: configMeta?.notes ?? "",
+    items: budgetItems
+  };
+};
+
 export const projectsRouter = Router();
 
 projectsRouter.use(authMiddleware);
@@ -621,6 +775,258 @@ projectsRouter.put("/:projectId", async (req, res) => {
     }
     logger.error({ err: error }, "Failed to update project");
     return res.status(500).json({ message: "Failed to update project" });
+  }
+});
+
+projectsRouter.get("/:projectId/budget", async (req, res) => {
+  const { projectId } = req.params;
+  const membership = await ensureProjectMembership(req, res, projectId);
+  if (!membership) return;
+
+  try {
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: {
+        id: true,
+        name: true,
+        budgetPlanned: true,
+        costs: {
+          where: {
+            OR: [{ category: BUDGET_CONFIG_CATEGORY }, { notes: { contains: BUDGET_ITEM_KIND } }]
+          },
+          select: {
+            id: true,
+            category: true,
+            plannedValue: true,
+            actualValue: true,
+            notes: true,
+            createdAt: true
+          },
+          orderBy: [{ createdAt: "asc" }]
+        }
+      }
+    });
+
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    return res.json({
+      budget: buildBudgetResponse(project)
+    });
+  } catch (error) {
+    logger.error({ err: error, projectId }, "Failed to load project budget");
+    return res.status(500).json({ message: "Failed to load project budget" });
+  }
+});
+
+projectsRouter.put("/:projectId/budget", async (req, res) => {
+  const { projectId } = req.params;
+  const membership = await ensureProjectMembership(req, res, projectId, [
+    ProjectRole.MANAGER,
+    ProjectRole.CONTRIBUTOR,
+    ProjectRole.APPROVER
+  ]);
+  if (!membership) return;
+
+  const body = req.body ?? {};
+  const projectValue = clampNumber(toFiniteNumber(body.projectValue, 0), 0, 1000000000);
+  const contingency = clampNumber(toFiniteNumber(body.contingency, 10), 0, 100);
+  const notes = typeof body.notes === "string" ? body.notes.slice(0, 5000) : "";
+  const rawItems = Array.isArray(body.items) ? body.items : [];
+
+  const items: BudgetItemInput[] = rawItems.slice(0, 500).map((rawItem: unknown, index: number) => {
+    const parsedItem = (rawItem ?? {}) as Record<string, unknown>;
+    const rawId = parsedItem.id;
+    const rawDescription = parsedItem.description;
+    const category = normalizeBudgetCategory(parsedItem.category);
+    const description =
+      typeof rawDescription === "string" && rawDescription.trim()
+        ? rawDescription.trim().slice(0, 500)
+        : "Item de custo";
+    const quantity = clampNumber(toFiniteNumber(parsedItem.quantity, 0), 0, 1000000);
+    const unitValue = clampNumber(toFiniteNumber(parsedItem.unitValue, 0), 0, 1000000000);
+    return {
+      id: typeof rawId === "string" && rawId.trim() ? rawId.trim().slice(0, 128) : undefined,
+      category,
+      description,
+      quantity,
+      unitValue,
+      order: index
+    };
+  });
+
+  try {
+    const budget = await prisma.$transaction(async (tx) => {
+      const project = await tx.project.findUnique({
+        where: { id: projectId },
+        select: {
+          id: true,
+          name: true,
+          budgetPlanned: true,
+          costs: {
+            where: {
+              OR: [{ category: BUDGET_CONFIG_CATEGORY }, { notes: { contains: BUDGET_ITEM_KIND } }]
+            },
+            select: {
+              id: true,
+              category: true,
+              plannedValue: true,
+              actualValue: true,
+              notes: true,
+              createdAt: true
+            },
+            orderBy: [{ createdAt: "asc" }]
+          }
+        }
+      });
+
+      if (!project) {
+        throw new Error("PROJECT_NOT_FOUND");
+      }
+
+      const existingConfig = project.costs.find((cost) => cost.category === BUDGET_CONFIG_CATEGORY) ?? null;
+      const existingManagedItems = project.costs
+        .map((cost) => ({
+          ...cost,
+          meta: parseBudgetItemMeta(cost.notes)
+        }))
+        .filter((cost) => cost.meta !== null);
+
+      const existingManagedItemIds = new Set(existingManagedItems.map((item) => item.id));
+      const incomingKnownIds = new Set(
+        items
+          .map((item) => item.id)
+          .filter((id): id is string => typeof id === "string" && existingManagedItemIds.has(id))
+      );
+      const idsToDelete = existingManagedItems
+        .map((item) => item.id)
+        .filter((id) => !incomingKnownIds.has(id));
+
+      if (idsToDelete.length) {
+        await tx.cost.deleteMany({
+          where: {
+            projectId,
+            id: { in: idsToDelete }
+          }
+        });
+      }
+
+      for (const item of items) {
+        const total = clampNumber(Number((item.quantity * item.unitValue).toFixed(2)), 0, 1000000000);
+        const payload = {
+          projectId,
+          category: item.category,
+          plannedValue: toMoneyDecimal(total),
+          actualValue: toMoneyDecimal(item.unitValue),
+          occurredAt: new Date(),
+          notes: buildBudgetItemNotes({
+            description: item.description,
+            quantity: item.quantity,
+            unitValue: item.unitValue,
+            order: item.order
+          })
+        };
+
+        if (item.id && existingManagedItemIds.has(item.id)) {
+          await tx.cost.update({
+            where: { id: item.id },
+            data: payload
+          });
+        } else {
+          await tx.cost.create({
+            data: item.id ? { ...payload, id: item.id } : payload
+          });
+        }
+      }
+
+      const subtotal = items.reduce((acc, item) => acc + item.quantity * item.unitValue, 0);
+      const costTotal = subtotal + subtotal * (contingency / 100);
+
+      if (existingConfig) {
+        await tx.cost.update({
+          where: { id: existingConfig.id },
+          data: {
+            plannedValue: toMoneyDecimal(projectValue),
+            actualValue: toMoneyDecimal(contingency),
+            occurredAt: new Date(),
+            notes: buildBudgetConfigNotes({ notes, contingency })
+          }
+        });
+      } else {
+        await tx.cost.create({
+          data: {
+            projectId,
+            category: BUDGET_CONFIG_CATEGORY,
+            plannedValue: toMoneyDecimal(projectValue),
+            actualValue: toMoneyDecimal(contingency),
+            occurredAt: new Date(),
+            notes: buildBudgetConfigNotes({ notes, contingency })
+          }
+        });
+      }
+
+      await tx.project.update({
+        where: { id: projectId },
+        data: {
+          budgetPlanned: toMoneyDecimal(projectValue),
+          budgetActual: toMoneyDecimal(costTotal)
+        }
+      });
+
+      const updatedProject = await tx.project.findUnique({
+        where: { id: projectId },
+        select: {
+          id: true,
+          name: true,
+          budgetPlanned: true,
+          costs: {
+            where: {
+              OR: [{ category: BUDGET_CONFIG_CATEGORY }, { notes: { contains: BUDGET_ITEM_KIND } }]
+            },
+            select: {
+              id: true,
+              category: true,
+              plannedValue: true,
+              actualValue: true,
+              notes: true,
+              createdAt: true
+            },
+            orderBy: [{ createdAt: "asc" }]
+          }
+        }
+      });
+
+      if (!updatedProject) {
+        throw new Error("PROJECT_NOT_FOUND");
+      }
+
+      return buildBudgetResponse(updatedProject);
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        organizationId: req.organization!.id,
+        actorId: membership.userId,
+        projectId,
+        action: "PROJECT_BUDGET_UPDATED",
+        entity: "PROJECT_BUDGET",
+        entityId: projectId,
+        diff: {
+          items: items.length,
+          contingency,
+          projectValue
+        }
+      }
+    });
+
+    return res.json({ budget });
+  } catch (error: any) {
+    if (error instanceof Error && error.message === "PROJECT_NOT_FOUND") {
+      return res.status(404).json({ message: "Project not found" });
+    }
+    logger.error({ err: error, projectId }, "Failed to save project budget");
+    return res.status(500).json({ message: "Failed to save project budget" });
   }
 });
 

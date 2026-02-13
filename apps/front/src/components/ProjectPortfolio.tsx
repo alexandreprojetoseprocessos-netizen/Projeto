@@ -398,6 +398,23 @@ export const ProjectPortfolio = ({
     });
   }, [projects, statusFilter, clientFilter, ownerFilter, tagFilter, showOnlyFavorites, favoriteIds, searchTerm]);
 
+  const hasActiveFilters =
+    statusFilter !== "all" ||
+    clientFilter !== "all" ||
+    ownerFilter !== "all" ||
+    tagFilter !== "all" ||
+    showOnlyFavorites ||
+    searchTerm.trim().length > 0;
+
+  const clearFilters = () => {
+    setStatusFilter("all");
+    setClientFilter("all");
+    setOwnerFilter("all");
+    setTagFilter("all");
+    setShowOnlyFavorites(false);
+    setSearchTerm("");
+  };
+
   const toggleFavorite = (projectId: string) => {
     setFavoriteIds((current) => {
       const next = new Set(current);
@@ -931,6 +948,16 @@ export const ProjectPortfolio = ({
                 </label>
               </div>
               <div className="projects-filters-right">
+                <div className="projects-filters-feedback" role="status" aria-live="polite">
+                  <span>
+                    {filteredProjects.length} de {projects.length} projeto{projects.length === 1 ? "" : "s"}
+                  </span>
+                  {hasActiveFilters && (
+                    <button type="button" className="link-button" onClick={clearFilters}>
+                      Limpar filtros
+                    </button>
+                  )}
+                </div>
                 <button
                   type="button"
                   className="btn-secondary"

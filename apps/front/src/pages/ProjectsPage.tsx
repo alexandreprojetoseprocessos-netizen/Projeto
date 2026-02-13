@@ -7,6 +7,7 @@ import type { DashboardOutletContext, ProjectPriorityValue, ProjectStatusValue }
 import { canManageProjects, type OrgRole } from "../components/permissions";
 import { Trash2 } from "lucide-react";
 import { apiUrl } from "../config/api";
+import { getPlanDefinition } from "../config/plans";
 
 const PROJECT_STATUS_OPTIONS: Array<{ value: ProjectStatusValue; label: string }> = [
   { value: "PLANNED", label: "Planejamento" },
@@ -334,7 +335,24 @@ export const ProjectsPage = () => {
   };
 
   const hasProjects = Boolean(portfolio && portfolio.length > 0);
-  const isAtProjectLimit = projectLimits?.remaining === 0;
+  const activeProjectsCount = portfolio?.length ?? 0;
+  const usedProjectsCount = projectLimits?.used ?? activeProjectsCount;
+  const projectLimitMax = projectLimits?.max ?? null;
+  const projectLimitRemaining =
+    projectLimits?.remaining ?? (projectLimitMax === null ? null : Math.max(projectLimitMax - usedProjectsCount, 0));
+  const projectUsagePercent =
+    projectLimitMax === null || projectLimitMax <= 0
+      ? 0
+      : Math.min(100, Math.round((usedProjectsCount / projectLimitMax) * 100));
+  const isAtProjectLimit = projectLimitMax !== null && projectLimitRemaining === 0;
+  const isNearProjectLimit =
+    projectLimitMax !== null &&
+    projectLimitRemaining !== null &&
+    projectLimitRemaining > 0 &&
+    (projectLimitRemaining <= 1 || projectUsagePercent >= 80);
+  const currentPlanName = projectLimits?.planCode ? getPlanDefinition(projectLimits.planCode).displayName : "Nao informado";
+  const limitToneClass = isAtProjectLimit ? "is-danger" : isNearProjectLimit ? "is-warning" : "is-ok";
+  const activeProjectsLabel = activeProjectsCount === 1 ? "projeto ativo" : "projetos ativos";
   const isEditing = Boolean(editingProject);
   const modalTitle = isEditing ? "Editar projeto" : "Novo projeto";
   const modalSubtitle = isEditing ? "Atualize as informações do projeto." : undefined;
@@ -464,33 +482,70 @@ export const ProjectsPage = () => {
   return (
     <div className="page-container projects-page">
       <header className="page-header">
-        <div>
+        <div className="projects-header-intro">
           <p className="page-kicker">Portfólio</p>
           <h1 className="page-title">Projetos</h1>
           <p className="page-subtitle">Filtros avançados e troca de visualização entre cards e tabela.</p>
         </div>
         <div className="projects-header-actions">
-          <button
-            className="btn-secondary"
-            type="button"
-            onClick={() => setIsTrashOpen(true)}
-          >
-            <Trash2 size={16} />
-            Lixeira
-          </button>
-          <button
-            className="btn-primary"
-            type="button"
-            onClick={handleOpenCreateModal}
-            disabled={isAtProjectLimit}
-          >
-            + Novo projeto
-          </button>
+          <div className={`projects-capacity-card ${limitToneClass}`}>
+            <div className="projects-capacity-card__row">
+              <span className="projects-capacity-card__label">Capacidade da organizacao</span>
+              <span className="projects-capacity-card__plan">Plano {currentPlanName}</span>
+            </div>
+            <div className="projects-capacity-card__count">
+              <strong>{activeProjectsCount}</strong>
+              <span>{activeProjectsLabel}</span>
+            </div>
+            <div className="projects-capacity-card__meta">
+              {projectLimitMax === null ? (
+                <span>{usedProjectsCount} em uso no plano atual sem limite.</span>
+              ) : (
+                <span>
+                  {usedProjectsCount} de {projectLimitMax} usados na organizacao.
+                </span>
+              )}
+              {projectLimitMax !== null && projectLimitRemaining !== null && (
+                <span className="projects-capacity-card__remaining">
+                  {isAtProjectLimit
+                    ? "Limite atingido."
+                    : `Restam ${projectLimitRemaining} ${projectLimitRemaining === 1 ? "vaga" : "vagas"}.`}
+                </span>
+              )}
+            </div>
+            {projectLimitMax !== null && (
+              <div className="projects-capacity-card__bar" aria-hidden="true">
+                <span style={{ width: `${projectUsagePercent}%` }} />
+              </div>
+            )}
+            {isNearProjectLimit && !isAtProjectLimit && (
+              <p className="projects-capacity-card__hint">A organizacao esta perto do limite do plano.</p>
+            )}
+          </div>
+
+          <div className="projects-header-buttons">
+            <button
+              className="btn-secondary"
+              type="button"
+              onClick={() => setIsTrashOpen(true)}
+            >
+              <Trash2 size={16} />
+              Lixeira
+            </button>
+            <button
+              className="btn-primary"
+              type="button"
+              onClick={handleOpenCreateModal}
+              disabled={isAtProjectLimit}
+            >
+              + Novo projeto
+            </button>
+          </div>
         </div>
         {isAtProjectLimit && (
           <div className="projects-limit-hint">
             <div>
-              Você atingiu o limite de projetos do seu plano atual ({projectLimits?.used} de {projectLimits?.max}). Arquive
+              Você atingiu o limite de projetos do seu plano atual ({usedProjectsCount} de {projectLimitMax}). Arquive
               ou exclua um projeto para criar outro.
             </div>
             <button type="button" className="link-button" onClick={() => setIsLimitModalOpen(true)}>
@@ -686,7 +741,7 @@ export const ProjectsPage = () => {
       <ProjectLimitModal
         isOpen={isLimitModalOpen}
         onClose={() => setIsLimitModalOpen(false)}
-        maxProjects={projectLimits?.max ?? null}
+        maxProjects={projectLimitMax}
       />
     </div>
   );

@@ -1,10 +1,11 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import { prisma } from "@gestao/database";
 import { OrganizationStatus } from "@prisma/client";
 import { authMiddleware } from "../middleware/auth";
 import { getActiveSubscriptionForUser, getLatestSubscriptionForUser } from "../services/subscriptions";
 import { countOrganizationsForLimit, countProjectsForLimit } from "../services/planLimitCounts";
 import { getOrgLimitForPlan, getProjectLimitForPlan } from "../services/subscriptionLimits";
+import { normalizeModulePermissionsForRole } from "../services/modulePermissions";
 
 export const meRouter = Router();
 
@@ -36,6 +37,7 @@ meRouter.get("/", async (req, res) => {
       isActive: membership.organization.isActive,
       status: membership.organization.status,
       role: membership.role,
+      modulePermissions: normalizeModulePermissionsForRole(membership.role, (membership as any).modulePermissions),
       projectsCount: await countProjectsForLimit(membership.organizationId)
     }))
   );
@@ -108,3 +110,4 @@ meRouter.get("/subscription", async (req, res) => {
       : null
   });
 });
+

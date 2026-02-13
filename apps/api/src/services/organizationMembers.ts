@@ -1,6 +1,7 @@
 ﻿import { prisma } from "@gestao/database";
 import { MembershipRole } from "@prisma/client";
 import type { AuthenticatedUser } from "../types/http";
+import { getDefaultModulePermissions, normalizeModulePermissionsForRole } from "./modulePermissions";
 
 const ensureUserExistsByEmail = async (email: string, requester: AuthenticatedUser) => {
   const normalizedEmail = email.trim().toLowerCase();
@@ -11,7 +12,7 @@ const ensureUserExistsByEmail = async (email: string, requester: AuthenticatedUs
   return prisma.user.create({
     data: {
       email: normalizedEmail,
-      fullName: nameFromEmail || "Novo usuário",
+      fullName: nameFromEmail || "Novo usuario",
       passwordHash: "invite-created",
       locale: "pt-BR",
       timezone: "America/Sao_Paulo",
@@ -21,17 +22,22 @@ const ensureUserExistsByEmail = async (email: string, requester: AuthenticatedUs
 };
 
 export const listMembersForOrganization = async (organizationId: string) => {
-  return prisma.organizationMembership.findMany({
+  const memberships = await prisma.organizationMembership.findMany({
     where: { organizationId },
     include: {
       user: {
         select: {
           id: true,
           email: true,
+          corporateEmail: true,
+          personalEmail: true,
           fullName: true,
           phone: true,
           address: true,
           jobTitle: true,
+          locale: true,
+          timezone: true,
+          twoFactorEnabled: true,
           avatarUrl: true,
           active: true,
           documentType: true,
@@ -43,6 +49,11 @@ export const listMembersForOrganization = async (organizationId: string) => {
       createdAt: "asc"
     }
   });
+
+  return memberships.map((membership) => ({
+    ...membership,
+    modulePermissions: normalizeModulePermissionsForRole(membership.role, (membership as any).modulePermissions)
+  }));
 };
 
 export const addMemberToOrganization = async (
@@ -61,22 +72,29 @@ export const addMemberToOrganization = async (
       }
     },
     update: {
-      role
-    },
+      role,
+      modulePermissions: getDefaultModulePermissions(role)
+    } as any,
     create: {
       organizationId,
       userId: user.id,
-      role
-    },
+      role,
+      modulePermissions: getDefaultModulePermissions(role)
+    } as any,
     include: {
       user: {
         select: {
           id: true,
           email: true,
+          corporateEmail: true,
+          personalEmail: true,
           fullName: true,
           phone: true,
           address: true,
           jobTitle: true,
+          locale: true,
+          timezone: true,
+          twoFactorEnabled: true,
           avatarUrl: true,
           active: true,
           documentType: true,
@@ -86,6 +104,9 @@ export const addMemberToOrganization = async (
     }
   });
 
-  return membership;
+  return {
+    ...membership,
+    modulePermissions: normalizeModulePermissionsForRole(membership.role, (membership as any).modulePermissions)
+  };
 };
 

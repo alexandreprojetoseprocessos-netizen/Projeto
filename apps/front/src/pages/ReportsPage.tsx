@@ -228,7 +228,7 @@ const ProjectMiniCard = ({ project }: { project: ProjectSummary }) => {
       </div>
       <div className="reports-project-owner">
         <span>Responsável</span>
-        <strong>{responsibleLabel}</strong>
+        <strong title={responsibleLabel}>{responsibleLabel}</strong>
       </div>
     </article>
   );
@@ -254,6 +254,8 @@ const buildPanelRows = (nodes: PanelNode[], levelFilter: LevelFilter, query: str
     return row.title.toLowerCase().includes(search);
   });
 };
+
+const formatProjectsCount = (count: number) => `${count} projeto${count === 1 ? "" : "s"}`;
 
 const ReportsPage = () => {
   const {
@@ -373,7 +375,7 @@ const ReportsPage = () => {
   return (
     <section className="reports-page reports-page--timeline">
       <header className="reports-header">
-        <div>
+        <div className="reports-header__intro">
           <p className="eyebrow">Relatórios</p>
           <h2>Projetos e atualizações</h2>
           <p className="subtext">Visão macro do portfólio e do escopo por nível da EAP.</p>
@@ -387,12 +389,12 @@ const ReportsPage = () => {
 
       {portfolioError && <p className="error-text">{portfolioError}</p>}
 
-      <section className="reports-section">
+      <section className="reports-section reports-section--success">
         <div className="reports-section-title reports-section-title--success">
           <h2>
             PROJETOS <span>FINALIZADOS</span>
           </h2>
-          <span>{groupedProjects.finished.length} projetos</span>
+          <span className="reports-count-pill">{formatProjectsCount(groupedProjects.finished.length)}</span>
         </div>
         {portfolioLoading ? (
           <p className="muted">Carregando projetos...</p>
@@ -410,10 +412,12 @@ const ReportsPage = () => {
         )}
       </section>
 
-      <section className="reports-section">
+      <section className="reports-section reports-section--info">
         <div className="reports-section-title reports-section-title--info">
-          <h2>PROJETOS EM ANDAMENTO</h2>
-          <span>(Sequência de Urgente para baixa)</span>
+          <h2>
+            PROJETOS <span>EM ANDAMENTO</span>
+          </h2>
+          <span className="reports-count-pill">{formatProjectsCount(groupedProjects.inProgress.length)}</span>
         </div>
         {portfolioLoading ? (
           <p className="muted">Carregando projetos...</p>
@@ -434,12 +438,12 @@ const ReportsPage = () => {
         )}
       </section>
 
-      <section className="reports-section">
+      <section className="reports-section reports-section--neutral">
         <div className="reports-section-title reports-section-title--neutral">
           <h2>
             PROJETOS <span>PLANEJADOS</span>
           </h2>
-          <span>{groupedProjects.planned.length} projetos</span>
+          <span className="reports-count-pill">{formatProjectsCount(groupedProjects.planned.length)}</span>
         </div>
         {portfolioLoading ? (
           <p className="muted">Carregando projetos...</p>
@@ -504,13 +508,6 @@ const ReportsPage = () => {
             const panelState = panelData[project.projectId] ?? { nodes: [], loading: false, error: null };
             const panelRows = buildPanelRows(panelState.nodes, scopeLevel, scopeSearch);
             const percentRows = buildPanelRows(panelState.nodes, scopeLevel, "");
-            const completionPercent = percentRows.length
-              ? Math.round(
-                  (percentRows.filter((row) => normalizeStatus(row.status) === "Finalizado").length /
-                    percentRows.length) *
-                    100
-                )
-              : 0;
             const scopePercent = percentRows.length
               ? Math.round(percentRows.reduce((sum, row) => sum + row.progress, 0) / percentRows.length)
               : 0;
@@ -629,12 +626,6 @@ const ReportsPage = () => {
                         )}
                       </tbody>
                     </table>
-                  </div>
-                  <div className="reports-updates-summary">
-                    <div className="reports-summary-item">
-                      <span>Etapas finalizadas</span>
-                      <strong>{completionPercent}%</strong>
-                    </div>
                   </div>
                 </div>
               </div>

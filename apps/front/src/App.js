@@ -34,6 +34,11 @@ import { apiFetch, apiUrl, getNetworkErrorMessage } from "./config/api";
 import { getPlanDefinition } from "./config/plans";
 const SELECTED_ORG_KEY = "gp:selectedOrganizationId";
 const SELECTED_PROJECT_KEY = "gp:selectedProjectId";
+const ALL_PROJECTS_ALLOWED_PATHS = ["/dashboard", "/kanban", "/cronograma", "/documentos", "/relatorios"];
+const canUseAllProjectsOnPath = (pathname) => {
+    const lowerPath = pathname.toLowerCase();
+    return ALL_PROJECTS_ALLOWED_PATHS.some((allowedPath) => lowerPath === allowedPath || lowerPath.startsWith(`${allowedPath}/`));
+};
 async function fetchJson(path, token, options, organizationId) {
     const headers = new Headers(options?.headers ?? undefined);
     if (!headers.has("Content-Type"))
@@ -88,6 +93,7 @@ export const App = () => {
         }
         return null;
     }, [location.pathname]);
+    const canUseAllProjects = useMemo(() => canUseAllProjectsOnPath(location.pathname), [location.pathname]);
     const [subscriptionStatus, setSubscriptionStatus] = useState(status === "authenticated" ? "loading" : "idle");
     const [subscription, setSubscription] = useState(null);
     const [subscriptionError, setSubscriptionError] = useState(null);
@@ -104,7 +110,7 @@ export const App = () => {
         if (typeof window === "undefined")
             return null;
         const stored = window.localStorage.getItem(SELECTED_PROJECT_KEY);
-        return stored === "all" ? null : stored;
+        return stored;
     });
     const [projectsError, setProjectsError] = useState(null);
     const isAllProjectsSelected = selectedProjectId === "all";
@@ -313,11 +319,17 @@ export const App = () => {
             return;
         }
         setSelectedProjectId((current) => {
+            if (current === "all") {
+                return canUseAllProjects ? "all" : projects[0].id;
+            }
             if (current && projects.some((project) => project.id === current))
                 return current;
+            const stored = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_PROJECT_KEY) : null;
+            if (stored === "all" && canUseAllProjects)
+                return "all";
             return projects[0].id;
         });
-    }, [projects, routeProjectId]);
+    }, [projects, routeProjectId, canUseAllProjects]);
     useEffect(() => {
         if (status !== "authenticated")
             return;
@@ -405,6 +417,9 @@ export const App = () => {
                         return null;
                     const stored = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_PROJECT_KEY) : null;
                     const candidate = routeProjectId || current || stored || null;
+                    if (candidate === "all") {
+                        return canUseAllProjects ? "all" : list[0].id;
+                    }
                     const exists = candidate && list.some((project) => project.id === candidate);
                     return exists ? candidate : list[0].id;
                 });
@@ -416,7 +431,7 @@ export const App = () => {
             }
         };
         loadProjects();
-    }, [status, token, selectedOrganizationId, portfolioRefresh, routeProjectId]);
+    }, [status, token, selectedOrganizationId, portfolioRefresh, routeProjectId, canUseAllProjects]);
     useEffect(() => {
         if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
             setProjectSummary(null);
@@ -1345,9 +1360,11 @@ export const App = () => {
         createdAt: organization.createdAt,
         isActive: typeof organization.isActive === "boolean" ? organization.isActive : true,
         status: organization.status,
-        deletedAt: organization.deletedAt
+        deletedAt: organization.deletedAt,
+        modulePermissions: organization.modulePermissions ?? null
     }));
     const currentOrgRole = organizationCards.find((org) => org.id === selectedOrganizationId)?.role ?? null;
+    const currentOrgModulePermissions = organizationCards.find((org) => org.id === selectedOrganizationId)?.modulePermissions ?? null;
     const handleCreateServiceCatalog = useCallback(async (payload) => {
         if (!token || !activeProjectId || !selectedOrganizationId) {
             throw new Error("Projeto selecionado é obrigatório.");
@@ -1389,7 +1406,7 @@ export const App = () => {
             const storedProjId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_PROJECT_KEY) : null;
             if (storedOrgId)
                 setSelectedOrganizationId(storedOrgId);
-            if (storedProjId && storedProjId !== "all")
+            if (storedProjId)
                 setSelectedProjectId(storedProjId);
         }
         catch (error) {
@@ -1417,7 +1434,7 @@ export const App = () => {
     useEffect(() => {
         if (typeof window === "undefined")
             return;
-        if (selectedProjectId && selectedProjectId !== "all") {
+        if (selectedProjectId) {
             window.localStorage.setItem(SELECTED_PROJECT_KEY, selectedProjectId);
         }
         else {
@@ -1435,7 +1452,10 @@ export const App = () => {
         }
         if (!selectedProjectId) {
             const stored = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_PROJECT_KEY) : null;
-            if (stored && stored !== "all" && projects.some((project) => project.id === stored)) {
+            if (stored === "all" && canUseAllProjects) {
+                setSelectedProjectId("all");
+            }
+            else if (stored && stored !== "all" && projects.some((project) => project.id === stored)) {
                 setSelectedProjectId(stored);
             }
             else if (projects.length === 1) {
@@ -1444,7 +1464,7 @@ export const App = () => {
             return;
         }
         if (selectedProjectId === "all") {
-            if (projects.length) {
+            if (!canUseAllProjects && projects.length) {
                 setSelectedProjectId(projects[0].id);
             }
             return;
@@ -1455,7 +1475,7 @@ export const App = () => {
             if (typeof window !== "undefined")
                 window.localStorage.removeItem(SELECTED_PROJECT_KEY);
         }
-    }, [projects, selectedProjectId, routeProjectId]);
+    }, [projects, selectedProjectId, routeProjectId, canUseAllProjects]);
     useEffect(() => {
         if (status === "authenticated" && location.pathname === "/") {
             navigate("/dashboard", { replace: true });
@@ -1496,6 +1516,11 @@ export const App = () => {
         const currentPath = location.pathname;
         const lowerPath = currentPath.toLowerCase();
         if (projectId === "all") {
+            if (canUseAllProjects) {
+                setSelectedProjectId("all");
+                setSelectedNodeId(null);
+                return;
+            }
             const fallback = projects[0]?.id ?? "";
             if (fallback) {
                 setSelectedProjectId(fallback);
@@ -1520,7 +1545,7 @@ export const App = () => {
             navigate(`/projects/${projectId}${suffix}`, { replace: true });
         }
     };
-    return (_jsxs(Routes, { children: [_jsx(Route, { path: "/", element: _jsx(Landing, {}) }), _jsxs(Route, { path: "/*", element: _jsx(DashboardLayout, { userEmail: user?.email ?? null, organizations: organizations, selectedOrganizationId: selectedOrganizationId ?? "", onOrganizationChange: setSelectedOrganizationId, currentOrgRole: currentOrgRole ?? null, orgError: orgError, onSignOut: signOut, projects: projects, selectedProjectId: selectedProjectId ?? "", onProjectChange: handleProjectSelection, onSelectProject: handleProjectSelection, projectsError: projectsError, filters: filters, onRangeChange: (rangeDays) => setFilters((prev) => ({ ...prev, rangeDays })), summary: projectSummary, summaryError: summaryError, members: members, membersError: membersError, attachments: attachments, attachmentsError: attachmentsError, attachmentsLoading: attachmentsLoading, boardColumns: boardColumns, boardError: boardError, onCreateTask: handleCreateTask, onReloadBoard: loadBoardColumns, onDragTask: handleDragEnd, newTaskTitle: newTaskTitle, onTaskTitleChange: setNewTaskTitle, newTaskColumn: newTaskColumn, onTaskColumnChange: setNewTaskColumn, newTaskStartDate: newTaskStartDate, onTaskStartDateChange: setNewTaskStartDate, newTaskEndDate: newTaskEndDate, onTaskEndDateChange: setNewTaskEndDate, newTaskAssignee: newTaskAssignee, onTaskAssigneeChange: setNewTaskAssignee, newTaskEstimateHours: newTaskEstimateHours, onTaskEstimateHoursChange: setNewTaskEstimateHours, wbsNodes: wbsNodes, wbsError: wbsError, onMoveNode: handleWbsMove, onUpdateWbsNode: handleWbsUpdate, onUpdateWbsResponsible: handleWbsResponsibleChange, onCreateWbsItem: handleCreateWbsItem, selectedNodeId: selectedNodeId, onSelectNode: setSelectedNodeId, comments: comments, commentsError: commentsError, onSubmitComment: handleCreateComment, commentBody: commentBody, onCommentBodyChange: setCommentBody, timeEntryDate: timeEntryDate, timeEntryHours: timeEntryHours, timeEntryDescription: timeEntryDescription, onTimeEntryDateChange: setTimeEntryDate, onTimeEntryHoursChange: setTimeEntryHours, onTimeEntryDescriptionChange: setTimeEntryDescription, onLogTime: handleCreateTimeEntry, timeEntryError: timeEntryError, ganttTasks: ganttTasks, ganttMilestones: ganttMilestones, ganttError: ganttError, portfolio: portfolio, portfolioError: portfolioError, portfolioLoading: portfolioLoading, reportMetrics: reportMetrics, reportMetricsError: reportMetricsError, reportMetricsLoading: reportMetricsLoading, kanbanColumns: kanbanColumns, onExportPortfolio: handleDownloadPortfolio, onCreateProject: handleCreateProject, onUpdateProject: handleUpdateProject, projectLimits: projectLimits, serviceCatalog: serviceCatalog, serviceCatalogError: serviceCatalogError, onImportServiceCatalog: handleImportServiceCatalog, onCreateServiceCatalog: handleCreateServiceCatalog, onUpdateServiceCatalog: handleUpdateServiceCatalog, onDeleteServiceCatalog: handleDeleteServiceCatalog, onReloadWbs: () => setWbsRefresh((value) => value + 1) }), children: [_jsx(Route, { index: true, element: _jsx(Navigate, { to: "/dashboard", replace: true }) }), _jsx(Route, { path: "checkout", element: _jsx(CheckoutPage, { subscription: subscription, subscriptionError: subscriptionError, onSubscriptionActivated: fetchSubscription }) }), _jsx(Route, { path: "organizacao", element: _jsx(OrganizationSelector, { organizations: organizationCards, onSelect: (organizationId) => {
+    return (_jsxs(Routes, { children: [_jsx(Route, { path: "/", element: _jsx(Landing, {}) }), _jsxs(Route, { path: "/*", element: _jsx(DashboardLayout, { userEmail: user?.email ?? null, organizations: organizations, selectedOrganizationId: selectedOrganizationId ?? "", onOrganizationChange: setSelectedOrganizationId, currentOrgRole: currentOrgRole ?? null, currentOrgModulePermissions: currentOrgModulePermissions, orgError: orgError, onSignOut: signOut, projects: projects, selectedProjectId: selectedProjectId ?? "", onProjectChange: handleProjectSelection, onSelectProject: handleProjectSelection, projectsError: projectsError, filters: filters, onRangeChange: (rangeDays) => setFilters((prev) => ({ ...prev, rangeDays })), summary: projectSummary, summaryError: summaryError, members: members, membersError: membersError, attachments: attachments, attachmentsError: attachmentsError, attachmentsLoading: attachmentsLoading, boardColumns: boardColumns, boardError: boardError, onCreateTask: handleCreateTask, onReloadBoard: loadBoardColumns, onDragTask: handleDragEnd, newTaskTitle: newTaskTitle, onTaskTitleChange: setNewTaskTitle, newTaskColumn: newTaskColumn, onTaskColumnChange: setNewTaskColumn, newTaskStartDate: newTaskStartDate, onTaskStartDateChange: setNewTaskStartDate, newTaskEndDate: newTaskEndDate, onTaskEndDateChange: setNewTaskEndDate, newTaskAssignee: newTaskAssignee, onTaskAssigneeChange: setNewTaskAssignee, newTaskEstimateHours: newTaskEstimateHours, onTaskEstimateHoursChange: setNewTaskEstimateHours, wbsNodes: wbsNodes, wbsError: wbsError, onMoveNode: handleWbsMove, onUpdateWbsNode: handleWbsUpdate, onUpdateWbsResponsible: handleWbsResponsibleChange, onCreateWbsItem: handleCreateWbsItem, selectedNodeId: selectedNodeId, onSelectNode: setSelectedNodeId, comments: comments, commentsError: commentsError, onSubmitComment: handleCreateComment, commentBody: commentBody, onCommentBodyChange: setCommentBody, timeEntryDate: timeEntryDate, timeEntryHours: timeEntryHours, timeEntryDescription: timeEntryDescription, onTimeEntryDateChange: setTimeEntryDate, onTimeEntryHoursChange: setTimeEntryHours, onTimeEntryDescriptionChange: setTimeEntryDescription, onLogTime: handleCreateTimeEntry, timeEntryError: timeEntryError, ganttTasks: ganttTasks, ganttMilestones: ganttMilestones, ganttError: ganttError, portfolio: portfolio, portfolioError: portfolioError, portfolioLoading: portfolioLoading, reportMetrics: reportMetrics, reportMetricsError: reportMetricsError, reportMetricsLoading: reportMetricsLoading, kanbanColumns: kanbanColumns, onExportPortfolio: handleDownloadPortfolio, onCreateProject: handleCreateProject, onUpdateProject: handleUpdateProject, projectLimits: projectLimits, serviceCatalog: serviceCatalog, serviceCatalogError: serviceCatalogError, onImportServiceCatalog: handleImportServiceCatalog, onCreateServiceCatalog: handleCreateServiceCatalog, onUpdateServiceCatalog: handleUpdateServiceCatalog, onDeleteServiceCatalog: handleDeleteServiceCatalog, onReloadWbs: () => setWbsRefresh((value) => value + 1) }), children: [_jsx(Route, { index: true, element: _jsx(Navigate, { to: "/dashboard", replace: true }) }), _jsx(Route, { path: "checkout", element: _jsx(CheckoutPage, { subscription: subscription, subscriptionError: subscriptionError, onSubscriptionActivated: fetchSubscription }) }), _jsx(Route, { path: "organizacao", element: _jsx(OrganizationSelector, { organizations: organizationCards, onSelect: (organizationId) => {
                                 setSelectedOrganizationId(organizationId);
                                 setSelectedProjectId(null);
                                 if (typeof window !== "undefined") {

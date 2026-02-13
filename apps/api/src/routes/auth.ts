@@ -1,4 +1,4 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -7,6 +7,7 @@ import { supabaseAdmin } from "../lib/supabase";
 import { logger } from "../config/logger";
 import { config } from "../config/env";
 import { InviteStatus, MembershipRole, OrganizationStatus, Prisma } from "@prisma/client";
+import { getDefaultModulePermissions } from "../services/modulePermissions";
 
 const registerSchema = z.object({
   fullName: z.string().min(3),
@@ -91,15 +92,15 @@ const resolveOrganizationName = (fullName: string, corporateEmail: string) => {
   const base = domainPart.split(".")[0] ?? "";
   const cleaned = base.replace(/[^a-zA-Z0-9]+/g, " ").trim();
   if (cleaned) {
-    return `Organização ${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}`;
+    return `OrganizaÃ§Ã£o ${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}`;
   }
 
   const firstName = fullName.trim().split(/\s+/)[0];
   if (firstName) {
-    return `Organização ${firstName}`;
+    return `OrganizaÃ§Ã£o ${firstName}`;
   }
 
-  return "Minha organização";
+  return "Minha organizaÃ§Ã£o";
 };
 
 const resolveOrganizationDomain = (corporateEmail: string) => {
@@ -359,13 +360,15 @@ const registerHandler = async (req: Request, res: Response) => {
               }
             },
             update: {
-              role: inviteRecord.role
-            },
+              role: inviteRecord.role,
+              modulePermissions: getDefaultModulePermissions(inviteRecord.role)
+            } as any,
             create: {
               organizationId: inviteRecord.organizationId,
               userId: supabaseUserId,
-              role: inviteRecord.role
-            }
+              role: inviteRecord.role,
+              modulePermissions: getDefaultModulePermissions(inviteRecord.role)
+            } as any
           });
           logger.info({ requestId, step: "prisma.organizationMembership.create:end", organizationId: inviteRecord.organizationId }, "Membership created from invite");
 
@@ -397,8 +400,9 @@ const registerHandler = async (req: Request, res: Response) => {
               memberships: {
                 create: {
                   userId: supabaseUserId,
-                  role: MembershipRole.OWNER
-                }
+                  role: MembershipRole.OWNER,
+                  modulePermissions: getDefaultModulePermissions(MembershipRole.OWNER)
+                } as any
               }
             }
           });
@@ -474,4 +478,5 @@ authRouter.get("/login", (_req: Request, res: Response) => {
     requestId
   });
 });
+
 

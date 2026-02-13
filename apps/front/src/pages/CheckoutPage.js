@@ -2,7 +2,8 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { getNetworkErrorMessage } from "../config/api";
+import { apiUrl, getNetworkErrorMessage } from "../config/api";
+import { AlertTriangle, CalendarClock, CheckCircle2, CreditCard, FileText, RefreshCw } from "lucide-react";
 import { ANNUAL_DISCOUNT_LABEL, PLAN_DEFINITIONS, formatBillingPrice, formatMonthlyPrice, getPlanPriceCents } from "../config/plans";
 import { getMercadoPago } from "../lib/mercadopago";
 import { ApiRequestError, createCardPayment, createPixPayment, fetchIdentificationTypes, fetchInstallments, fetchPaymentMethods } from "../services/billingClient";
@@ -50,10 +51,34 @@ const formatMonth = (value) => digitsOnly(value).slice(0, 2);
 const formatYear = (value) => digitsOnly(value).slice(0, 4);
 const formatCvv = (value) => digitsOnly(value).slice(0, 4);
 const formatIdentificationNumber = (value) => digitsOnly(value).slice(0, 14);
+const formatDatePtBr = (value) => {
+    if (!value)
+        return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime()))
+        return "-";
+    return date.toLocaleDateString("pt-BR");
+};
+const billingCycleLabels = {
+    MONTHLY: "Mensal",
+    ANNUAL: "Anual"
+};
+const subscriptionStatusLabels = {
+    ACTIVE: "Ativa",
+    PENDING: "Pendente",
+    PAST_DUE: "Em atraso",
+    CANCELED: "Cancelada"
+};
+const paymentMethodLabels = {
+    card: "Cartao de credito",
+    pix: "Pix",
+    boleto: "Boleto"
+};
 export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionActivated }) => {
     const navigate = useNavigate();
     const { token, user, signOut } = useAuth();
     const [error, setError] = useState(subscriptionError ?? null);
+    const [info, setInfo] = useState(null);
     const [billingCycle, setBillingCycle] = useState("MONTHLY");
     const [selectedPlanCode] = useState(() => {
         if (typeof window === "undefined")
@@ -84,6 +109,8 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
     const mpRef = useRef(null);
     const [mpReady, setMpReady] = useState(false);
     const [mpError, setMpError] = useState(null);
+    const [manageLoading, setManageLoading] = useState(false);
+    const [manageError, setManageError] = useState(null);
     const publicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
     useEffect(() => {
         if (!publicKey) {
@@ -111,6 +138,16 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
         setError(subscriptionError ?? null);
     }, [subscriptionError]);
     useEffect(() => {
+        if (typeof window === "undefined")
+            return;
+        const key = "gp:checkout_reopen_after_cancel";
+        const shouldShowInfo = window.sessionStorage.getItem(key);
+        if (shouldShowInfo === "1") {
+            setInfo("Assinatura cancelada. Escolha abaixo a nova forma de pagamento para reativar seu acesso.");
+            window.sessionStorage.removeItem(key);
+        }
+    }, []);
+    useEffect(() => {
         if (typeof window !== "undefined" && selectedPlanCode) {
             window.localStorage.setItem("gp:selectedPlan", selectedPlanCode);
         }
@@ -129,6 +166,15 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
     const amount = Number(((priceCents ?? 0) / 100).toFixed(2));
     const description = `Plano ${plan.name}`;
     const payerEmail = user?.email ?? "";
+    const currentPlanName = subscription?.product?.name ?? subscription?.product?.code ?? selectedPlanCode;
+    const currentStatus = String(subscription?.status ?? "PENDING").toUpperCase();
+    const currentStatusLabel = subscriptionStatusLabels[currentStatus] ?? currentStatus;
+    const currentPaymentMethod = String(subscription?.paymentMethod ?? "").toLowerCase();
+    const currentPaymentMethodLabel = paymentMethodLabels[currentPaymentMethod] ?? "Nao informado";
+    const currentBillingCycleLabel = billingCycleLabels[String(subscription?.billingCycle ?? "").toUpperCase()] ??
+        String(subscription?.billingCycle ?? "Nao informado");
+    const nextBillingDate = formatDatePtBr(subscription?.currentPeriodEnd ?? subscription?.expiresAt ?? null);
+    const startedAtLabel = formatDatePtBr(subscription?.startedAt ?? null);
     const resolveCheckoutErrorMessage = useCallback((error) => {
         if (error instanceof DOMException || error instanceof TypeError) {
             return getNetworkErrorMessage(error);
@@ -137,6 +183,40 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
             return error.message;
         return "Falha ao iniciar pagamento.";
     }, []);
+    const handleCancelAndReopenCheckout = async () => {
+        if (!token) {
+            setManageError("Sessao expirada. Faca login novamente.");
+            return;
+        }
+        const confirmed = window.confirm("Para trocar cartao ou forma de pagamento, a assinatura atual sera cancelada agora. Deseja continuar?");
+        if (!confirmed)
+            return;
+        setManageLoading(true);
+        setManageError(null);
+        try {
+            const response = await fetch(apiUrl("/subscriptions/cancel"), {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                }
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(body?.message ?? "Nao foi possivel cancelar a assinatura atual.");
+            }
+            if (typeof window !== "undefined") {
+                window.sessionStorage.setItem("gp:checkout_reopen_after_cancel", "1");
+            }
+            await onSubscriptionActivated?.();
+        }
+        catch (cancelError) {
+            setManageError(resolveCheckoutErrorMessage(cancelError));
+        }
+        finally {
+            setManageLoading(false);
+        }
+    };
     useEffect(() => {
         if (!token)
             return;
@@ -466,7 +546,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
         }
     };
     if (subscription?.status === "ACTIVE") {
-        return (_jsx("div", { className: "checkout-page", children: _jsxs("section", { className: "checkout-card", children: [_jsx("p", { className: "eyebrow", children: "Assinatura ativa" }), _jsx("h2", { children: "Voce ja tem acesso liberado" }), _jsxs("p", { className: "subtext", children: ["Plano ", subscription.product?.name ?? subscription.product?.code ?? selectedPlanCode, " ativo. Voce pode criar sua organizacao e acessar os projetos normalmente."] }), _jsxs("div", { className: "payment-actions", children: [_jsx("button", { type: "button", className: "primary-button", onClick: () => navigate("/organizacao"), children: "Ir para criacao da organizacao" }), _jsx("button", { type: "button", className: "secondary-button", onClick: () => navigate("/dashboard"), children: "Ver dashboard" })] })] }) }));
+        return (_jsxs("div", { className: "checkout-page", children: [_jsxs("section", { className: "checkout-card checkout-manage", children: [_jsxs("header", { className: "checkout-manage-hero", children: [_jsxs("div", { children: [_jsx("p", { className: "eyebrow", children: "Gestao de pagamento" }), _jsx("h2", { children: "Assinatura ativa e pronta para uso" }), _jsx("p", { className: "subtext", children: "Aqui voce acompanha plano, ciclo e metodo atual, alem de executar troca de pagamento quando precisar." })] }), _jsx("span", { className: "checkout-manage-status", children: currentStatusLabel })] }), _jsxs("div", { className: "checkout-manage-grid", children: [_jsxs("article", { className: "checkout-manage-card", children: [_jsxs("div", { className: "checkout-manage-card__title", children: [_jsx(CreditCard, { size: 16 }), _jsx("h3", { children: "Plano e cobranca" })] }), _jsxs("dl", { className: "checkout-manage-metrics", children: [_jsxs("div", { children: [_jsx("dt", { children: "Plano atual" }), _jsx("dd", { children: currentPlanName })] }), _jsxs("div", { children: [_jsx("dt", { children: "Ciclo" }), _jsx("dd", { children: currentBillingCycleLabel })] }), _jsxs("div", { children: [_jsx("dt", { children: "Metodo atual" }), _jsx("dd", { children: currentPaymentMethodLabel })] }), _jsxs("div", { children: [_jsx("dt", { children: "Inicio" }), _jsx("dd", { children: startedAtLabel })] }), _jsxs("div", { children: [_jsx("dt", { children: "Proxima cobranca" }), _jsx("dd", { children: nextBillingDate })] })] })] }), _jsxs("article", { className: "checkout-manage-card", children: [_jsxs("div", { className: "checkout-manage-card__title", children: [_jsx(CalendarClock, { size: 16 }), _jsx("h3", { children: "Gerenciar assinatura" })] }), _jsxs("div", { className: "checkout-manage-steps", children: [_jsx("p", { children: "Para trocar cartao ou forma de pagamento, o sistema precisa encerrar a assinatura atual e iniciar novo checkout." }), _jsxs("div", { className: "checkout-manage-warning", children: [_jsx(AlertTriangle, { size: 15 }), _jsx("span", { children: "A troca de pagamento cancela a assinatura atual antes da nova cobranca." })] })] }), _jsxs("div", { className: "checkout-manage-actions", children: [_jsx("button", { type: "button", className: "primary-button", onClick: handleCancelAndReopenCheckout, disabled: manageLoading, children: manageLoading ? "Preparando checkout..." : "Trocar forma de pagamento" }), _jsx("button", { type: "button", className: "secondary-button", onClick: () => navigate("/plano"), children: "Ver detalhes do plano" })] }), manageError ? _jsx("p", { className: "error-text", children: manageError }) : null] })] }), _jsxs("div", { className: "checkout-manage-footer", children: [_jsxs("button", { type: "button", className: "ghost-button", onClick: () => navigate("/dashboard"), children: [_jsx(CheckCircle2, { size: 16 }), "Ir para dashboard"] }), _jsxs("button", { type: "button", className: "ghost-button", onClick: () => navigate("/organizacao"), children: [_jsx(FileText, { size: 16 }), "Criar/selecionar organizacao"] }), _jsxs("button", { type: "button", className: "ghost-button", onClick: onSubscriptionActivated, children: [_jsx(RefreshCw, { size: 16 }), "Atualizar status"] })] })] }), _jsxs("aside", { className: "checkout-sidebar checkout-manage-sidebar", children: [_jsx("h4", { children: "Resumo rapido" }), _jsxs("ul", { children: [_jsxs("li", { children: [_jsx("strong", { children: "Plano:" }), " ", currentPlanName] }), _jsxs("li", { children: [_jsx("strong", { children: "Metodo:" }), " ", currentPaymentMethodLabel] }), _jsxs("li", { children: [_jsx("strong", { children: "Ciclo:" }), " ", currentBillingCycleLabel] }), _jsxs("li", { children: [_jsx("strong", { children: "Proxima cobranca:" }), " ", nextBillingDate] })] }), _jsx("p", { className: "muted", children: "Pagamento processado via provedor seguro e com atualizacao automatica da assinatura." })] })] }));
     }
-    return (_jsxs("div", { className: "checkout-page", children: [_jsx("div", { className: "checkout-page-header", children: _jsx("button", { type: "button", className: "ghost-button", onClick: signOut, children: "Sair" }) }), _jsxs("section", { className: "checkout-card", children: [_jsx("p", { className: "eyebrow", children: "Checkout seguro" }), _jsx("h2", { children: "Finalize o pagamento do seu plano" }), _jsxs("div", { className: "checkout-plan", children: [_jsxs("div", { children: [_jsx("p", { className: "muted", children: "Plano selecionado" }), _jsx("h3", { children: plan.name }), _jsx("p", { className: "checkout-price", children: priceLabel }), _jsxs("div", { className: "checkout-billing-toggle", children: [_jsx("button", { type: "button", className: `chip chip-outline ${billingCycle === "MONTHLY" ? "is-active" : ""}`, onClick: () => setBillingCycle("MONTHLY"), children: "Mensal" }), _jsx("button", { type: "button", className: `chip chip-soft ${billingCycle === "ANNUAL" ? "is-active" : ""}`, onClick: () => setBillingCycle("ANNUAL"), children: "Anual" })] }), _jsx("p", { className: "muted", children: ANNUAL_DISCOUNT_LABEL })] }), _jsx("div", { className: "plan-benefits", children: [...planBenefits, ...baseBenefits].map((benefit) => (_jsx("span", { children: benefit }, benefit))) })] }), _jsxs("div", { className: "checkout-info-row", children: [_jsx("p", { className: "subtext", children: "Escolha Pix ou cartao de credito. A assinatura e ativada automaticamente apos a confirmacao do pagamento." }), _jsx("button", { type: "button", className: "ghost-button logout-button", onClick: signOut, children: "Sair" })] }), error && _jsx("p", { className: "error-text", children: error }), _jsxs("div", { className: "payment-tabs", children: [_jsx("button", { type: "button", className: `payment-tab ${activeTab === "pix" ? "is-active" : ""}`, onClick: () => setActiveTab("pix"), children: "Pix" }), _jsx("button", { type: "button", className: `payment-tab ${activeTab === "card" ? "is-active" : ""}`, onClick: () => setActiveTab("card"), children: "Cartao de credito" })] }), activeTab === "pix" && (_jsxs("div", { className: "payment-panel", children: [_jsx("p", { className: "muted", children: "Gere o QR Code Pix e finalize o pagamento no seu banco." }), _jsxs("div", { className: "payment-row", children: [_jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Tipo de documento" }), _jsx("select", { value: identificationType, onChange: (event) => setIdentificationType(event.target.value), disabled: !identificationTypes.length, children: identificationTypes.map((type) => (_jsx("option", { value: type.id, children: type.name }, type.id))) })] }), _jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Numero do documento" }), _jsx("input", { type: "text", inputMode: "numeric", placeholder: "CPF/CNPJ", value: identificationNumber, onChange: (event) => setIdentificationNumber(formatIdentificationNumber(event.target.value)) })] })] }), pixData ? (_jsxs("div", { className: "pix-result", children: [_jsx("img", { className: "pix-qr", src: `data:image/png;base64,${pixData.qrCodeBase64}`, alt: "QR Code Pix" }), _jsxs("div", { className: "pix-code", children: [_jsx("textarea", { readOnly: true, value: pixData.qrCode }), _jsx("button", { type: "button", className: "secondary-button", onClick: handleCopyPix, children: "Copiar codigo Pix" }), _jsxs("span", { className: "muted", children: ["Status: ", pixData.status] })] })] })) : (_jsx("button", { type: "button", className: "primary-button", disabled: pixLoading, onClick: handlePixPayment, children: pixLoading ? "Gerando QR Code..." : "Gerar QR Code Pix" })), pixError && _jsx("p", { className: "error-text", children: pixError })] })), activeTab === "card" && (_jsxs("div", { className: "payment-panel", children: [mpError && _jsx("p", { className: "error-text", children: mpError }), _jsxs("div", { className: "payment-grid", children: [_jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Numero do cartao" }), _jsx("input", { type: "text", inputMode: "numeric", placeholder: "0000 0000 0000 0000", value: cardNumber, onChange: (event) => setCardNumber(formatCardNumber(event.target.value)) })] }), _jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Nome no cartao" }), _jsx("input", { type: "text", placeholder: "Como no cartao", value: cardholderName, onChange: (event) => setCardholderName(event.target.value) })] }), _jsxs("div", { className: "payment-row", children: [_jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Tipo de documento" }), _jsx("select", { value: identificationType, onChange: (event) => setIdentificationType(event.target.value), disabled: !identificationTypes.length, children: identificationTypes.map((type) => (_jsx("option", { value: type.id, children: type.name }, type.id))) })] }), _jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Numero do documento" }), _jsx("input", { type: "text", inputMode: "numeric", placeholder: "CPF/CNPJ", value: identificationNumber, onChange: (event) => setIdentificationNumber(formatIdentificationNumber(event.target.value)) })] })] }), _jsxs("div", { className: "payment-row", children: [_jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Mes" }), _jsx("input", { type: "text", inputMode: "numeric", placeholder: "MM", value: expirationMonth, onChange: (event) => setExpirationMonth(formatMonth(event.target.value)) })] }), _jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Ano" }), _jsx("input", { type: "text", inputMode: "numeric", placeholder: "AAAA", value: expirationYear, onChange: (event) => setExpirationYear(formatYear(event.target.value)) })] }), _jsxs("label", { className: "input-group", children: [_jsx("span", { children: "CVV" }), _jsx("input", { type: "password", inputMode: "numeric", placeholder: "000", value: securityCode, onChange: (event) => setSecurityCode(formatCvv(event.target.value)) })] })] }), issuerOptions.length > 1 && (_jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Banco emissor" }), _jsx("select", { value: issuerId ?? "", onChange: (event) => setIssuerId(event.target.value || null), children: issuerOptions.map((issuer) => (_jsx("option", { value: issuer.id, children: issuer.name }, issuer.id))) })] })), _jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Parcelas" }), _jsx("select", { value: installments, onChange: (event) => setInstallments(Number(event.target.value)), disabled: !installmentOptions.length, children: installmentOptions.length ? (installmentOptions.map((option) => (_jsx("option", { value: option.value, children: option.label }, option.value)))) : (_jsx("option", { value: 1, children: "1x" })) })] })] }), _jsxs("div", { className: "payment-actions", children: [_jsx("button", { type: "button", className: "primary-button", disabled: cardLoading || !mpReady, onClick: handleCardPayment, children: cardLoading ? "Processando..." : "Pagar com cartao" }), cardResult && (_jsxs("span", { className: "muted", children: ["Status: ", cardResult.status, cardResult.statusDetail ? ` (${cardResult.statusDetail})` : ""] }))] }), cardError && _jsx("p", { className: "error-text", children: cardError })] }))] }), _jsxs("aside", { className: "checkout-sidebar", children: [_jsx("h4", { children: "Resumo rapido" }), _jsxs("ul", { children: [_jsxs("li", { children: [_jsx("strong", { children: "Passo 1:" }), " confirme o plano e a forma de pagamento."] }), _jsxs("li", { children: [_jsx("strong", { children: "Passo 2:" }), " finalize Pix ou cartao."] }), _jsxs("li", { children: [_jsx("strong", { children: "Passo 3:" }), " acesse o painel e crie sua organizacao."] })] }), _jsx("p", { className: "muted", children: "Duvidas? Fale com nosso time durante o onboarding." })] })] }));
+    return (_jsxs("div", { className: "checkout-page", children: [_jsx("div", { className: "checkout-page-header", children: _jsx("button", { type: "button", className: "ghost-button", onClick: signOut, children: "Sair" }) }), _jsxs("section", { className: "checkout-card", children: [_jsx("p", { className: "eyebrow", children: "Checkout seguro" }), _jsx("h2", { children: "Finalize o pagamento do seu plano" }), _jsxs("div", { className: "checkout-plan", children: [_jsxs("div", { children: [_jsx("p", { className: "muted", children: "Plano selecionado" }), _jsx("h3", { children: plan.name }), _jsx("p", { className: "checkout-price", children: priceLabel }), _jsxs("div", { className: "checkout-billing-toggle", children: [_jsx("button", { type: "button", className: `chip chip-outline ${billingCycle === "MONTHLY" ? "is-active" : ""}`, onClick: () => setBillingCycle("MONTHLY"), children: "Mensal" }), _jsx("button", { type: "button", className: `chip chip-soft ${billingCycle === "ANNUAL" ? "is-active" : ""}`, onClick: () => setBillingCycle("ANNUAL"), children: "Anual" })] }), _jsx("p", { className: "muted", children: ANNUAL_DISCOUNT_LABEL })] }), _jsx("div", { className: "plan-benefits", children: [...planBenefits, ...baseBenefits].map((benefit) => (_jsx("span", { children: benefit }, benefit))) })] }), _jsxs("div", { className: "checkout-info-row", children: [_jsx("p", { className: "subtext", children: "Escolha Pix ou cartao de credito. A assinatura e ativada automaticamente apos a confirmacao do pagamento." }), _jsx("button", { type: "button", className: "ghost-button logout-button", onClick: signOut, children: "Sair" })] }), info && _jsx("p", { className: "warning-text", children: info }), error && _jsx("p", { className: "error-text", children: error }), _jsxs("div", { className: "payment-tabs", children: [_jsx("button", { type: "button", className: `payment-tab ${activeTab === "pix" ? "is-active" : ""}`, onClick: () => setActiveTab("pix"), children: "Pix" }), _jsx("button", { type: "button", className: `payment-tab ${activeTab === "card" ? "is-active" : ""}`, onClick: () => setActiveTab("card"), children: "Cartao de credito" })] }), activeTab === "pix" && (_jsxs("div", { className: "payment-panel", children: [_jsx("p", { className: "muted", children: "Gere o QR Code Pix e finalize o pagamento no seu banco." }), _jsxs("div", { className: "payment-row", children: [_jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Tipo de documento" }), _jsx("select", { value: identificationType, onChange: (event) => setIdentificationType(event.target.value), disabled: !identificationTypes.length, children: identificationTypes.map((type) => (_jsx("option", { value: type.id, children: type.name }, type.id))) })] }), _jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Numero do documento" }), _jsx("input", { type: "text", inputMode: "numeric", placeholder: "CPF/CNPJ", value: identificationNumber, onChange: (event) => setIdentificationNumber(formatIdentificationNumber(event.target.value)) })] })] }), pixData ? (_jsxs("div", { className: "pix-result", children: [_jsx("img", { className: "pix-qr", src: `data:image/png;base64,${pixData.qrCodeBase64}`, alt: "QR Code Pix" }), _jsxs("div", { className: "pix-code", children: [_jsx("textarea", { readOnly: true, value: pixData.qrCode }), _jsx("button", { type: "button", className: "secondary-button", onClick: handleCopyPix, children: "Copiar codigo Pix" }), _jsxs("span", { className: "muted", children: ["Status: ", pixData.status] })] })] })) : (_jsx("button", { type: "button", className: "primary-button", disabled: pixLoading, onClick: handlePixPayment, children: pixLoading ? "Gerando QR Code..." : "Gerar QR Code Pix" })), pixError && _jsx("p", { className: "error-text", children: pixError })] })), activeTab === "card" && (_jsxs("div", { className: "payment-panel", children: [mpError && _jsx("p", { className: "error-text", children: mpError }), _jsxs("div", { className: "payment-grid", children: [_jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Numero do cartao" }), _jsx("input", { type: "text", inputMode: "numeric", placeholder: "0000 0000 0000 0000", value: cardNumber, onChange: (event) => setCardNumber(formatCardNumber(event.target.value)) })] }), _jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Nome no cartao" }), _jsx("input", { type: "text", placeholder: "Como no cartao", value: cardholderName, onChange: (event) => setCardholderName(event.target.value) })] }), _jsxs("div", { className: "payment-row", children: [_jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Tipo de documento" }), _jsx("select", { value: identificationType, onChange: (event) => setIdentificationType(event.target.value), disabled: !identificationTypes.length, children: identificationTypes.map((type) => (_jsx("option", { value: type.id, children: type.name }, type.id))) })] }), _jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Numero do documento" }), _jsx("input", { type: "text", inputMode: "numeric", placeholder: "CPF/CNPJ", value: identificationNumber, onChange: (event) => setIdentificationNumber(formatIdentificationNumber(event.target.value)) })] })] }), _jsxs("div", { className: "payment-row", children: [_jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Mes" }), _jsx("input", { type: "text", inputMode: "numeric", placeholder: "MM", value: expirationMonth, onChange: (event) => setExpirationMonth(formatMonth(event.target.value)) })] }), _jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Ano" }), _jsx("input", { type: "text", inputMode: "numeric", placeholder: "AAAA", value: expirationYear, onChange: (event) => setExpirationYear(formatYear(event.target.value)) })] }), _jsxs("label", { className: "input-group", children: [_jsx("span", { children: "CVV" }), _jsx("input", { type: "password", inputMode: "numeric", placeholder: "000", value: securityCode, onChange: (event) => setSecurityCode(formatCvv(event.target.value)) })] })] }), issuerOptions.length > 1 && (_jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Banco emissor" }), _jsx("select", { value: issuerId ?? "", onChange: (event) => setIssuerId(event.target.value || null), children: issuerOptions.map((issuer) => (_jsx("option", { value: issuer.id, children: issuer.name }, issuer.id))) })] })), _jsxs("label", { className: "input-group", children: [_jsx("span", { children: "Parcelas" }), _jsx("select", { value: installments, onChange: (event) => setInstallments(Number(event.target.value)), disabled: !installmentOptions.length, children: installmentOptions.length ? (installmentOptions.map((option) => (_jsx("option", { value: option.value, children: option.label }, option.value)))) : (_jsx("option", { value: 1, children: "1x" })) })] })] }), _jsxs("div", { className: "payment-actions", children: [_jsx("button", { type: "button", className: "primary-button", disabled: cardLoading || !mpReady, onClick: handleCardPayment, children: cardLoading ? "Processando..." : "Pagar com cartao" }), cardResult && (_jsxs("span", { className: "muted", children: ["Status: ", cardResult.status, cardResult.statusDetail ? ` (${cardResult.statusDetail})` : ""] }))] }), cardError && _jsx("p", { className: "error-text", children: cardError })] }))] }), _jsxs("aside", { className: "checkout-sidebar", children: [_jsx("h4", { children: "Resumo rapido" }), _jsxs("ul", { children: [_jsxs("li", { children: [_jsx("strong", { children: "Passo 1:" }), " confirme o plano e a forma de pagamento."] }), _jsxs("li", { children: [_jsx("strong", { children: "Passo 2:" }), " finalize Pix ou cartao."] }), _jsxs("li", { children: [_jsx("strong", { children: "Passo 3:" }), " acesse o painel e crie sua organizacao."] })] }), _jsx("p", { className: "muted", children: "Duvidas? Fale com nosso time durante o onboarding." })] })] }));
 };

@@ -13,6 +13,7 @@ import { CSS } from "@dnd-kit/utilities";
 import clsx from "clsx";
 import { DependenciesDropdown } from "./DependenciesDropdown";
 import { CleanDatePicker } from "./CleanDatePicker";
+import { normalizeModulePermissionsForRole } from "./permissions";
 import { KanbanBoard as CustomKanbanBoard } from "./KanbanBoard";
 const formatDate = (value) => {
     if (!value)
@@ -75,6 +76,20 @@ const sidebarNavigation = [
     { id: "equipe", label: "Equipes", icon: UsersIcon, path: "/equipe" },
     { id: "plano", label: "Meu plano", icon: PlanIcon, path: "/plano" }
 ];
+const sidebarModuleById = {
+    organizacao: "organization",
+    dashboard: "dashboard",
+    projects: "projects",
+    edt: "eap",
+    board: "kanban",
+    cronograma: "timeline",
+    diagrama: "diagram",
+    atividades: "budget",
+    documentos: "documents",
+    relatorios: "reports",
+    equipe: "team",
+    plano: "plan"
+};
 export const EmptyStateCard = ({ icon: Icon, title, description, actionLabel, onAction }) => (_jsxs("article", { className: "empty-state-card", children: [_jsx("div", { className: "empty-state-card__icon", children: _jsx(Icon, { width: 32, height: 32 }) }), _jsxs("div", { className: "empty-state-card__body", children: [_jsx("h4", { children: title }), _jsx("p", { children: description })] }), actionLabel ? (_jsx("button", { type: "button", className: "primary-button empty-state-card__cta", onClick: onAction, children: actionLabel })) : null] }));
 const createEmptyProjectForm = () => ({
     name: "",
@@ -263,11 +278,14 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
     const [editingTitle, setEditingTitle] = useState("");
     const [statusPickerId, setStatusPickerId] = useState(null);
     const [priorityPickerId, setPriorityPickerId] = useState(null);
+    const [statusPickerOpenUpId, setStatusPickerOpenUpId] = useState(null);
+    const [priorityPickerOpenUpId, setPriorityPickerOpenUpId] = useState(null);
     const [editingDependenciesId, setEditingDependenciesId] = useState(null);
     const [pendingDependencies, setPendingDependencies] = useState([]);
     const dependencyEditorRef = useRef(null);
     const menuRef = useRef(null);
     const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+    const [isCreatingBottomTask, setIsCreatingBottomTask] = useState(false);
     const selectAllRef = useRef(null);
     const [openChatTaskId, setOpenChatTaskId] = useState(null);
     const [chatDraft, setChatDraft] = useState("");
@@ -678,18 +696,42 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
             cancelTitleEdit();
         }
     };
+    const shouldOpenChoiceMenuUp = (trigger) => {
+        if (!trigger)
+            return false;
+        const scrollContainer = trigger.closest(".edt-scroll-wrapper");
+        const triggerRect = trigger.getBoundingClientRect();
+        const estimatedMenuHeight = 248;
+        if (scrollContainer instanceof HTMLElement) {
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const spaceBelow = containerRect.bottom - triggerRect.bottom;
+            const spaceAbove = triggerRect.top - containerRect.top;
+            return spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow;
+        }
+        const viewportSpaceBelow = window.innerHeight - triggerRect.bottom;
+        const viewportSpaceAbove = triggerRect.top;
+        return viewportSpaceBelow < estimatedMenuHeight && viewportSpaceAbove > viewportSpaceBelow;
+    };
     const handleStatusToggle = (event, nodeId) => {
         event.stopPropagation();
         cancelTitleEdit();
         closeDependencyEditor();
         setOpenMenuId(null);
         setPriorityPickerId(null);
-        setStatusPickerId((current) => (current === nodeId ? null : nodeId));
+        setPriorityPickerOpenUpId(null);
+        const openUp = shouldOpenChoiceMenuUp(event.currentTarget);
+        setStatusPickerId((current) => {
+            const nextId = current === nodeId ? null : nodeId;
+            setStatusPickerOpenUpId(nextId && openUp ? nextId : null);
+            return nextId;
+        });
     };
     const handleStatusChange = (event, nodeId, statusValue) => {
         event.stopPropagation();
         setStatusPickerId(null);
         setPriorityPickerId(null);
+        setStatusPickerOpenUpId(null);
+        setPriorityPickerOpenUpId(null);
         const normalized = normalizeStatus(statusValue);
         const current = normalizeStatus(rowMap.get(nodeId)?.node.status);
         if (current === normalized)
@@ -702,12 +744,20 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
         closeDependencyEditor();
         setOpenMenuId(null);
         setStatusPickerId(null);
-        setPriorityPickerId((current) => (current === nodeId ? null : nodeId));
+        setStatusPickerOpenUpId(null);
+        const openUp = shouldOpenChoiceMenuUp(event.currentTarget);
+        setPriorityPickerId((current) => {
+            const nextId = current === nodeId ? null : nodeId;
+            setPriorityPickerOpenUpId(nextId && openUp ? nextId : null);
+            return nextId;
+        });
     };
     const handlePriorityChange = (event, nodeId, priorityValue) => {
         event.stopPropagation();
         setStatusPickerId(null);
         setPriorityPickerId(null);
+        setStatusPickerOpenUpId(null);
+        setPriorityPickerOpenUpId(null);
         const current = normalizePriorityValue(rowMap.get(nodeId)?.node.priority ?? rowMap.get(nodeId)?.node.prioridade ?? rowMap.get(nodeId)?.node.task_priority);
         if (current === priorityValue)
             return;
@@ -830,11 +880,15 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
                 return;
             setStatusPickerId(null);
             setPriorityPickerId(null);
+            setStatusPickerOpenUpId(null);
+            setPriorityPickerOpenUpId(null);
         };
         const handleKeyDown = (event) => {
             if (event.key === "Escape") {
                 setStatusPickerId(null);
                 setPriorityPickerId(null);
+                setStatusPickerOpenUpId(null);
+                setPriorityPickerOpenUpId(null);
             }
         };
         document.addEventListener("mousedown", handleDocumentMouseDown);
@@ -1632,6 +1686,32 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
             console.error("Bulk trash error", error);
         }
     };
+    const handleCreateBottomTask = async (event) => {
+        event.stopPropagation();
+        if (isCreatingBottomTask)
+            return;
+        if (!selectedProjectId || selectedProjectId === "all")
+            return;
+        if (typeof onCreate !== "function")
+            return;
+        setIsCreatingBottomTask(true);
+        try {
+            await onCreate(null, {
+                title: "Nova tarefa",
+                status: "BACKLOG",
+                parentId: null
+            });
+            if (typeof onReloadWbs === "function") {
+                await onReloadWbs();
+            }
+        }
+        catch (error) {
+            console.error("Create bottom task error", error);
+        }
+        finally {
+            setIsCreatingBottomTask(false);
+        }
+    };
     const handleCloseDetails = (event) => {
         event.stopPropagation();
         onSelect(null);
@@ -1649,215 +1729,215 @@ export const WbsTreeView = ({ nodes, loading, error, onCreate, onUpdate, onDelet
     if (!treeNodes.length) {
         return _jsx("p", { className: "muted", children: "Nenhum item cadastrado." });
     }
-    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: "wbs-table-card", "data-has-selection": selectedTaskIds.length > 0, children: [_jsx(DndContext, { collisionDetection: closestCenter, onDragEnd: handleDragEnd, children: _jsx("div", { className: "edt-horizontal-scroll", children: _jsxs("table", { className: "wbs-table w-full table-fixed", children: [_jsxs("colgroup", { children: [_jsx("col", { style: { width: "28px" } }), _jsx("col", { style: { width: "32px" } }), _jsx("col", { style: { width: "60px" } }), _jsx("col", { style: { width: "70px" } }), _jsx("col", { style: { width: "120px" } }), _jsx("col", { style: { width: "320px" } }), _jsx("col", { style: { width: "180px" } }), _jsx("col", { style: { width: "170px" } }), _jsx("col", { style: { width: "200px" } }), _jsx("col", { style: { width: "200px" } }), _jsx("col", { style: { width: "120px" } }), _jsx("col", { style: { width: "180px" } }), _jsx("col", { style: { width: "200px" } }), _jsx("col", { style: { width: "110px" } }), _jsx("col", { style: { width: "120px" } }), _jsx("col", { style: { width: "150px" } }), _jsx("col", { style: { width: "150px" } })] }), _jsx("thead", { children: _jsxs("tr", { className: "bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase", children: [_jsx("th", { className: "px-1 py-2 text-center align-middle", "aria-hidden": "true" }), _jsx("th", { className: "px-1 py-2 text-center align-middle", children: _jsx("input", { type: "checkbox", "aria-label": "Selecionar todas as tarefas", ref: selectAllRef, checked: isAllVisibleSelected, onChange: (event) => handleSelectAllVisible(event.target.checked) }) }), _jsx("th", { className: "px-1 py-2 text-center align-middle", children: "ID" }), _jsx("th", { className: "px-1 py-2 text-center align-middle", title: "Coment\u00E1rios da tarefa", children: "Chat" }), _jsx("th", { className: "px-1 py-2 text-center align-middle", children: "N\u00EDvel" }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: _jsxs("div", { className: "wbs-name-header", children: [_jsx("span", { children: "Nome da tarefa" }), _jsxs("div", { className: "wbs-name-header__actions", children: [_jsx("button", { type: "button", className: "wbs-name-header__action", onClick: handleCollapseAllLevels, "aria-label": "Recolher todos os n\u00EDveis", title: "Recolher todos os n\u00EDveis", disabled: !hasExpandableLevels, children: _jsx(CollapseAllIcon, { width: 14, height: 14 }) }), _jsx("button", { type: "button", className: "wbs-name-header__action", onClick: handleExpandAllLevels, "aria-label": "Expandir todos os n\u00EDveis", title: "Expandir todos os n\u00EDveis", disabled: !hasExpandableLevels, children: _jsx(ExpandAllIcon, { width: 14, height: 14 }) })] })] }) }), _jsx("th", { className: "w-[180px] px-3 py-2 text-left align-middle wbs-status-col", children: "Status" }), _jsx("th", { className: "w-[170px] px-3 py-2 text-left align-middle wbs-priority-col", children: "Prioridade" }), _jsx("th", { className: "wbs-date-col wbs-date-col-start w-[200px] px-2 py-2 text-left text-xs font-semibold text-slate-500", children: "In\u00EDcio" }), _jsx("th", { className: "wbs-date-col wbs-date-col-end w-[200px] px-2 py-2 text-left text-xs font-semibold text-slate-500", children: "T\u00E9rmino" }), _jsx("th", { className: "w-[120px] px-2 py-2 text-left align-middle wbs-quantity-col", children: "Quantidade" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-semibold text-slate-500", children: "Respons\u00E1vel" }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: "Cat\u00E1logo de Servi\u00E7os" }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: "Multi." }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: _jsxs("div", { className: "flex flex-col leading-tight", children: [_jsx("span", { children: "Horas Previstas" }), _jsxs("span", { className: "text-[10px] text-slate-400 font-medium normal-case", children: ["Total ", plannedHoursLabel] })] }) }), _jsx("th", { className: "w-[150px] px-3 py-2 text-left align-middle", children: "Depend\u00EAncia" }), _jsx("th", { className: "w-[150px] px-3 py-2 text-center align-middle", children: "Detalhes" })] }) }), _jsx(SortableContext, { items: visibleIds, strategy: verticalListSortingStrategy, children: _jsx("tbody", { children: filteredRows.map((row) => {
-                                                const displayId = resolveDisplayCode(row.node, row.displayId);
-                                                const visualLevel = Number.isFinite(row.level) ? row.level : typeof row.node.level === "number" ? row.node.level : 0;
-                                                const autoDateFromChildren = shouldAutoDateFromChildren(row);
-                                                const autoDateSummary = autoDateFromChildren ? autoDateSummaryById.get(String(row.node.id)) : null;
-                                                const effectiveStartDate = autoDateSummary?.startDate ?? row.node.startDate ?? null;
-                                                const effectiveEndDate = autoDateSummary?.endDate ?? row.node.endDate ?? null;
-                                                const durationInputValue = getDurationInputValue({
-                                                    ...row.node,
-                                                    startDate: effectiveStartDate,
-                                                    endDate: effectiveEndDate
-                                                });
-                                                const displayLevel = visualLevel + 1;
-                                                const status = resolveStatus(row.node.status);
-                                                const isExpanded = row.hasChildren
-                                                    ? (expandedNodes[row.node.id] ?? visualLevel < 1)
-                                                    : false;
-                                                const isActive = selectedNodeId === row.node.id;
-                                                const responsibleMembershipId = row.node.responsible?.membershipId ?? "";
-                                                const dependencyBadges = autoDateFromChildren
-                                                    ? []
-                                                    : Array.isArray(row.node.dependencies)
-                                                        ? row.node.dependencies
-                                                        : [];
-                                                const dependencyOptionsList = allRows
-                                                    .filter((optionRow) => optionRow.node.id !== row.node.id)
-                                                    .map((optionRow) => {
-                                                    const optionDisplayCode = resolveDisplayCode(optionRow.node, optionRow.displayId);
-                                                    return {
-                                                        id: optionRow.node.id,
-                                                        name: optionRow.node.title ?? optionRow.node.name ?? "Tarefa sem nome",
-                                                        displayCode: optionDisplayCode,
-                                                        wbsCode: optionRow.node.wbsCode ?? optionRow.displayId
-                                                    };
-                                                });
-                                                const dependencyInfos = dependencyBadges.map((dependencyId) => {
-                                                    const dependencyRow = rowMap.get(dependencyId);
-                                                    if (!dependencyRow) {
+    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: "wbs-table-card", "data-has-selection": selectedTaskIds.length > 0, children: [_jsx(DndContext, { collisionDetection: closestCenter, onDragEnd: handleDragEnd, children: _jsx("div", { className: "edt-horizontal-scroll", children: _jsxs("table", { className: "wbs-table w-full table-fixed", children: [_jsxs("colgroup", { children: [_jsx("col", { style: { width: "28px" } }), _jsx("col", { style: { width: "32px" } }), _jsx("col", { style: { width: "60px" } }), _jsx("col", { style: { width: "70px" } }), _jsx("col", { style: { width: "120px" } }), _jsx("col", { style: { width: "320px" } }), _jsx("col", { style: { width: "180px" } }), _jsx("col", { style: { width: "170px" } }), _jsx("col", { style: { width: "200px" } }), _jsx("col", { style: { width: "200px" } }), _jsx("col", { style: { width: "120px" } }), _jsx("col", { style: { width: "180px" } }), _jsx("col", { style: { width: "200px" } }), _jsx("col", { style: { width: "110px" } }), _jsx("col", { style: { width: "120px" } }), _jsx("col", { style: { width: "150px" } }), _jsx("col", { style: { width: "150px" } })] }), _jsx("thead", { children: _jsxs("tr", { className: "bg-slate-50 text-[11px] font-semibold text-slate-600 uppercase", children: [_jsx("th", { className: "px-1 py-2 text-center align-middle", "aria-hidden": "true" }), _jsx("th", { className: "px-1 py-2 text-center align-middle", children: _jsx("input", { type: "checkbox", "aria-label": "Selecionar todas as tarefas", ref: selectAllRef, checked: isAllVisibleSelected, onChange: (event) => handleSelectAllVisible(event.target.checked) }) }), _jsx("th", { className: "px-1 py-2 text-center align-middle", children: "ID" }), _jsx("th", { className: "px-1 py-2 text-center align-middle", title: "Coment\u00E1rios da tarefa", children: "Chat" }), _jsx("th", { className: "px-1 py-2 text-center align-middle", children: "N\u00EDvel" }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: _jsxs("div", { className: "wbs-name-header", children: [_jsx("span", { children: "Nome da tarefa" }), _jsxs("div", { className: "wbs-name-header__actions", children: [_jsx("button", { type: "button", className: "wbs-name-header__action", onClick: handleCollapseAllLevels, "aria-label": "Recolher todos os n\u00EDveis", title: "Recolher todos os n\u00EDveis", disabled: !hasExpandableLevels, children: _jsx(CollapseAllIcon, { width: 14, height: 14 }) }), _jsx("button", { type: "button", className: "wbs-name-header__action", onClick: handleExpandAllLevels, "aria-label": "Expandir todos os n\u00EDveis", title: "Expandir todos os n\u00EDveis", disabled: !hasExpandableLevels, children: _jsx(ExpandAllIcon, { width: 14, height: 14 }) })] })] }) }), _jsx("th", { className: "w-[180px] px-3 py-2 text-left align-middle wbs-status-col", children: "Status" }), _jsx("th", { className: "w-[170px] px-3 py-2 text-left align-middle wbs-priority-col", children: "Prioridade" }), _jsx("th", { className: "wbs-date-col wbs-date-col-start w-[200px] px-2 py-2 text-left text-xs font-semibold text-slate-500", children: "In\u00EDcio" }), _jsx("th", { className: "wbs-date-col wbs-date-col-end w-[200px] px-2 py-2 text-left text-xs font-semibold text-slate-500", children: "T\u00E9rmino" }), _jsx("th", { className: "w-[120px] px-2 py-2 text-left align-middle wbs-quantity-col", children: "Quantidade" }), _jsx("th", { className: "px-4 py-2 text-left text-xs font-semibold text-slate-500", children: "Respons\u00E1vel" }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: "Cat\u00E1logo de Servi\u00E7os" }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: "Multi." }), _jsx("th", { className: "px-3 py-2 text-left text-xs font-semibold text-slate-500", children: _jsxs("div", { className: "flex flex-col leading-tight", children: [_jsx("span", { children: "Horas Previstas" }), _jsxs("span", { className: "text-[10px] text-slate-400 font-medium normal-case", children: ["Total ", plannedHoursLabel] })] }) }), _jsx("th", { className: "w-[150px] px-3 py-2 text-left align-middle", children: "Depend\u00EAncia" }), _jsx("th", { className: "w-[150px] px-3 py-2 text-center align-middle", children: "Detalhes" })] }) }), _jsx(SortableContext, { items: visibleIds, strategy: verticalListSortingStrategy, children: _jsxs("tbody", { children: [filteredRows.map((row) => {
+                                                    const displayId = resolveDisplayCode(row.node, row.displayId);
+                                                    const visualLevel = Number.isFinite(row.level) ? row.level : typeof row.node.level === "number" ? row.node.level : 0;
+                                                    const autoDateFromChildren = shouldAutoDateFromChildren(row);
+                                                    const autoDateSummary = autoDateFromChildren ? autoDateSummaryById.get(String(row.node.id)) : null;
+                                                    const effectiveStartDate = autoDateSummary?.startDate ?? row.node.startDate ?? null;
+                                                    const effectiveEndDate = autoDateSummary?.endDate ?? row.node.endDate ?? null;
+                                                    const durationInputValue = getDurationInputValue({
+                                                        ...row.node,
+                                                        startDate: effectiveStartDate,
+                                                        endDate: effectiveEndDate
+                                                    });
+                                                    const displayLevel = visualLevel + 1;
+                                                    const status = resolveStatus(row.node.status);
+                                                    const isExpanded = row.hasChildren
+                                                        ? (expandedNodes[row.node.id] ?? visualLevel < 1)
+                                                        : false;
+                                                    const isActive = selectedNodeId === row.node.id;
+                                                    const responsibleMembershipId = row.node.responsible?.membershipId ?? "";
+                                                    const dependencyBadges = autoDateFromChildren
+                                                        ? []
+                                                        : Array.isArray(row.node.dependencies)
+                                                            ? row.node.dependencies
+                                                            : [];
+                                                    const dependencyOptionsList = allRows
+                                                        .filter((optionRow) => optionRow.node.id !== row.node.id)
+                                                        .map((optionRow) => {
+                                                        const optionDisplayCode = resolveDisplayCode(optionRow.node, optionRow.displayId);
+                                                        return {
+                                                            id: optionRow.node.id,
+                                                            name: optionRow.node.title ?? optionRow.node.name ?? "Tarefa sem nome",
+                                                            displayCode: optionDisplayCode,
+                                                            wbsCode: optionRow.node.wbsCode ?? optionRow.displayId
+                                                        };
+                                                    });
+                                                    const dependencyInfos = dependencyBadges.map((dependencyId) => {
+                                                        const dependencyRow = rowMap.get(dependencyId);
+                                                        if (!dependencyRow) {
+                                                            return {
+                                                                id: dependencyId,
+                                                                label: dependencyId,
+                                                                tooltip: "Tarefa não encontrada",
+                                                                row: null
+                                                            };
+                                                        }
+                                                        const label = resolveDisplayCode(dependencyRow.node, dependencyRow.displayId);
                                                         return {
                                                             id: dependencyId,
-                                                            label: dependencyId,
-                                                            tooltip: "Tarefa não encontrada",
-                                                            row: null
+                                                            label,
+                                                            tooltip: `${label} - ${dependencyRow.node.title ?? ""}`,
+                                                            row: dependencyRow
                                                         };
-                                                    }
-                                                    const label = resolveDisplayCode(dependencyRow.node, dependencyRow.displayId);
-                                                    return {
-                                                        id: dependencyId,
-                                                        label,
-                                                        tooltip: `${label} - ${dependencyRow.node.title ?? ""}`,
-                                                        row: dependencyRow
-                                                    };
-                                                });
-                                                const applyDependencyDownChain = () => {
-                                                    const fromIndex = filteredRows.findIndex((candidate) => candidate.node.id === row.node.id);
-                                                    if (fromIndex < 0 || fromIndex >= filteredRows.length - 1)
-                                                        return;
-                                                    for (let index = fromIndex + 1; index < filteredRows.length; index += 1) {
-                                                        const target = filteredRows[index];
-                                                        const targetIsParent = shouldAutoDateFromChildren(target);
-                                                        const currentDeps = Array.isArray(target.node.dependencies)
-                                                            ? target.node.dependencies.map((dep) => String(dep))
-                                                            : [];
-                                                        if (targetIsParent) {
-                                                            if (currentDeps.length > 0) {
-                                                                onUpdate(target.node.id, { dependencies: [] });
+                                                    });
+                                                    const applyDependencyDownChain = () => {
+                                                        const fromIndex = filteredRows.findIndex((candidate) => candidate.node.id === row.node.id);
+                                                        if (fromIndex < 0 || fromIndex >= filteredRows.length - 1)
+                                                            return;
+                                                        for (let index = fromIndex + 1; index < filteredRows.length; index += 1) {
+                                                            const target = filteredRows[index];
+                                                            const targetIsParent = shouldAutoDateFromChildren(target);
+                                                            const currentDeps = Array.isArray(target.node.dependencies)
+                                                                ? target.node.dependencies.map((dep) => String(dep))
+                                                                : [];
+                                                            if (targetIsParent) {
+                                                                if (currentDeps.length > 0) {
+                                                                    onUpdate(target.node.id, { dependencies: [] });
+                                                                }
+                                                                continue;
                                                             }
-                                                            continue;
+                                                            let previousIndex = index - 1;
+                                                            while (previousIndex >= 0 && shouldAutoDateFromChildren(filteredRows[previousIndex])) {
+                                                                previousIndex -= 1;
+                                                            }
+                                                            if (previousIndex < 0)
+                                                                continue;
+                                                            const previous = filteredRows[previousIndex];
+                                                            const previousId = String(previous.node.id);
+                                                            if (currentDeps.length !== 1 || currentDeps[0] !== previousId) {
+                                                                onUpdate(target.node.id, { dependencies: [previousId] });
+                                                            }
                                                         }
-                                                        let previousIndex = index - 1;
-                                                        while (previousIndex >= 0 && shouldAutoDateFromChildren(filteredRows[previousIndex])) {
-                                                            previousIndex -= 1;
-                                                        }
-                                                        if (previousIndex < 0)
-                                                            continue;
-                                                        const previous = filteredRows[previousIndex];
-                                                        const previousId = String(previous.node.id);
-                                                        if (currentDeps.length !== 1 || currentDeps[0] !== previousId) {
-                                                            onUpdate(target.node.id, { dependencies: [previousId] });
-                                                        }
-                                                    }
-                                                };
-                                                const selectedService = serviceCatalog.find((service) => service.id === row.node.serviceCatalogId) ?? null;
-                                                const serviceMultiplierValue = Number(row.node.serviceMultiplier ?? 1) || 1;
-                                                const serviceBaseHours = selectedService && selectedService.hoursBase !== undefined
-                                                    ? Number(selectedService.hoursBase ?? 0)
-                                                    : selectedService && selectedService.hours !== undefined
-                                                        ? Number(selectedService.hours ?? 0)
-                                                        : null;
-                                                const computedServiceHours = typeof row.node.serviceHours === "number"
-                                                    ? row.node.serviceHours
-                                                    : serviceBaseHours !== null
-                                                        ? serviceBaseHours * serviceMultiplierValue
-                                                        : null;
-                                                const parentRow = row.parentId ? rowMap.get(row.parentId) : null;
-                                                const siblingsAtLevel = parentRow ? parentRow.node.children ?? [] : treeNodes;
-                                                const currentLevelIndex = siblingsAtLevel.findIndex((child) => child.id === row.node.id);
-                                                const canLevelUp = Boolean(parentRow);
-                                                const canLevelDown = currentLevelIndex > 0;
-                                                const limitedLevel = Math.max(0, Math.min(visualLevel, 4));
-                                                const levelClass = `level-${limitedLevel}`;
-                                                const isEditingTitle = editingNodeId === row.node.id;
-                                                const normalizedStatus = normalizeStatus(row.node.status);
-                                                const statusClass = STATUS_CLASS[normalizedStatus] ?? STATUS_CLASS.default;
-                                                const today = new Date();
-                                                today.setHours(0, 0, 0, 0);
-                                                const endDateOnly = toLocalDateOnly(effectiveEndDate);
-                                                const daysToEnd = endDateOnly ? Math.round((endDateOnly.getTime() - today.getTime()) / MS_IN_DAY) : null;
-                                                const isEndDateOverdue = Boolean(endDateOnly && endDateOnly.getTime() < today.getTime() && normalizedStatus !== "Finalizado");
-                                                const isEndDateSoon = Boolean(!isEndDateOverdue && (daysToEnd === 1 || daysToEnd === 0) && normalizedStatus !== "Finalizado");
-                                                const isDoneStatus = normalizedStatus === "Finalizado";
-                                                const isInProgressStatus = normalizedStatus === "Em andamento";
-                                                const durationInDays = calcDurationInDays(effectiveStartDate, effectiveEndDate);
-                                                const isStatusPickerOpen = statusPickerId === row.node.id;
-                                                const priorityValue = normalizePriorityValue(row.node.priority ?? row.node.prioridade ?? row.node.task_priority);
-                                                const priorityTone = getPriorityTone(priorityValue);
-                                                const progressValue = progressMap.get(row.node.id) ?? 0;
-                                                const isRootLevel = visualLevel === 0;
-                                                const formattedLevel = `${displayLevel}`;
-                                                return (_jsx(SortableRow, { id: row.node.id, className: `wbs-row level-${limitedLevel} ${isActive ? "is-active" : ""}`, "data-progress": progressValue, "data-node-id": row.node.id, children: ({ attributes, listeners, isDragging }) => (_jsxs(_Fragment, { children: [_jsx("td", { className: "px-1 py-2 text-center align-middle", children: _jsx("button", { type: "button", className: "wbs-drag-handle", onClick: (event) => event.stopPropagation(), ...attributes, ...listeners, "data-dragging": isDragging || undefined, "aria-label": "Arrastar para reordenar", children: "::" }) }), _jsx("td", { className: "px-1 py-2 text-center align-middle", children: _jsx("input", { type: "checkbox", "aria-label": `Selecionar tarefa ${displayId}`, checked: selectedTaskIds.includes(row.node.id), onChange: (event) => {
-                                                                        event.stopPropagation();
-                                                                        handleSelectRow(event.target.checked, row.node.id);
-                                                                    }, onClick: (event) => event.stopPropagation() }) }), _jsx("td", { className: "px-1 py-2 text-center align-middle text-[11px] text-slate-700", children: displayId }), _jsx("td", { className: "px-1 py-2 text-center align-middle", children: _jsxs("button", { type: "button", className: "wbs-chat-button relative inline-flex h-7 min-w-[40px] items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-2 text-[11px] text-slate-700 hover:bg-slate-50 transition", "aria-label": `Comentários da tarefa ${displayId}`, onClick: (event) => {
-                                                                        event.stopPropagation();
-                                                                        setOpenChatTaskId(row.node.id);
-                                                                    }, children: [_jsx(ChatIcon, {}), _jsx("span", { className: "text-xs font-medium text-slate-600", children: chatCounts[row.node.id] ?? row.node.comments?.length ?? 0 }), (chatCounts[row.node.id] ?? row.node.comments?.length ?? 0) > 0 && (_jsx("span", { className: "absolute -top-[3px] -right-[3px] h-2.5 w-2.5 rounded-full bg-red-500 border border-white shadow-sm" }))] }) }), _jsx("td", { className: "px-2 py-2 text-center align-middle w-[80px]", children: _jsxs("div", { style: {
-                                                                        display: "inline-flex",
-                                                                        flexDirection: "row",
-                                                                        alignItems: "center",
-                                                                        justifyContent: "center",
-                                                                        gap: "6px",
-                                                                        lineHeight: 1
-                                                                    }, children: [_jsx("button", { type: "button", onClick: (event) => handleLevelAdjust(event, row.node.id, "up"), style: {
-                                                                                border: "none",
-                                                                                background: "transparent",
-                                                                                padding: 0,
-                                                                                margin: 0,
-                                                                                cursor: "pointer",
-                                                                                display: "flex",
-                                                                                alignItems: "center",
-                                                                                justifyContent: "center",
-                                                                                fontSize: "14px"
-                                                                            }, children: "<" }), _jsx("span", { style: {
-                                                                                minWidth: "12px",
-                                                                                textAlign: "center",
-                                                                                fontSize: "14px",
-                                                                                fontWeight: 600
-                                                                            }, children: displayLevel }), _jsx("button", { type: "button", onClick: (event) => handleLevelAdjust(event, row.node.id, "down"), style: {
-                                                                                border: "none",
-                                                                                background: "transparent",
-                                                                                padding: 0,
-                                                                                margin: 0,
-                                                                                cursor: "pointer",
-                                                                                display: "flex",
-                                                                                alignItems: "center",
-                                                                                justifyContent: "center",
-                                                                                fontSize: "14px"
-                                                                            }, children: "\u003e" })] }) }), _jsx("td", { className: "w-[140px] px-3 py-2 align-middle", children: _jsxs("div", { className: `flex w-full items-center gap-2 flex-1 min-w-[220px] max-w-none wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""} ${levelClass}`, children: [row.hasChildren ? (_jsx("button", { type: "button", className: `wbs-toggle ${isExpanded ? "is-open" : ""}`, onClick: (event) => handleToggle(event, row.node.id, visualLevel), "aria-label": isExpanded ? "Recolher subtarefas" : "Expandir subtarefas", "aria-expanded": isExpanded, children: ">" })) : (_jsx("span", { className: "wbs-toggle placeholder" })), _jsxs("div", { className: "flex items-center gap-2 flex-1 min-w-[220px] max-w-none", children: [_jsx("span", { className: `wbs-node-icon ${row.hasChildren ? "is-folder" : "is-task"}`, children: row.hasChildren ? _jsx(FolderIcon, {}) : _jsx(TaskIcon, {}) }), _jsx("div", { className: "wbs-task-text", title: row.node.title ?? "Tarefa sem nome", onDoubleClick: (event) => handleBeginTitleEdit(event, row.node), children: isEditingTitle ? (_jsx("input", { className: "wbs-title-input", value: editingTitle, onChange: (event) => setEditingTitle(event.target.value), onBlur: commitTitleEdit, onKeyDown: handleTitleKeyDown, onClick: (event) => event.stopPropagation(), autoFocus: true, placeholder: "Nome da tarefa" })) : (_jsx(_Fragment, { children: _jsx("span", { className: clsx("wbs-task-text", row.node.level === 0 ? "font-semibold" : "font-normal"), children: row.node.title ?? row.node.name ?? "Tarefa sem nome" }) })) })] })] }) }), _jsx("td", { className: "px-3 py-2 align-middle wbs-status-cell", children: _jsxs("div", { className: "wbs-inline-picker", children: [_jsxs("button", { type: "button", className: clsx("wbs-status-select wbs-choice-trigger", statusClass), onClick: (event) => handleStatusToggle(event, row.node.id), "aria-label": "Alterar situa\u00E7\u00E3o da tarefa", "aria-haspopup": "listbox", "aria-expanded": isStatusPickerOpen, children: [_jsx("span", { className: "wbs-choice-trigger__text", children: normalizedStatus }), _jsx("span", { className: "wbs-choice-trigger__caret", "aria-hidden": "true", children: "v" })] }), isStatusPickerOpen && (_jsx("div", { className: "wbs-choice-menu wbs-choice-menu--status", role: "listbox", "aria-label": "Op\u00E7\u00F5es de status", children: STATUS_ORDER.map((statusOption) => {
-                                                                                const tone = STATUS_TONE[statusOption];
-                                                                                const isSelected = normalizedStatus === statusOption;
-                                                                                return (_jsx("button", { type: "button", role: "option", "aria-selected": isSelected, className: clsx("wbs-choice-option", `wbs-choice-option--${tone}`, isSelected && "is-selected"), onClick: (event) => handleStatusChange(event, row.node.id, statusOption), children: statusOption }, statusOption));
-                                                                            }) }))] }) }), _jsx("td", { className: "px-3 py-2 align-middle wbs-priority-cell", children: _jsxs("div", { className: "wbs-inline-picker", children: [_jsxs("button", { type: "button", className: clsx("wbs-priority-select wbs-choice-trigger", `wbs-priority-${priorityTone}`), onClick: (event) => handlePriorityToggle(event, row.node.id), "aria-label": "Alterar prioridade da tarefa", "aria-haspopup": "listbox", "aria-expanded": priorityPickerId === row.node.id, children: [_jsx("span", { className: "wbs-choice-trigger__text", children: PRIORITY_OPTIONS.find((option) => option.value === priorityValue)?.label ?? "Média" }), _jsx("span", { className: "wbs-choice-trigger__caret", "aria-hidden": "true", children: "v" })] }), priorityPickerId === row.node.id && (_jsx("div", { className: "wbs-choice-menu wbs-choice-menu--priority", role: "listbox", "aria-label": "Op\u00E7\u00F5es de prioridade", children: PRIORITY_OPTIONS.map((option) => {
-                                                                                const optionTone = getPriorityTone(option.value);
-                                                                                const isSelected = priorityValue === option.value;
-                                                                                return (_jsx("button", { type: "button", role: "option", "aria-selected": isSelected, className: clsx("wbs-choice-option", `wbs-choice-option--${optionTone}`, isSelected && "is-selected"), onClick: (event) => handlePriorityChange(event, row.node.id, option.value), children: option.label }, option.value));
-                                                                            }) }))] }) }), _jsx("td", { className: "wbs-date-col wbs-date-col-start px-2 py-2 align-middle w-[200px]", children: _jsx("div", { className: "wbs-date-input-wrapper", children: _jsx(CleanDatePicker, { value: formatDateInputValue(effectiveStartDate), onChange: (nextValue) => handleDateFieldChange(row.node.id, "startDate", nextValue), placeholder: "dd/mm/aaaa", className: "wbs-date-input", disabled: autoDateFromChildren, title: autoDateFromChildren ? "Resumo automático do nível 1 com base nos filhos." : undefined }) }) }), _jsx("td", { className: "wbs-date-col wbs-date-col-end px-2 py-2 align-middle w-[200px]", children: _jsxs("div", { className: "wbs-date-input-wrapper", children: [_jsx(CleanDatePicker, { value: formatDateInputValue(effectiveEndDate), onChange: (nextValue) => handleDateFieldChange(row.node.id, "endDate", nextValue), placeholder: "dd/mm/aaaa", className: clsx("wbs-date-input", isEndDateOverdue && "wbs-date-input--overdue", !isEndDateOverdue && isEndDateSoon && "wbs-date-input--warning", isDoneStatus && "wbs-date-input--done", !isDoneStatus && !isEndDateOverdue && isInProgressStatus && "wbs-date-input--progress"), disabled: autoDateFromChildren, title: autoDateFromChildren ? "Resumo automático do nível 1 com base nos filhos." : undefined }), isEndDateOverdue && _jsx("span", { className: "wbs-date-alert", children: "!" }), !isEndDateOverdue && isEndDateSoon && _jsx("span", { className: "wbs-date-clock", children: "\u23F0" }), isDoneStatus && _jsx("span", { className: "wbs-date-check", children: "\u2713" }), !isDoneStatus && !isEndDateOverdue && isInProgressStatus && (_jsx("span", { className: "wbs-date-progress", children: "\u25B6" }))] }) }), _jsx("td", { className: "w-[120px] px-2 py-2 align-middle wbs-quantity-cell wbs-duration-cell", "data-duration-label": durationInDays === 1 ? "dia" : "dias", children: _jsx("input", { type: "number", min: 1, step: 1, value: durationInputValue, onChange: (event) => handleDurationInputChange(row.node.id, event.target.value), onClick: (event) => event.stopPropagation(), className: "wbs-duration-input", disabled: autoDateFromChildren, title: autoDateFromChildren ? "Duracao calculada automaticamente pelos filhos." : undefined, "aria-label": "Quantidade de dias" }) }), _jsx("td", { className: "px-4 py-2 align-middle min-w-[180px]", children: _jsxs("select", { className: "wbs-responsible-select", value: responsibleMembershipId, onClick: (event) => event.stopPropagation(), onChange: (event) => onChangeResponsible?.(row.node.id, event.target.value || null), children: [_jsx("option", { value: "", children: "Sem Respons\u00E1vel" }), members.map((member) => (_jsx("option", { value: member.id, children: member.name ?? member.email ?? member.userId }, member.id)))] }) }), _jsx("td", { className: "px-3 py-2 align-middle min-w-[200px]", children: _jsxs("select", { className: "wbs-service-select", value: row.node.serviceCatalogId ?? "", disabled: !serviceCatalog?.length, title: serviceCatalog?.length
-                                                                        ? "Selecione um serviço"
-                                                                        : "Use 'Importar serviços' para carregar o catálogo", onClick: (event) => event.stopPropagation(), onChange: (event) => {
-                                                                        event.stopPropagation();
-                                                                        const newServiceId = event.target.value || null;
-                                                                        const catalogItem = serviceCatalog.find((service) => service.id === newServiceId);
-                                                                        const baseHours = catalogItem
-                                                                            ? Number(catalogItem.hoursBase ?? catalogItem.hours ?? 0)
-                                                                            : null;
-                                                                        const hours = baseHours !== null && baseHours !== undefined
-                                                                            ? baseHours * (Number(serviceMultiplierValue) || 1)
-                                                                            : null;
-                                                                        onUpdate(row.node.id, {
-                                                                            serviceCatalogId: newServiceId,
-                                                                            serviceMultiplier: serviceMultiplierValue,
-                                                                            serviceHours: hours ?? undefined
-                                                                        });
-                                                                    }, children: [_jsx("option", { value: "", children: "Sem servi\u00E7o" }), serviceCatalog?.length === 0 ? (_jsx("option", { value: "", disabled: true, children: "Cat\u00E1logo n\u00E3o configurado" })) : (serviceCatalog.map((service) => {
-                                                                            const base = service.hoursBase ?? service.hours ?? null;
-                                                                            const label = base !== null && base !== undefined ? `${service.name} (${base}h)` : service.name;
-                                                                            return (_jsx("option", { value: service.id, title: label, children: label }, service.id));
-                                                                        }))] }) }), _jsx("td", { className: "px-3 py-2 align-middle w-[110px]", children: _jsx("input", { type: "number", min: 1, step: 1, className: "wbs-multiplier-input", value: serviceMultiplierValue, onClick: (event) => event.stopPropagation(), onChange: (event) => {
-                                                                        event.stopPropagation();
-                                                                        const value = Math.max(1, Number(event.target.value) || 1);
-                                                                        const catalogItem = row.node.serviceCatalogId
-                                                                            ? serviceCatalog.find((service) => service.id === row.node.serviceCatalogId)
-                                                                            : null;
-                                                                        const baseHours = catalogItem
-                                                                            ? Number(catalogItem.hoursBase ?? catalogItem.hours ?? 0)
-                                                                            : null;
-                                                                        const hours = baseHours !== null && baseHours !== undefined ? baseHours * value : null;
-                                                                        onUpdate(row.node.id, {
-                                                                            serviceCatalogId: row.node.serviceCatalogId ?? null,
-                                                                            serviceMultiplier: value,
-                                                                            serviceHours: hours ?? undefined,
-                                                                        });
-                                                                    } }) }), _jsx("td", { className: "px-3 py-2 align-middle text-center", children: _jsx("span", { className: "wbs-hr-badge", children: computedServiceHours !== null && computedServiceHours !== undefined
-                                                                        ? `${Math.max(0, Math.round(computedServiceHours * 100) / 100)}h`
-                                                                        : "-" }) }), _jsx("td", { className: "wbs-dependencies-cell w-[150px] px-3 py-2 align-middle", children: autoDateFromChildren ? (_jsx("span", { className: "wbs-dependencies-placeholder", "aria-hidden": "true", title: "Linha pai de resumo autom\u00E1tico.", children: "\u00A0" })) : (_jsx(DependenciesDropdown, { options: dependencyOptionsList, selectedIds: dependencyBadges, onChange: (newSelected) => {
-                                                                        if (autoDateFromChildren)
-                                                                            return;
-                                                                        onUpdate(row.node.id, { dependencies: newSelected });
-                                                                    }, onApplyDownChain: autoDateFromChildren ? undefined : applyDependencyDownChain, currentTaskName: row.node.title ?? row.node.name ?? "Tarefa sem nome", currentTaskCode: displayId, disabled: autoDateFromChildren, disabledReason: "Tarefa com filhos e resumida automaticamente nao pode ter dependencia." })) }), _jsx("td", { className: "wbs-details-cell w-[150px] px-3 py-2 align-middle text-center", children: _jsx("div", { className: "wbs-details-actions", children: _jsxs("button", { type: "button", className: `wbs-details-button ${isActive ? "is-active" : ""}`, onClick: (event) => handleDetailsButton(event, row.node.id), "aria-label": "Ver detalhes da tarefa", children: [_jsx(DetailsIcon, {}), _jsx("span", { className: "details-label", children: "Detalhes" })] }) }) })] })) }, row.node.id));
-                                            }) }) })] }) }) }), selectedTaskIds.length > 0 && (_jsxs("div", { className: "wbs-bulk-bar", children: [_jsxs("span", { className: "wbs-bulk-info", children: [selectedTaskIds.length, " selecionada(s)"] }), _jsxs("div", { className: "wbs-bulk-actions", children: [_jsx("button", { type: "button", className: "btn-secondary", onClick: () => setSelectedTaskIds([]), children: "Limpar sele\u00E7\u00E3o" }), _jsx("button", { type: "button", className: "btn-danger-ghost", onClick: handleBulkTrash, children: "Enviar para lixeira" })] })] })), openMenuId && menuPosition && activeMenuNode &&
+                                                    };
+                                                    const selectedService = serviceCatalog.find((service) => service.id === row.node.serviceCatalogId) ?? null;
+                                                    const serviceMultiplierValue = Number(row.node.serviceMultiplier ?? 1) || 1;
+                                                    const serviceBaseHours = selectedService && selectedService.hoursBase !== undefined
+                                                        ? Number(selectedService.hoursBase ?? 0)
+                                                        : selectedService && selectedService.hours !== undefined
+                                                            ? Number(selectedService.hours ?? 0)
+                                                            : null;
+                                                    const computedServiceHours = typeof row.node.serviceHours === "number"
+                                                        ? row.node.serviceHours
+                                                        : serviceBaseHours !== null
+                                                            ? serviceBaseHours * serviceMultiplierValue
+                                                            : null;
+                                                    const parentRow = row.parentId ? rowMap.get(row.parentId) : null;
+                                                    const siblingsAtLevel = parentRow ? parentRow.node.children ?? [] : treeNodes;
+                                                    const currentLevelIndex = siblingsAtLevel.findIndex((child) => child.id === row.node.id);
+                                                    const canLevelUp = Boolean(parentRow);
+                                                    const canLevelDown = currentLevelIndex > 0;
+                                                    const limitedLevel = Math.max(0, Math.min(visualLevel, 4));
+                                                    const levelClass = `level-${limitedLevel}`;
+                                                    const isEditingTitle = editingNodeId === row.node.id;
+                                                    const normalizedStatus = normalizeStatus(row.node.status);
+                                                    const statusClass = STATUS_CLASS[normalizedStatus] ?? STATUS_CLASS.default;
+                                                    const today = new Date();
+                                                    today.setHours(0, 0, 0, 0);
+                                                    const endDateOnly = toLocalDateOnly(effectiveEndDate);
+                                                    const daysToEnd = endDateOnly ? Math.round((endDateOnly.getTime() - today.getTime()) / MS_IN_DAY) : null;
+                                                    const isEndDateOverdue = Boolean(endDateOnly && endDateOnly.getTime() < today.getTime() && normalizedStatus !== "Finalizado");
+                                                    const isEndDateSoon = Boolean(!isEndDateOverdue && (daysToEnd === 1 || daysToEnd === 0) && normalizedStatus !== "Finalizado");
+                                                    const isDoneStatus = normalizedStatus === "Finalizado";
+                                                    const isInProgressStatus = normalizedStatus === "Em andamento";
+                                                    const durationInDays = calcDurationInDays(effectiveStartDate, effectiveEndDate);
+                                                    const isStatusPickerOpen = statusPickerId === row.node.id;
+                                                    const priorityValue = normalizePriorityValue(row.node.priority ?? row.node.prioridade ?? row.node.task_priority);
+                                                    const priorityTone = getPriorityTone(priorityValue);
+                                                    const progressValue = progressMap.get(row.node.id) ?? 0;
+                                                    const isRootLevel = visualLevel === 0;
+                                                    const formattedLevel = `${displayLevel}`;
+                                                    return (_jsx(SortableRow, { id: row.node.id, className: `wbs-row level-${limitedLevel} ${isActive ? "is-active" : ""}`, "data-progress": progressValue, "data-node-id": row.node.id, children: ({ attributes, listeners, isDragging }) => (_jsxs(_Fragment, { children: [_jsx("td", { className: "px-1 py-2 text-center align-middle", children: _jsx("button", { type: "button", className: "wbs-drag-handle", onClick: (event) => event.stopPropagation(), ...attributes, ...listeners, "data-dragging": isDragging || undefined, "aria-label": "Arrastar para reordenar", children: "::" }) }), _jsx("td", { className: "px-1 py-2 text-center align-middle", children: _jsx("input", { type: "checkbox", "aria-label": `Selecionar tarefa ${displayId}`, checked: selectedTaskIds.includes(row.node.id), onChange: (event) => {
+                                                                            event.stopPropagation();
+                                                                            handleSelectRow(event.target.checked, row.node.id);
+                                                                        }, onClick: (event) => event.stopPropagation() }) }), _jsx("td", { className: "px-1 py-2 text-center align-middle text-[11px] text-slate-700", children: displayId }), _jsx("td", { className: "px-1 py-2 text-center align-middle", children: _jsxs("button", { type: "button", className: "wbs-chat-button relative inline-flex h-7 min-w-[40px] items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-2 text-[11px] text-slate-700 hover:bg-slate-50 transition", "aria-label": `Comentários da tarefa ${displayId}`, onClick: (event) => {
+                                                                            event.stopPropagation();
+                                                                            setOpenChatTaskId(row.node.id);
+                                                                        }, children: [_jsx(ChatIcon, {}), _jsx("span", { className: "text-xs font-medium text-slate-600", children: chatCounts[row.node.id] ?? row.node.comments?.length ?? 0 }), (chatCounts[row.node.id] ?? row.node.comments?.length ?? 0) > 0 && (_jsx("span", { className: "absolute -top-[3px] -right-[3px] h-2.5 w-2.5 rounded-full bg-red-500 border border-white shadow-sm" }))] }) }), _jsx("td", { className: "px-2 py-2 text-center align-middle w-[80px]", children: _jsxs("div", { style: {
+                                                                            display: "inline-flex",
+                                                                            flexDirection: "row",
+                                                                            alignItems: "center",
+                                                                            justifyContent: "center",
+                                                                            gap: "6px",
+                                                                            lineHeight: 1
+                                                                        }, children: [_jsx("button", { type: "button", onClick: (event) => handleLevelAdjust(event, row.node.id, "up"), style: {
+                                                                                    border: "none",
+                                                                                    background: "transparent",
+                                                                                    padding: 0,
+                                                                                    margin: 0,
+                                                                                    cursor: "pointer",
+                                                                                    display: "flex",
+                                                                                    alignItems: "center",
+                                                                                    justifyContent: "center",
+                                                                                    fontSize: "14px"
+                                                                                }, children: "<" }), _jsx("span", { style: {
+                                                                                    minWidth: "12px",
+                                                                                    textAlign: "center",
+                                                                                    fontSize: "14px",
+                                                                                    fontWeight: 600
+                                                                                }, children: displayLevel }), _jsx("button", { type: "button", onClick: (event) => handleLevelAdjust(event, row.node.id, "down"), style: {
+                                                                                    border: "none",
+                                                                                    background: "transparent",
+                                                                                    padding: 0,
+                                                                                    margin: 0,
+                                                                                    cursor: "pointer",
+                                                                                    display: "flex",
+                                                                                    alignItems: "center",
+                                                                                    justifyContent: "center",
+                                                                                    fontSize: "14px"
+                                                                                }, children: "\u003e" })] }) }), _jsx("td", { className: "w-[140px] px-3 py-2 align-middle", children: _jsxs("div", { className: `flex w-full items-center gap-2 flex-1 min-w-[220px] max-w-none wbs-task-name ${visualLevel <= 1 ? "is-phase" : ""} ${levelClass}`, children: [row.hasChildren ? (_jsx("button", { type: "button", className: `wbs-toggle ${isExpanded ? "is-open" : ""}`, onClick: (event) => handleToggle(event, row.node.id, visualLevel), "aria-label": isExpanded ? "Recolher subtarefas" : "Expandir subtarefas", "aria-expanded": isExpanded, children: ">" })) : (_jsx("span", { className: "wbs-toggle placeholder" })), _jsxs("div", { className: "flex items-center gap-2 flex-1 min-w-[220px] max-w-none", children: [_jsx("span", { className: `wbs-node-icon ${row.hasChildren ? "is-folder" : "is-task"}`, children: row.hasChildren ? _jsx(FolderIcon, {}) : _jsx(TaskIcon, {}) }), _jsx("div", { className: "wbs-task-text", title: row.node.title ?? "Tarefa sem nome", onDoubleClick: (event) => handleBeginTitleEdit(event, row.node), children: isEditingTitle ? (_jsx("input", { className: "wbs-title-input", value: editingTitle, onChange: (event) => setEditingTitle(event.target.value), onBlur: commitTitleEdit, onKeyDown: handleTitleKeyDown, onClick: (event) => event.stopPropagation(), autoFocus: true, placeholder: "Nome da tarefa" })) : (_jsx(_Fragment, { children: _jsx("span", { className: clsx("wbs-task-text", row.node.level === 0 ? "font-semibold" : "font-normal"), children: row.node.title ?? row.node.name ?? "Tarefa sem nome" }) })) })] })] }) }), _jsx("td", { className: "px-3 py-2 align-middle wbs-status-cell", children: _jsxs("div", { className: "wbs-inline-picker", children: [_jsxs("button", { type: "button", className: clsx("wbs-status-select wbs-choice-trigger", statusClass), onClick: (event) => handleStatusToggle(event, row.node.id), "aria-label": "Alterar situa\u00E7\u00E3o da tarefa", "aria-haspopup": "listbox", "aria-expanded": isStatusPickerOpen, children: [_jsx("span", { className: "wbs-choice-trigger__text", children: normalizedStatus }), _jsx("span", { className: "wbs-choice-trigger__caret", "aria-hidden": "true", children: "v" })] }), isStatusPickerOpen && (_jsx("div", { className: clsx("wbs-choice-menu wbs-choice-menu--status", statusPickerOpenUpId === row.node.id && "wbs-choice-menu--up"), role: "listbox", "aria-label": "Op\u00E7\u00F5es de status", children: STATUS_ORDER.map((statusOption) => {
+                                                                                    const tone = STATUS_TONE[statusOption];
+                                                                                    const isSelected = normalizedStatus === statusOption;
+                                                                                    return (_jsx("button", { type: "button", role: "option", "aria-selected": isSelected, className: clsx("wbs-choice-option", `wbs-choice-option--${tone}`, isSelected && "is-selected"), onClick: (event) => handleStatusChange(event, row.node.id, statusOption), children: statusOption }, statusOption));
+                                                                                }) }))] }) }), _jsx("td", { className: "px-3 py-2 align-middle wbs-priority-cell", children: _jsxs("div", { className: "wbs-inline-picker", children: [_jsxs("button", { type: "button", className: clsx("wbs-priority-select wbs-choice-trigger", `wbs-priority-${priorityTone}`), onClick: (event) => handlePriorityToggle(event, row.node.id), "aria-label": "Alterar prioridade da tarefa", "aria-haspopup": "listbox", "aria-expanded": priorityPickerId === row.node.id, children: [_jsx("span", { className: "wbs-choice-trigger__text", children: PRIORITY_OPTIONS.find((option) => option.value === priorityValue)?.label ?? "Média" }), _jsx("span", { className: "wbs-choice-trigger__caret", "aria-hidden": "true", children: "v" })] }), priorityPickerId === row.node.id && (_jsx("div", { className: clsx("wbs-choice-menu wbs-choice-menu--priority", priorityPickerOpenUpId === row.node.id && "wbs-choice-menu--up"), role: "listbox", "aria-label": "Op\u00E7\u00F5es de prioridade", children: PRIORITY_OPTIONS.map((option) => {
+                                                                                    const optionTone = getPriorityTone(option.value);
+                                                                                    const isSelected = priorityValue === option.value;
+                                                                                    return (_jsx("button", { type: "button", role: "option", "aria-selected": isSelected, className: clsx("wbs-choice-option", `wbs-choice-option--${optionTone}`, isSelected && "is-selected"), onClick: (event) => handlePriorityChange(event, row.node.id, option.value), children: option.label }, option.value));
+                                                                                }) }))] }) }), _jsx("td", { className: "wbs-date-col wbs-date-col-start px-2 py-2 align-middle w-[200px]", children: _jsx("div", { className: "wbs-date-input-wrapper", children: _jsx(CleanDatePicker, { value: formatDateInputValue(effectiveStartDate), onChange: (nextValue) => handleDateFieldChange(row.node.id, "startDate", nextValue), placeholder: "dd/mm/aaaa", className: "wbs-date-input", disabled: autoDateFromChildren, title: autoDateFromChildren ? "Resumo automático do nível 1 com base nos filhos." : undefined }) }) }), _jsx("td", { className: "wbs-date-col wbs-date-col-end px-2 py-2 align-middle w-[200px]", children: _jsxs("div", { className: "wbs-date-input-wrapper", children: [_jsx(CleanDatePicker, { value: formatDateInputValue(effectiveEndDate), onChange: (nextValue) => handleDateFieldChange(row.node.id, "endDate", nextValue), placeholder: "dd/mm/aaaa", className: clsx("wbs-date-input", isEndDateOverdue && "wbs-date-input--overdue", !isEndDateOverdue && isEndDateSoon && "wbs-date-input--warning", isDoneStatus && "wbs-date-input--done", !isDoneStatus && !isEndDateOverdue && isInProgressStatus && "wbs-date-input--progress"), disabled: autoDateFromChildren, title: autoDateFromChildren ? "Resumo automático do nível 1 com base nos filhos." : undefined }), isEndDateOverdue && _jsx("span", { className: "wbs-date-alert", children: "!" }), !isEndDateOverdue && isEndDateSoon && _jsx("span", { className: "wbs-date-clock", children: "\u23F0" }), isDoneStatus && _jsx("span", { className: "wbs-date-check", children: "\u2713" }), !isDoneStatus && !isEndDateOverdue && isInProgressStatus && (_jsx("span", { className: "wbs-date-progress", children: "\u25B6" }))] }) }), _jsx("td", { className: "w-[120px] px-2 py-2 align-middle wbs-quantity-cell wbs-duration-cell", "data-duration-label": durationInDays === 1 ? "dia" : "dias", children: _jsx("input", { type: "number", min: 1, step: 1, value: durationInputValue, onChange: (event) => handleDurationInputChange(row.node.id, event.target.value), onClick: (event) => event.stopPropagation(), className: "wbs-duration-input", disabled: autoDateFromChildren, title: autoDateFromChildren ? "Duracao calculada automaticamente pelos filhos." : undefined, "aria-label": "Quantidade de dias" }) }), _jsx("td", { className: "px-4 py-2 align-middle min-w-[180px]", children: _jsxs("select", { className: "wbs-responsible-select", value: responsibleMembershipId, onClick: (event) => event.stopPropagation(), onChange: (event) => onChangeResponsible?.(row.node.id, event.target.value || null), children: [_jsx("option", { value: "", children: "Sem Respons\u00E1vel" }), members.map((member) => (_jsx("option", { value: member.id, children: member.name ?? member.email ?? member.userId }, member.id)))] }) }), _jsx("td", { className: "px-3 py-2 align-middle min-w-[200px]", children: _jsxs("select", { className: "wbs-service-select", value: row.node.serviceCatalogId ?? "", disabled: !serviceCatalog?.length, title: serviceCatalog?.length
+                                                                            ? "Selecione um serviço"
+                                                                            : "Use 'Importar serviços' para carregar o catálogo", onClick: (event) => event.stopPropagation(), onChange: (event) => {
+                                                                            event.stopPropagation();
+                                                                            const newServiceId = event.target.value || null;
+                                                                            const catalogItem = serviceCatalog.find((service) => service.id === newServiceId);
+                                                                            const baseHours = catalogItem
+                                                                                ? Number(catalogItem.hoursBase ?? catalogItem.hours ?? 0)
+                                                                                : null;
+                                                                            const hours = baseHours !== null && baseHours !== undefined
+                                                                                ? baseHours * (Number(serviceMultiplierValue) || 1)
+                                                                                : null;
+                                                                            onUpdate(row.node.id, {
+                                                                                serviceCatalogId: newServiceId,
+                                                                                serviceMultiplier: serviceMultiplierValue,
+                                                                                serviceHours: hours ?? undefined
+                                                                            });
+                                                                        }, children: [_jsx("option", { value: "", children: "Sem servi\u00E7o" }), serviceCatalog?.length === 0 ? (_jsx("option", { value: "", disabled: true, children: "Cat\u00E1logo n\u00E3o configurado" })) : (serviceCatalog.map((service) => {
+                                                                                const base = service.hoursBase ?? service.hours ?? null;
+                                                                                const label = base !== null && base !== undefined ? `${service.name} (${base}h)` : service.name;
+                                                                                return (_jsx("option", { value: service.id, title: label, children: label }, service.id));
+                                                                            }))] }) }), _jsx("td", { className: "px-3 py-2 align-middle w-[110px]", children: _jsx("input", { type: "number", min: 1, step: 1, className: "wbs-multiplier-input", value: serviceMultiplierValue, onClick: (event) => event.stopPropagation(), onChange: (event) => {
+                                                                            event.stopPropagation();
+                                                                            const value = Math.max(1, Number(event.target.value) || 1);
+                                                                            const catalogItem = row.node.serviceCatalogId
+                                                                                ? serviceCatalog.find((service) => service.id === row.node.serviceCatalogId)
+                                                                                : null;
+                                                                            const baseHours = catalogItem
+                                                                                ? Number(catalogItem.hoursBase ?? catalogItem.hours ?? 0)
+                                                                                : null;
+                                                                            const hours = baseHours !== null && baseHours !== undefined ? baseHours * value : null;
+                                                                            onUpdate(row.node.id, {
+                                                                                serviceCatalogId: row.node.serviceCatalogId ?? null,
+                                                                                serviceMultiplier: value,
+                                                                                serviceHours: hours ?? undefined,
+                                                                            });
+                                                                        } }) }), _jsx("td", { className: "px-3 py-2 align-middle text-center", children: _jsx("span", { className: "wbs-hr-badge", children: computedServiceHours !== null && computedServiceHours !== undefined
+                                                                            ? `${Math.max(0, Math.round(computedServiceHours * 100) / 100)}h`
+                                                                            : "-" }) }), _jsx("td", { className: "wbs-dependencies-cell w-[150px] px-3 py-2 align-middle", children: autoDateFromChildren ? (_jsx("span", { className: "wbs-dependencies-placeholder", "aria-hidden": "true", title: "Linha pai de resumo autom\u00E1tico.", children: "\u00A0" })) : (_jsx(DependenciesDropdown, { options: dependencyOptionsList, selectedIds: dependencyBadges, onChange: (newSelected) => {
+                                                                            if (autoDateFromChildren)
+                                                                                return;
+                                                                            onUpdate(row.node.id, { dependencies: newSelected });
+                                                                        }, onApplyDownChain: autoDateFromChildren ? undefined : applyDependencyDownChain, currentTaskName: row.node.title ?? row.node.name ?? "Tarefa sem nome", currentTaskCode: displayId, disabled: autoDateFromChildren, disabledReason: "Tarefa com filhos e resumida automaticamente nao pode ter dependencia." })) }), _jsx("td", { className: "wbs-details-cell w-[150px] px-3 py-2 align-middle text-center", children: _jsx("div", { className: "wbs-details-actions", children: _jsxs("button", { type: "button", className: `wbs-details-button ${isActive ? "is-active" : ""}`, onClick: (event) => handleDetailsButton(event, row.node.id), "aria-label": "Ver detalhes da tarefa", children: [_jsx(DetailsIcon, {}), _jsx("span", { className: "details-label", children: "Detalhes" })] }) }) })] })) }, row.node.id));
+                                                }), typeof onCreate === "function" && selectedProjectId && selectedProjectId !== "all" ? (_jsx("tr", { className: "wbs-create-row", "data-node-id": "create-new-row", children: _jsx("td", { colSpan: 17, children: _jsx("button", { type: "button", className: "wbs-create-row__button", onClick: handleCreateBottomTask, disabled: isCreatingBottomTask, children: isCreatingBottomTask ? "Criando tarefa..." : "+ Criar nova tarefa" }) }) })) : null] }) })] }) }) }), selectedTaskIds.length > 0 && (_jsxs("div", { className: "wbs-bulk-bar", children: [_jsxs("div", { className: "wbs-bulk-actions", children: [_jsx("button", { type: "button", className: "btn-secondary", onClick: () => setSelectedTaskIds([]), children: "Limpar sele\u00E7\u00E3o" }), _jsx("button", { type: "button", className: "btn-danger-ghost", onClick: handleBulkTrash, children: "Enviar para lixeira" })] }), _jsxs("span", { className: "wbs-bulk-info", children: [selectedTaskIds.length, " selecionada(s)"] })] })), openMenuId && menuPosition && activeMenuNode &&
                         createPortal(_jsx("div", { className: "wbs-actions-menu-overlay", style: {
                                 position: "fixed",
                                 top: menuPosition.top,
@@ -2208,14 +2288,15 @@ const SettingsPanel = () => {
     ];
     return (_jsxs("section", { className: "settings-section", children: [_jsx("header", { children: _jsxs("div", { children: [_jsx("p", { className: "eyebrow", children: "Configura\u00E7\u00F5es" }), _jsx("h2", { children: "Central de ajustes" }), _jsx("p", { className: "subtext", children: "Gerencie perfil, notifica\u00E7\u00F5es, Organiza\u00E7\u00E3o e integra\u00E7\u00F5es." })] }) }), _jsxs("div", { className: "settings-layout", children: [_jsx("nav", { className: "settings-menu", children: sections.map((section) => (_jsx("button", { type: "button", className: activeSection === section.id ? "is-active" : "", onClick: () => setActiveSection(section.id), children: section.label }, section.id))) }), _jsxs("div", { className: "settings-content", children: [activeSection === "profile" && (_jsxs("form", { className: "settings-form", children: [_jsx("h3", { children: "Perfil" }), _jsxs("label", { children: ["Nome completo", _jsx("input", { type: "text", placeholder: "Seu nome" })] }), _jsxs("label", { children: ["E-mail", _jsx("input", { type: "email", placeholder: "voce@empresa.com" })] }), _jsxs("label", { children: ["Idioma", _jsxs("select", { children: [_jsx("option", { children: "Portugu\u00EAs (Brasil)" }), _jsx("option", { children: "Ingl\u00EAs" })] })] }), _jsx("button", { type: "button", className: "primary-button", children: "Atualizar perfil" })] })), activeSection === "notifications" && (_jsxs("div", { className: "settings-form", children: [_jsx("h3", { children: "Notifica\u00E7\u00F5es" }), _jsxs("label", { className: "settings-toggle", children: [_jsx("input", { type: "checkbox", defaultChecked: true }), _jsx("span", { children: "E-mails sobre tarefas atribu\u00EDdas" })] }), _jsxs("label", { className: "settings-toggle", children: [_jsx("input", { type: "checkbox" }), _jsx("span", { children: "Mensagens em canais do Slack" })] }), _jsxs("label", { className: "settings-toggle", children: [_jsx("input", { type: "checkbox", defaultChecked: true }), _jsx("span", { children: "Alertas de riscos" })] })] })), activeSection === "organization" && (_jsxs("div", { className: "settings-form", children: [_jsx("h3", { children: "Organiza\u00E7\u00E3o" }), _jsxs("label", { children: ["Nome da Organiza\u00E7\u00E3o", _jsx("input", { type: "text", placeholder: "Organiza\u00E7\u00E3o Demo" })] }), _jsxs("label", { children: ["Dom\u00EDnio", _jsx("input", { type: "text", placeholder: "demo.local" })] }), _jsx("button", { type: "button", className: "secondary-button", children: "Salvar" })] })), activeSection === "permissions" && (_jsxs("div", { className: "settings-form", children: [_jsx("h3", { children: "Permiss\u00F5es e pap\u00E9is" }), _jsx("p", { className: "muted", children: "Gerencie quem pode criar projetos, alterar WBS e exportar dados." }), _jsxs("table", { className: "settings-table", children: [_jsx("thead", { children: _jsxs("tr", { children: [_jsx("th", { children: "Papel" }), _jsx("th", { children: "Criar projeto" }), _jsx("th", { children: "Editar WBS" }), _jsx("th", { children: "Ver Relat\u00F3rios" })] }) }), _jsx("tbody", { children: ["OWNER", "ADMIN", "MEMBER", "VIEWER"].map((role) => (_jsxs("tr", { children: [_jsx("td", { children: role }), _jsx("td", { children: _jsx("input", { type: "checkbox", defaultChecked: role !== "VIEWER" }) }), _jsx("td", { children: _jsx("input", { type: "checkbox", defaultChecked: role === "OWNER" || role === "ADMIN" }) }), _jsx("td", { children: _jsx("input", { type: "checkbox", defaultChecked: role !== "VIEWER" }) })] }, role))) })] })] })), activeSection === "integrations" && (_jsxs("div", { className: "settings-form", children: [_jsx("h3", { children: "Integra\u00E7\u00F5es" }), _jsx("div", { className: "integrations-grid", children: ["GitHub", "Google Drive", "Slack", "Google Calendar"].map((integration) => (_jsxs("article", { children: [_jsx("strong", { children: integration }), _jsx("p", { className: "muted", children: "Sincronize dados e automatize o fluxo." }), _jsx("button", { type: "button", className: "secondary-button", children: "Conectar" })] }, integration))) })] })), activeSection === "billing" && (_jsxs("div", { className: "settings-form", children: [_jsx("h3", { children: "Faturamento / Plano" }), _jsxs("p", { className: "muted", children: ["Plano atual: ", _jsx("strong", { children: "Pro \u00B7 20/50 projetos" })] }), _jsx("button", { type: "button", className: "secondary-button", children: "Gerenciar plano" })] }))] })] })] }));
 };
-export const DashboardLayout = ({ userEmail, organizations, selectedOrganizationId, onOrganizationChange, currentOrgRole, orgError, onSignOut, projects, selectedProjectId, onProjectChange, onSelectProject, projectLimits, projectsError, filters, onRangeChange, summary, summaryError, members, membersError, attachments, attachmentsError, attachmentsLoading, reportMetrics, reportMetricsError, reportMetricsLoading, boardColumns, kanbanColumns, boardError, onCreateTask, onReloadBoard, onDragTask, newTaskTitle, onTaskTitleChange, newTaskColumn, onTaskColumnChange, newTaskStartDate, onTaskStartDateChange, newTaskEndDate, onTaskEndDateChange, newTaskAssignee, onTaskAssigneeChange, newTaskEstimateHours, onTaskEstimateHoursChange, wbsNodes, wbsError, serviceCatalog, serviceCatalogError, onImportServiceCatalog, onCreateServiceCatalog, onUpdateServiceCatalog, onDeleteServiceCatalog, onReloadWbs, onMoveNode, onUpdateWbsNode, onUpdateWbsResponsible, onCreateWbsItem, selectedNodeId, onSelectNode, comments, commentsError, onSubmitComment, commentBody, onCommentBodyChange, timeEntryDate, timeEntryHours, timeEntryDescription, timeEntryError, onTimeEntryDateChange, onTimeEntryHoursChange, onTimeEntryDescriptionChange, onLogTime, ganttTasks, ganttMilestones, ganttError, portfolio, portfolioError, portfolioLoading, onExportPortfolio, onReloadPortfolio, onCreateProject, onUpdateProject, }) => {
+export const DashboardLayout = ({ userEmail, organizations, selectedOrganizationId, onOrganizationChange, currentOrgRole, currentOrgModulePermissions, orgError, onSignOut, projects, selectedProjectId, onProjectChange, onSelectProject, projectLimits, projectsError, filters, onRangeChange, summary, summaryError, members, membersError, attachments, attachmentsError, attachmentsLoading, reportMetrics, reportMetricsError, reportMetricsLoading, boardColumns, kanbanColumns, boardError, onCreateTask, onReloadBoard, onDragTask, newTaskTitle, onTaskTitleChange, newTaskColumn, onTaskColumnChange, newTaskStartDate, onTaskStartDateChange, newTaskEndDate, onTaskEndDateChange, newTaskAssignee, onTaskAssigneeChange, newTaskEstimateHours, onTaskEstimateHoursChange, wbsNodes, wbsError, serviceCatalog, serviceCatalogError, onImportServiceCatalog, onCreateServiceCatalog, onUpdateServiceCatalog, onDeleteServiceCatalog, onReloadWbs, onMoveNode, onUpdateWbsNode, onUpdateWbsResponsible, onCreateWbsItem, selectedNodeId, onSelectNode, comments, commentsError, onSubmitComment, commentBody, onCommentBodyChange, timeEntryDate, timeEntryHours, timeEntryDescription, timeEntryError, onTimeEntryDateChange, onTimeEntryHoursChange, onTimeEntryDescriptionChange, onLogTime, ganttTasks, ganttMilestones, ganttError, portfolio, portfolioError, portfolioLoading, onExportPortfolio, onReloadPortfolio, onCreateProject, onUpdateProject, }) => {
     const flattenedTasks = kanbanColumns.flatMap((column) => column.tasks.map((task) => ({ ...task, column: column.title })));
     const myTasks = flattenedTasks.slice(0, 6);
     const projectMeta = portfolio.find((project) => project.projectId === selectedProjectId) ?? null;
     const location = useLocation();
     const lowerPath = location.pathname.toLowerCase();
+    const currentOrgModuleAccess = useMemo(() => normalizeModulePermissionsForRole(currentOrgRole ?? null, currentOrgModulePermissions), [currentOrgRole, currentOrgModulePermissions]);
     const isEapRoute = lowerPath.includes("/eap") || lowerPath.includes("/edt");
-    const isReportsRoute = lowerPath.includes("/relatorios");
+    const canUseAllProjects = ["/dashboard", "/kanban", "/cronograma", "/documentos", "/relatorios"].some((allowedPath) => lowerPath === allowedPath || lowerPath.startsWith(`${allowedPath}/`));
     const eapRouteProjectId = useMemo(() => {
         const match = location.pathname.match(/^\/EAP\/organizacao\/[^/]+\/projeto\/([^/?#]+)/i);
         if (!match?.[1])
@@ -2231,13 +2312,7 @@ export const DashboardLayout = ({ userEmail, organizations, selectedOrganization
     const { signOut } = useAuth();
     const [isProjectModalOpen, setProjectModalOpen] = useState(false);
     useEffect(() => {
-        const needsProject = !selectedProjectId || selectedProjectId === "all";
-        if (isReportsRoute) {
-            if (needsProject && projects?.length) {
-                onSelectProject(projects[0].id);
-            }
-            return;
-        }
+        const needsProject = !selectedProjectId || (selectedProjectId === "all" && !canUseAllProjects);
         if (!isEapRoute || !needsProject)
             return;
         if (eapRouteProjectId)
@@ -2245,7 +2320,7 @@ export const DashboardLayout = ({ userEmail, organizations, selectedOrganization
         if (!projects?.length)
             return;
         onSelectProject(projects[0].id);
-    }, [isEapRoute, isReportsRoute, selectedProjectId, projects, onSelectProject, eapRouteProjectId]);
+    }, [isEapRoute, selectedProjectId, projects, onSelectProject, eapRouteProjectId, canUseAllProjects]);
     const [projectForm, setProjectForm] = useState(createEmptyProjectForm());
     const [projectModalError, setProjectModalError] = useState(null);
     const [projectModalLoading, setProjectModalLoading] = useState(false);
@@ -2412,6 +2487,7 @@ export const DashboardLayout = ({ userEmail, organizations, selectedOrganization
         selectedOrganizationId,
         onOrganizationChange,
         currentOrgRole,
+        currentOrgModulePermissions,
         projects,
         selectedProjectId,
         onProjectChange,
@@ -2542,17 +2618,25 @@ export const DashboardLayout = ({ userEmail, organizations, selectedOrganization
     const appShellClassName = `app-shell ${isCollapsed ? "app-shell--collapsed" : ""}`.trim();
     const currentOrganization = organizations.find((org) => org.id === selectedOrganizationId) ?? null;
     const selectedProjectName = useMemo(() => {
+        if (selectedProjectId === "all" && canUseAllProjects)
+            return "Todos os projetos";
         if (!selectedProjectId)
             return "Selecione um projeto";
         return projects.find((project) => project.id === selectedProjectId)?.name ?? "Selecione um projeto";
-    }, [projects, selectedProjectId]);
+    }, [projects, selectedProjectId, canUseAllProjects]);
     const filteredProjects = useMemo(() => {
         const query = projectSearchTerm.trim().toLowerCase();
-        if (!query)
-            return projects || [];
-        return (projects || []).filter((project) => (project.name ?? "").toLowerCase().includes(query));
-    }, [projects, projectSearchTerm]);
-    const isProjectSelectorDisabled = !projects?.length || isReportsRoute;
+        const base = !query
+            ? projects || []
+            : (projects || []).filter((project) => (project.name ?? "").toLowerCase().includes(query));
+        if (!canUseAllProjects)
+            return base;
+        const shouldShowAllOption = !query || "todos os projetos".includes(query) || "todos".includes(query);
+        if (!shouldShowAllOption)
+            return base;
+        return [{ id: "all", name: "Todos os projetos" }, ...base];
+    }, [projects, projectSearchTerm, canUseAllProjects]);
+    const isProjectSelectorDisabled = !projects?.length;
     const handleProjectSelectFromMenu = (projectId) => {
         onSelectProject(projectId);
         setProjectSelectorOpen(false);
@@ -2560,6 +2644,10 @@ export const DashboardLayout = ({ userEmail, organizations, selectedOrganization
     };
     return (_jsxs("div", { className: appShellClassName, children: [_jsxs("aside", { className: "dashboard-sidebar sidebar", children: [_jsx("div", { className: "sidebar-header", children: _jsxs("button", { type: "button", className: "sidebar-brand", onClick: () => setIsCollapsed((prev) => !prev), "aria-label": isCollapsed ? "Expandir menu" : "Recolher menu", children: [_jsx("img", { src: "/logo.png", alt: "G&P Gest\u00E3o de Projetos", className: "sidebar-logo-img" }), !isCollapsed && (_jsxs("div", { className: "sidebar-brand-text", children: [_jsx("span", { className: "brand-sigla", children: "Meu G&P" }), _jsx("span", { className: "brand-subtitle", children: "Gest\u00E3o de Projetos" })] })), _jsx("span", { className: `sidebar-toggle-icon ${isCollapsed ? "is-collapsed" : ""}`, children: _jsx("svg", { viewBox: "0 0 24 24", "aria-hidden": "true", children: _jsx("path", { d: "M15 18 9 12l6-6" }) }) })] }) }), _jsxs("nav", { className: "sidebar-nav", children: [_jsx("div", { className: "sidebar-title" }), sidebarNavigation.map((item) => {
                                 const Icon = item.icon;
+                                const moduleKey = sidebarModuleById[item.id] ?? "dashboard";
+                                if (!currentOrgModuleAccess[moduleKey]?.view) {
+                                    return null;
+                                }
                                 const computedPath = item.id === "edt" && selectedOrganizationId && selectedProjectId && selectedProjectId !== "all"
                                     ? `/EAP/organizacao/${selectedOrganizationId}/projeto/${selectedProjectId}`
                                     : item.path;

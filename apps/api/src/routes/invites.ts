@@ -1,9 +1,10 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import crypto from "node:crypto";
 import { prisma } from "@gestao/database";
 import { InviteStatus, MembershipRole } from "@prisma/client";
 import { authMiddleware } from "../middleware/auth";
 import { attachOrgMembership, requireCanManageOrgSettings } from "../middleware/organization";
+import { getDefaultModulePermissions } from "../services/modulePermissions";
 
 export const invitesRouter = Router();
 
@@ -20,7 +21,7 @@ invitesRouter.post(
 
     const { email, role } = req.body ?? {};
     if (!email || typeof email !== "string") {
-      return res.status(400).json({ message: "E-mail do convite é obrigatório." });
+      return res.status(400).json({ message: "E-mail do convite Ã© obrigatÃ³rio." });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -66,7 +67,7 @@ invitesRouter.post("/invites/accept", async (req, res) => {
 
   const { token } = req.body ?? {};
   if (!token || typeof token !== "string") {
-    return res.status(400).json({ message: "Token do convite é obrigatório." });
+    return res.status(400).json({ message: "Token do convite Ã© obrigatÃ³rio." });
   }
 
   const invite = await prisma.invite.findUnique({
@@ -81,7 +82,7 @@ invitesRouter.post("/invites/accept", async (req, res) => {
         data: { status: InviteStatus.EXPIRED }
       });
     }
-    return res.status(400).json({ message: "Convite inválido ou expirado." });
+    return res.status(400).json({ message: "Convite invÃ¡lido ou expirado." });
   }
 
   await prisma.organizationMembership.upsert({
@@ -92,13 +93,15 @@ invitesRouter.post("/invites/accept", async (req, res) => {
       }
     },
     update: {
-      role: invite.role
-    },
+      role: invite.role,
+      modulePermissions: getDefaultModulePermissions(invite.role)
+    } as any,
     create: {
       organizationId: invite.organizationId,
       userId: req.user.id,
-      role: invite.role
-    }
+      role: invite.role,
+      modulePermissions: getDefaultModulePermissions(invite.role)
+    } as any
   });
 
   await prisma.invite.update({
@@ -117,3 +120,4 @@ invitesRouter.post("/invites/accept", async (req, res) => {
     }
   });
 });
+

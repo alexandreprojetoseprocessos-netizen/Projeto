@@ -48,6 +48,7 @@ import clsx from "clsx";
 import { DependenciesDropdown, type DependencyOption } from "./DependenciesDropdown";
 import { CleanDatePicker } from "./CleanDatePicker";
 import type { PortfolioProject } from "./ProjectPortfolio";
+import { normalizeModulePermissionsForRole, type ModulePermissionKey } from "./permissions";
 
 import {
 
@@ -678,6 +679,21 @@ const sidebarNavigation = [
   { id: "plano", label: "Meu plano", icon: PlanIcon, path: "/plano" }
 ];
 
+const sidebarModuleById: Record<string, ModulePermissionKey> = {
+  organizacao: "organization",
+  dashboard: "dashboard",
+  projects: "projects",
+  edt: "eap",
+  board: "kanban",
+  cronograma: "timeline",
+  diagrama: "diagram",
+  atividades: "budget",
+  documentos: "documents",
+  relatorios: "reports",
+  equipe: "team",
+  plano: "plan"
+};
+
 
 
 
@@ -983,7 +999,7 @@ type TemplateSummary = {
 
 
 
-type Organization = { id: string; name: string; role: string; plan?: string | null };
+type Organization = { id: string; name: string; role: string; plan?: string | null; modulePermissions?: unknown };
 
 
 
@@ -1060,6 +1076,7 @@ type DashboardLayoutProps = {
 
 
   currentOrgRole?: string | null;
+  currentOrgModulePermissions?: unknown;
 
 
 
@@ -1406,6 +1423,7 @@ export type DashboardOutletContext = {
   selectedOrganizationId: string;
   onOrganizationChange: (organizationId: string) => void;
   currentOrgRole?: string | null;
+  currentOrgModulePermissions?: unknown;
   projects: Project[];
   selectedProjectId: string | null;
   onProjectChange: (projectId: string) => void;
@@ -2231,6 +2249,8 @@ export const WbsTreeView = ({
 
   const [statusPickerId, setStatusPickerId] = useState<string | null>(null);
   const [priorityPickerId, setPriorityPickerId] = useState<string | null>(null);
+  const [statusPickerOpenUpId, setStatusPickerOpenUpId] = useState<string | null>(null);
+  const [priorityPickerOpenUpId, setPriorityPickerOpenUpId] = useState<string | null>(null);
 
 
 
@@ -2247,6 +2267,7 @@ export const WbsTreeView = ({
 
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [isCreatingBottomTask, setIsCreatingBottomTask] = useState(false);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   const [openChatTaskId, setOpenChatTaskId] = useState<string | null>(null);
   const [chatDraft, setChatDraft] = useState("");
@@ -2952,7 +2973,26 @@ export const WbsTreeView = ({
 
 
 
-  const handleStatusToggle = (event: { stopPropagation: () => void }, nodeId: string) => {
+  const shouldOpenChoiceMenuUp = (trigger: HTMLElement | null) => {
+    if (!trigger) return false;
+
+    const scrollContainer = trigger.closest(".edt-scroll-wrapper");
+    const triggerRect = trigger.getBoundingClientRect();
+    const estimatedMenuHeight = 248;
+
+    if (scrollContainer instanceof HTMLElement) {
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const spaceBelow = containerRect.bottom - triggerRect.bottom;
+      const spaceAbove = triggerRect.top - containerRect.top;
+      return spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow;
+    }
+
+    const viewportSpaceBelow = window.innerHeight - triggerRect.bottom;
+    const viewportSpaceAbove = triggerRect.top;
+    return viewportSpaceBelow < estimatedMenuHeight && viewportSpaceAbove > viewportSpaceBelow;
+  };
+
+  const handleStatusToggle = (event: MouseEvent<HTMLButtonElement>, nodeId: string) => {
 
 
 
@@ -2964,7 +3004,13 @@ export const WbsTreeView = ({
     closeDependencyEditor();
     setOpenMenuId(null);
     setPriorityPickerId(null);
-    setStatusPickerId((current) => (current === nodeId ? null : nodeId));
+    setPriorityPickerOpenUpId(null);
+    const openUp = shouldOpenChoiceMenuUp(event.currentTarget);
+    setStatusPickerId((current) => {
+      const nextId = current === nodeId ? null : nodeId;
+      setStatusPickerOpenUpId(nextId && openUp ? nextId : null);
+      return nextId;
+    });
 
 
 
@@ -2986,6 +3032,8 @@ export const WbsTreeView = ({
 
     setStatusPickerId(null);
     setPriorityPickerId(null);
+    setStatusPickerOpenUpId(null);
+    setPriorityPickerOpenUpId(null);
 
 
 
@@ -3007,19 +3055,27 @@ export const WbsTreeView = ({
 
   };
 
-  const handlePriorityToggle = (event: { stopPropagation: () => void }, nodeId: string) => {
+  const handlePriorityToggle = (event: MouseEvent<HTMLButtonElement>, nodeId: string) => {
     event.stopPropagation();
     cancelTitleEdit();
     closeDependencyEditor();
     setOpenMenuId(null);
     setStatusPickerId(null);
-    setPriorityPickerId((current) => (current === nodeId ? null : nodeId));
+    setStatusPickerOpenUpId(null);
+    const openUp = shouldOpenChoiceMenuUp(event.currentTarget);
+    setPriorityPickerId((current) => {
+      const nextId = current === nodeId ? null : nodeId;
+      setPriorityPickerOpenUpId(nextId && openUp ? nextId : null);
+      return nextId;
+    });
   };
 
   const handlePriorityChange = (event: { stopPropagation: () => void }, nodeId: string, priorityValue: string) => {
     event.stopPropagation();
     setStatusPickerId(null);
     setPriorityPickerId(null);
+    setStatusPickerOpenUpId(null);
+    setPriorityPickerOpenUpId(null);
     const current = normalizePriorityValue(
       rowMap.get(nodeId)?.node.priority ?? rowMap.get(nodeId)?.node.prioridade ?? rowMap.get(nodeId)?.node.task_priority
     );
@@ -3427,12 +3483,16 @@ export const WbsTreeView = ({
       if (target?.closest(".wbs-inline-picker")) return;
       setStatusPickerId(null);
       setPriorityPickerId(null);
+      setStatusPickerOpenUpId(null);
+      setPriorityPickerOpenUpId(null);
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setStatusPickerId(null);
         setPriorityPickerId(null);
+        setStatusPickerOpenUpId(null);
+        setPriorityPickerOpenUpId(null);
       }
     };
 
@@ -4841,6 +4901,29 @@ export const WbsTreeView = ({
     }
   };
 
+  const handleCreateBottomTask = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (isCreatingBottomTask) return;
+    if (!selectedProjectId || selectedProjectId === "all") return;
+    if (typeof onCreate !== "function") return;
+
+    setIsCreatingBottomTask(true);
+    try {
+      await onCreate(null, {
+        title: "Nova tarefa",
+        status: "BACKLOG",
+        parentId: null
+      });
+      if (typeof onReloadWbs === "function") {
+        await onReloadWbs();
+      }
+    } catch (error) {
+      console.error("Create bottom task error", error);
+    } finally {
+      setIsCreatingBottomTask(false);
+    }
+  };
+
 
 
 
@@ -5552,7 +5635,14 @@ export const WbsTreeView = ({
                           </span>
                         </button>
                         {isStatusPickerOpen && (
-                          <div className="wbs-choice-menu wbs-choice-menu--status" role="listbox" aria-label="Opções de status">
+                          <div
+                            className={clsx(
+                              "wbs-choice-menu wbs-choice-menu--status",
+                              statusPickerOpenUpId === row.node.id && "wbs-choice-menu--up"
+                            )}
+                            role="listbox"
+                            aria-label="Opções de status"
+                          >
                             {STATUS_ORDER.map((statusOption) => {
                               const tone = STATUS_TONE[statusOption];
                               const isSelected = normalizedStatus === statusOption;
@@ -5597,7 +5687,10 @@ export const WbsTreeView = ({
                         </button>
                         {priorityPickerId === row.node.id && (
                           <div
-                            className="wbs-choice-menu wbs-choice-menu--priority"
+                            className={clsx(
+                              "wbs-choice-menu wbs-choice-menu--priority",
+                              priorityPickerOpenUpId === row.node.id && "wbs-choice-menu--up"
+                            )}
                             role="listbox"
                             aria-label="Opções de prioridade"
                           >
@@ -5857,6 +5950,20 @@ export const WbsTreeView = ({
 
 
             })}
+            {typeof onCreate === "function" && selectedProjectId && selectedProjectId !== "all" ? (
+              <tr className="wbs-create-row" data-node-id="create-new-row">
+                <td colSpan={17}>
+                  <button
+                    type="button"
+                    className="wbs-create-row__button"
+                    onClick={handleCreateBottomTask}
+                    disabled={isCreatingBottomTask}
+                  >
+                    {isCreatingBottomTask ? "Criando tarefa..." : "+ Criar nova tarefa"}
+                  </button>
+                </td>
+              </tr>
+            ) : null}
 
 
 
@@ -5871,7 +5978,6 @@ export const WbsTreeView = ({
 
       {selectedTaskIds.length > 0 && (
         <div className="wbs-bulk-bar">
-          <span className="wbs-bulk-info">{selectedTaskIds.length} selecionada(s)</span>
           <div className="wbs-bulk-actions">
             <button type="button" className="btn-secondary" onClick={() => setSelectedTaskIds([])}>
               Limpar seleção
@@ -5880,6 +5986,7 @@ export const WbsTreeView = ({
               Enviar para lixeira
             </button>
           </div>
+          <span className="wbs-bulk-info">{selectedTaskIds.length} selecionada(s)</span>
         </div>
       )}
 
@@ -10961,7 +11068,7 @@ export const DashboardLayout = ({
 
   currentOrgRole,
 
-
+  currentOrgModulePermissions,
 
   orgError,
 
@@ -11237,8 +11344,14 @@ export const DashboardLayout = ({
 
   const location = useLocation();
   const lowerPath = location.pathname.toLowerCase();
+  const currentOrgModuleAccess = useMemo(
+    () => normalizeModulePermissionsForRole((currentOrgRole as any) ?? null, currentOrgModulePermissions),
+    [currentOrgRole, currentOrgModulePermissions]
+  );
   const isEapRoute = lowerPath.includes("/eap") || lowerPath.includes("/edt");
-  const isReportsRoute = lowerPath.includes("/relatorios");
+  const canUseAllProjects = ["/dashboard", "/kanban", "/cronograma", "/documentos", "/relatorios"].some(
+    (allowedPath) => lowerPath === allowedPath || lowerPath.startsWith(`${allowedPath}/`)
+  );
   const eapRouteProjectId = useMemo(() => {
     const match = location.pathname.match(/^\/EAP\/organizacao\/[^/]+\/projeto\/([^/?#]+)/i);
     if (!match?.[1]) return null;
@@ -11256,18 +11369,12 @@ export const DashboardLayout = ({
   const [isProjectModalOpen, setProjectModalOpen] = useState(false);
 
   useEffect(() => {
-    const needsProject = !selectedProjectId || selectedProjectId === "all";
-    if (isReportsRoute) {
-      if (needsProject && projects?.length) {
-        onSelectProject(projects[0].id);
-      }
-      return;
-    }
+    const needsProject = !selectedProjectId || (selectedProjectId === "all" && !canUseAllProjects);
     if (!isEapRoute || !needsProject) return;
     if (eapRouteProjectId) return;
     if (!projects?.length) return;
     onSelectProject(projects[0].id);
-  }, [isEapRoute, isReportsRoute, selectedProjectId, projects, onSelectProject, eapRouteProjectId]);
+  }, [isEapRoute, selectedProjectId, projects, onSelectProject, eapRouteProjectId, canUseAllProjects]);
 
 
 
@@ -11877,6 +11984,8 @@ export const DashboardLayout = ({
 
     currentOrgRole,
 
+    currentOrgModulePermissions,
+
   projects,
 
   selectedProjectId,
@@ -12133,15 +12242,21 @@ export const DashboardLayout = ({
   const appShellClassName = `app-shell ${isCollapsed ? "app-shell--collapsed" : ""}`.trim();
   const currentOrganization = organizations.find((org) => org.id === selectedOrganizationId) ?? null;
   const selectedProjectName = useMemo(() => {
+    if (selectedProjectId === "all" && canUseAllProjects) return "Todos os projetos";
     if (!selectedProjectId) return "Selecione um projeto";
     return projects.find((project) => project.id === selectedProjectId)?.name ?? "Selecione um projeto";
-  }, [projects, selectedProjectId]);
+  }, [projects, selectedProjectId, canUseAllProjects]);
   const filteredProjects = useMemo(() => {
     const query = projectSearchTerm.trim().toLowerCase();
-    if (!query) return projects || [];
-    return (projects || []).filter((project) => (project.name ?? "").toLowerCase().includes(query));
-  }, [projects, projectSearchTerm]);
-  const isProjectSelectorDisabled = !projects?.length || isReportsRoute;
+    const base = !query
+      ? projects || []
+      : (projects || []).filter((project) => (project.name ?? "").toLowerCase().includes(query));
+    if (!canUseAllProjects) return base;
+    const shouldShowAllOption = !query || "todos os projetos".includes(query) || "todos".includes(query);
+    if (!shouldShowAllOption) return base;
+    return [{ id: "all", name: "Todos os projetos" }, ...base];
+  }, [projects, projectSearchTerm, canUseAllProjects]);
+  const isProjectSelectorDisabled = !projects?.length;
   const handleProjectSelectFromMenu = (projectId: string) => {
     onSelectProject(projectId);
     setProjectSelectorOpen(false);
@@ -12188,6 +12303,10 @@ export const DashboardLayout = ({
 
           {sidebarNavigation.map((item) => {
             const Icon = item.icon;
+            const moduleKey = sidebarModuleById[item.id] ?? "dashboard";
+            if (!currentOrgModuleAccess[moduleKey]?.view) {
+              return null;
+            }
             const computedPath =
               item.id === "edt" && selectedOrganizationId && selectedProjectId && selectedProjectId !== "all"
                 ? `/EAP/organizacao/${selectedOrganizationId}/projeto/${selectedProjectId}`
@@ -15901,6 +16020,18 @@ export const TemplatesPanel = ({
 
 
 };
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
