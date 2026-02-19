@@ -4,9 +4,9 @@ import { useAuth } from "../contexts/AuthContext";
 import { ProjectPortfolio, type PortfolioProject } from "../components/ProjectPortfolio";
 import ProjectTrashModal from "../components/ProjectTrashModal";
 import type { DashboardOutletContext, ProjectPriorityValue, ProjectStatusValue } from "../components/DashboardLayout";
-import { canManageProjects, type OrgRole } from "../components/permissions";
+import { canAccessModule, canManageProjects, type OrgRole } from "../components/permissions";
 import { Trash2 } from "lucide-react";
-import { apiUrl } from "../config/api";
+import { apiRequest, getApiErrorMessage, type ApiRequestError } from "../config/api";
 import { getPlanDefinition } from "../config/plans";
 
 const PROJECT_STATUS_OPTIONS: Array<{ value: ProjectStatusValue; label: string }> = [
@@ -272,6 +272,7 @@ export const ProjectsPage = () => {
     onCreateProject,
     onUpdateProject,
     currentOrgRole,
+    currentOrgModulePermissions,
     projectLimits
   } = useOutletContext<DashboardOutletContext>();
 
@@ -302,7 +303,13 @@ export const ProjectsPage = () => {
   });
 
   const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
-  const canCreateProjects = canManageProjects(orgRole);
+  const roleCanManageProjects = canManageProjects(orgRole);
+  const canCreateProjects =
+    roleCanManageProjects && canAccessModule(orgRole, currentOrgModulePermissions, "projects", "create");
+  const canEditProjects =
+    roleCanManageProjects && canAccessModule(orgRole, currentOrgModulePermissions, "projects", "edit");
+  const canDeleteProjects =
+    roleCanManageProjects && canAccessModule(orgRole, currentOrgModulePermissions, "projects", "delete");
   const currentOrganization = organizations?.find((organization) => organization.id === selectedOrganizationId) ?? null;
   const resetForm = () => {
     setForm({
@@ -360,29 +367,29 @@ export const ProjectsPage = () => {
   const modalSubmitLoadingLabel = isEditing ? "Salvando..." : "Criando...";
 
   const handleTrashProject = async (projectId: string) => {
+    if (!canDeleteProjects) {
+      setTrashError("Seu perfil não possui permissão para excluir projetos.");
+      return;
+    }
     if (!token || !selectedOrganizationId) return;
     if (!window.confirm("Enviar este projeto para a lixeira? Ele fica 30 dias e depois é excluído permanentemente.")) return;
     try {
-      const response = await fetch(apiUrl(`/projects/${projectId}/trash`), {
+      await apiRequest(`/projects/${projectId}/trash`, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
           "X-Organization-Id": selectedOrganizationId
         }
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(body?.message || "Erro ao enviar projeto para a lixeira");
-      }
       setTrashError(null);
       onReloadPortfolio?.();
-    } catch (error: any) {
-      setTrashError(error?.message || "Erro ao enviar projeto para a lixeira");
+    } catch (error) {
+      setTrashError(getApiErrorMessage(error, "Erro ao enviar projeto para a lixeira"));
     }
   };
 
   const handleOpenCreateModal = () => {
+    if (!canCreateProjects) return;
     if (isAtProjectLimit) return;
     setEditingProject(null);
     setIsEditModalOpen(false);
@@ -393,6 +400,7 @@ export const ProjectsPage = () => {
   };
 
   const handleOpenEditModal = (project: PortfolioProject) => {
+    if (!canEditProjects) return;
     const members = Array.isArray(project.teamMembers)
       ? project.teamMembers
       : Array.isArray(project.members)
@@ -431,6 +439,14 @@ export const ProjectsPage = () => {
 
   const handleModalSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!isEditing && !canCreateProjects) {
+      setCreateError("Seu perfil não possui permissão para criar projetos.");
+      return;
+    }
+    if (isEditing && !canEditProjects) {
+      setCreateError("Seu perfil não possui permissão para editar projetos.");
+      return;
+    }
     const errors: typeof fieldErrors = {};
     if (!form.name.trim()) errors.name = "Informe o nome do projeto.";
     if (!form.startDate) errors.startDate = "Informe a data de início.";
@@ -464,16 +480,17 @@ export const ProjectsPage = () => {
         await onCreateProject(payload);
       }
       handleCloseModal();
-    } catch (error: any) {
-      const code = error?.body?.code;
+    } catch (error: unknown) {
+      const apiError = error as ApiRequestError;
+      const body = apiError.body && typeof apiError.body === "object" ? (apiError.body as Record<string, unknown>) : null;
+      const code = typeof body?.code === "string" ? body.code : undefined;
       if (!isEditing && (code === "PLAN_LIMIT_REACHED" || code === "PROJECT_LIMIT_REACHED")) {
         setCreateError(null);
         setIsLimitModalOpen(true);
         return;
       }
       const fallbackMessage = isEditing ? "Erro ao salvar projeto" : "Erro ao criar projeto";
-      const message = error?.body?.message ?? (error instanceof Error ? error.message : fallbackMessage);
-      setCreateError(message);
+      setCreateError(getApiErrorMessage(error, fallbackMessage));
     } finally {
       setIsSubmitting(false);
     }
@@ -524,19 +541,21 @@ export const ProjectsPage = () => {
           </div>
 
           <div className="projects-header-buttons">
-            <button
-              className="btn-secondary"
-              type="button"
-              onClick={() => setIsTrashOpen(true)}
-            >
-              <Trash2 size={16} />
-              Lixeira
-            </button>
+            {canDeleteProjects ? (
+              <button
+                className="btn-secondary"
+                type="button"
+                onClick={() => setIsTrashOpen(true)}
+              >
+                <Trash2 size={16} />
+                Lixeira
+              </button>
+            ) : null}
             <button
               className="btn-primary"
               type="button"
               onClick={handleOpenCreateModal}
-              disabled={isAtProjectLimit}
+              disabled={!canCreateProjects || isAtProjectLimit}
             >
               + Novo projeto
             </button>
@@ -577,8 +596,8 @@ export const ProjectsPage = () => {
           selectedProjectId={selectedProjectId}
           onSelectProject={onProjectChange}
           onCreateProject={onCreateProject}
-          onEditProject={handleOpenEditModal}
-          onTrashProject={canManageProjects(currentOrgRole as OrgRole) ? handleTrashProject : undefined}
+          onEditProject={canEditProjects ? handleOpenEditModal : undefined}
+          onTrashProject={canDeleteProjects ? handleTrashProject : undefined}
         />
       )}
 

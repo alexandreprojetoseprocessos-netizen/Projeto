@@ -30,12 +30,22 @@ export type ApiError = {
   message: string;
   requestId?: string;
   status: number;
-  body?: any;
+  body?: unknown;
 };
 
 export type ApiFetchOptions = RequestInit & {
   timeoutMs?: number;
   retry?: number;
+  silentHttpStatuses?: number[];
+};
+
+export type ApiRequestOptions = ApiFetchOptions;
+
+export type ApiRequestError = Error & {
+  status?: number;
+  code?: string;
+  requestId?: string;
+  body?: unknown;
 };
 
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -60,7 +70,11 @@ export const apiFetch = async (path: string, options: ApiFetchOptions = {}) => {
   const { timeoutMs = DEFAULT_TIMEOUT_MS, retry, ...fetchOptions } = options;
   const retryCount = typeof retry === "number" ? retry : isRetryableMethod(fetchOptions.method) ? 1 : 0;
   const headers = new Headers(fetchOptions.headers ?? undefined);
-  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const hasBody = typeof fetchOptions.body !== "undefined" && fetchOptions.body !== null;
+  const isFormData = typeof FormData !== "undefined" && fetchOptions.body instanceof FormData;
+  if (hasBody && !isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   if (!headers.has("Authorization")) {
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
@@ -81,9 +95,49 @@ export const apiFetch = async (path: string, options: ApiFetchOptions = {}) => {
   throw lastError;
 };
 
-export const parseApiError = async (response: Response, url?: string): Promise<ApiError> => {
+export const apiRequest = async <TResponse = unknown>(path: string, options: ApiRequestOptions = {}): Promise<TResponse> => {
+  const { silentHttpStatuses, ...requestOptions } = options;
+  let response: Response;
+  try {
+    response = await apiFetch(path, requestOptions);
+  } catch (error) {
+    throw new Error(getNetworkErrorMessage(error));
+  }
+
+  if (!response.ok) {
+    const apiError = await parseApiError(response, apiUrl(path), { silentHttpStatuses });
+    const error = new Error(apiError.message) as Error & {
+      status?: number;
+      code?: string;
+      requestId?: string;
+      body?: unknown;
+    };
+    error.status = apiError.status;
+    error.code = apiError.code;
+    error.requestId = apiError.requestId;
+    error.body = apiError.body;
+    throw error;
+  }
+
+  if (response.status === 204) {
+    return undefined as TResponse;
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return (await response.json()) as TResponse;
+  }
+
+  return (await response.text()) as TResponse;
+};
+
+export const parseApiError = async (
+  response: Response,
+  url?: string,
+  options?: { silentHttpStatuses?: number[] }
+): Promise<ApiError> => {
   const rawText = await response.text();
-  let body: any = {};
+  let body: unknown = {};
   if (rawText) {
     try {
       body = JSON.parse(rawText);
@@ -92,18 +146,31 @@ export const parseApiError = async (response: Response, url?: string): Promise<A
     }
   }
 
-  console.warn("[api] request failed", {
-    url: url ?? response.url,
-    status: response.status,
-    body: rawText
-  });
+  const silentStatuses = new Set(options?.silentHttpStatuses ?? []);
+  if (!silentStatuses.has(response.status)) {
+    console.warn("[api] request failed", {
+      url: url ?? response.url,
+      status: response.status,
+      body: rawText
+    });
+  }
+
+  const parsedBody = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const parsedMessage =
+    typeof parsedBody.message === "string"
+      ? parsedBody.message
+      : typeof parsedBody.error === "string"
+      ? parsedBody.error
+      : undefined;
+  const parsedCode = typeof parsedBody.code === "string" ? parsedBody.code : undefined;
+  const parsedRequestId = typeof parsedBody.requestId === "string" ? parsedBody.requestId : undefined;
 
   return {
     status: response.status,
-    code: body?.code,
-    message: body?.message ?? body?.error ?? `API respondeu com status ${response.status}`,
-    requestId: body?.requestId,
-    body
+    code: parsedCode,
+    message: parsedMessage ?? `API respondeu com status ${response.status}`,
+    requestId: parsedRequestId,
+    body: parsedBody
   };
 };
 
@@ -115,4 +182,60 @@ export const getNetworkErrorMessage = (error: unknown) => {
     return "Servidor indisponível. Tente novamente.";
   }
   return "Falha de conexão. Tente novamente.";
+};
+
+const HTTP_STATUS_MESSAGES: Partial<Record<number, string>> = {
+  400: "Dados inválidos. Revise os campos e tente novamente.",
+  401: "Sua sessão expirou. Faça login novamente.",
+  403: "Você não tem permissão para esta ação.",
+  404: "Recurso não encontrado.",
+  409: "Conflito de atualização. Recarregue a página e tente novamente.",
+  422: "Dados inválidos. Revise os campos e tente novamente.",
+  429: "Muitas tentativas. Aguarde e tente novamente.",
+  500: "Erro interno no servidor. Tente novamente em instantes.",
+  502: "Serviço temporariamente indisponível.",
+  503: "Serviço temporariamente indisponível.",
+  504: "Tempo de resposta do servidor excedido."
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+
+export const isApiRequestError = (error: unknown): error is ApiRequestError => {
+  if (!(error instanceof Error)) return false;
+  const record = error as unknown as Record<string, unknown>;
+  return (
+    typeof record.status === "number" ||
+    typeof record.code === "string" ||
+    typeof record.requestId === "string" ||
+    typeof record.body !== "undefined"
+  );
+};
+
+export const getApiErrorMessage = (error: unknown, fallbackMessage = "Não foi possível concluir a operação.") => {
+  if (isApiRequestError(error)) {
+    const status = typeof error.status === "number" ? error.status : undefined;
+    const body = asRecord(error.body);
+    const bodyMessage =
+      typeof body?.message === "string"
+        ? body.message
+        : typeof body?.error === "string"
+        ? body.error
+        : undefined;
+    const errorMessage = typeof error.message === "string" ? error.message.trim() : "";
+    const defaultMessageForStatus = status ? HTTP_STATUS_MESSAGES[status] : undefined;
+    const isGenericStatusMessage = /^API respondeu com status\s+\d+$/i.test(errorMessage);
+
+    if (bodyMessage?.trim()) return bodyMessage.trim();
+    if (errorMessage && !isGenericStatusMessage) return errorMessage;
+    if (defaultMessageForStatus) return defaultMessageForStatus;
+    return fallbackMessage;
+  }
+
+  if (error instanceof Error && error.message?.trim()) {
+    return error.message.trim();
+  }
+
+  const networkMessage = getNetworkErrorMessage(error);
+  return networkMessage || fallbackMessage;
 };

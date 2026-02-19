@@ -1,4 +1,4 @@
-﻿import type { FormEvent } from "react";
+import type { FormEvent } from "react";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -38,7 +38,6 @@ import { ProjectDetailsPage } from "./pages/ProjectDetailsPage";
 
 import EDTPage from "./pages/EDTPage";
 
-console.log("[EAP route] EDTPage imported from ./pages/EDTPage");
 
 import KanbanPage from "./pages/KanbanPage";
 
@@ -78,7 +77,7 @@ import Auth from "./pages/Auth";
 
 import { CheckoutPage } from "./pages/CheckoutPage";
 
-import { apiFetch, apiUrl, getNetworkErrorMessage } from "./config/api";
+import { apiFetch, apiUrl, getApiErrorMessage, getNetworkErrorMessage, parseApiError, type ApiFetchOptions } from "./config/api";
 
 import { getPlanDefinition } from "./config/plans";
 
@@ -97,6 +96,7 @@ type Organization = {
   activeProjects?: number;
 
   projectsCount?: number;
+  projectCount?: number;
 
   domain?: string | null;
 
@@ -119,7 +119,61 @@ type Project = {
   projectName?: string | null;
 };
 
-type BoardColumn = { id: string; label: string; tasks: any[]; wipLimit?: number };
+type OrgRole = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
+type JsonRecord = Record<string, unknown>;
+type LimitSummary = {
+  planCode: string | null;
+  max: number | null;
+  used: number;
+  remaining: number | null;
+};
+type ProjectMember = {
+  id: string;
+  userId: string;
+  name?: string | null;
+  email?: string | null;
+  role?: string | null;
+};
+type ServiceCatalogItem = {
+  id: string;
+  name: string;
+  description?: string | null;
+  hoursBase?: number | null;
+  hours?: number | null;
+  [key: string]: unknown;
+};
+type WbsComment = JsonRecord;
+type GanttItem = JsonRecord & {
+  projectId?: string;
+  projectName?: string;
+};
+type AttachmentItem = JsonRecord & {
+  projectId?: string;
+  projectName?: string;
+};
+type BoardTask = KanbanTask & {
+  boardColumnId?: string | null;
+  projectId?: string;
+  project?: { name?: string | null } | null;
+};
+type BoardColumn = { id: string; label: string; tasks: BoardTask[]; wipLimit?: number; status?: string; order?: number };
+type ProjectApiShape = {
+  id: string;
+  name: string;
+  status?: string | null;
+  priority?: string | null;
+  description?: string | null;
+};
+type WbsCreateInput = {
+  title?: string;
+  status?: string;
+  priority?: string;
+  description?: string | null;
+  durationDays?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
+};
+type DragLocation = Pick<NonNullable<DropResult["destination"]>, "droppableId" | "index">;
 
 type WbsNode = {
 
@@ -202,6 +256,7 @@ const SELECTED_ORG_KEY = "gp:selectedOrganizationId";
 const SELECTED_PROJECT_KEY = "gp:selectedProjectId";
 
 const ALL_PROJECTS_ALLOWED_PATHS = ["/dashboard", "/kanban", "/cronograma", "/documentos", "/relatorios"];
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const canUseAllProjectsOnPath = (pathname: string) => {
   const lowerPath = pathname.toLowerCase();
@@ -210,14 +265,90 @@ const canUseAllProjectsOnPath = (pathname: string) => {
   );
 };
 
+const buildWbsQueryPath = (projectId: string) => `/wbs?projectId=${encodeURIComponent(projectId)}`;
 
-async function fetchJson<TResponse = any>(
+const normalizeUuid = (value?: string | null): string | null => {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!UUID_REGEX.test(normalized)) return null;
+  return normalized;
+};
+
+const normalizeOrganizationId = (value?: string | null): string | null => {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized || normalized.toLowerCase() === "all") return null;
+  return normalizeUuid(normalized);
+};
+
+const asRecord = (value: unknown): JsonRecord | null =>
+  value && typeof value === "object" ? (value as JsonRecord) : null;
+
+const normalizeOrgRole = (value: unknown): OrgRole | null => {
+  const normalized = typeof value === "string" ? value.trim().toUpperCase() : "";
+  if (normalized === "OWNER" || normalized === "ADMIN" || normalized === "MEMBER" || normalized === "VIEWER") {
+    return normalized;
+  }
+  return null;
+};
+
+const readApiError = (error: unknown) => {
+  const fallbackMessage = getApiErrorMessage(error, "Erro inesperado");
+  const root = asRecord(error);
+  const response = asRecord(root?.response);
+  const body = asRecord(root?.body);
+  const responseData = asRecord(response?.data);
+  const status =
+    typeof root?.status === "number"
+      ? root.status
+      : typeof response?.status === "number"
+      ? response.status
+      : undefined;
+  const code =
+    typeof body?.code === "string"
+      ? body.code
+      : typeof responseData?.code === "string"
+      ? responseData.code
+      : undefined;
+  const message =
+    typeof body?.message === "string"
+      ? body.message
+      : typeof responseData?.message === "string"
+      ? responseData.message
+      : fallbackMessage;
+  return { status, code, message };
+};
+
+const extractProjectFromResponse = (response: unknown): ProjectApiShape | null => {
+  const root = asRecord(response);
+  const candidate = asRecord(root?.project ?? response);
+  if (!candidate) return null;
+
+  const id = typeof candidate.id === "string" ? candidate.id : "";
+  const name = typeof candidate.name === "string" ? candidate.name : "";
+  if (!id || !name) return null;
+
+  return {
+    id,
+    name,
+    status: typeof candidate.status === "string" ? candidate.status : null,
+    priority: typeof candidate.priority === "string" ? candidate.priority : null,
+    description: typeof candidate.description === "string" ? candidate.description : null
+  };
+};
+
+const extractNodeIdFromResponse = (response: unknown): string | null => {
+  const root = asRecord(response);
+  const node = asRecord(root?.node);
+  return typeof node?.id === "string" ? node.id : null;
+};
+
+
+async function fetchJson<TResponse = unknown>(
 
   path: string,
 
   token: string,
 
-  options?: RequestInit,
+  options?: ApiFetchOptions,
 
   organizationId?: string
 
@@ -225,11 +356,26 @@ async function fetchJson<TResponse = any>(
 
   const headers = new Headers(options?.headers ?? undefined);
 
-  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const hasBody = typeof options?.body !== "undefined" && options?.body !== null;
+  const isFormData = typeof FormData !== "undefined" && options?.body instanceof FormData;
+  if (hasBody && !isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
 
   headers.set("Authorization", `Bearer ${token}`);
 
-  if (organizationId) headers.set("X-Organization-Id", organizationId);
+  const normalizedOrganizationId = normalizeOrganizationId(organizationId);
+  const hasInvalidOrganizationId =
+    typeof organizationId === "string" && organizationId.trim().length > 0 && !normalizedOrganizationId;
+  if (hasInvalidOrganizationId) {
+    const error = new Error("Organizacao invalida") as Error & { status?: number; body?: unknown };
+    error.status = 400;
+    error.body = { message: "x-organization-id is invalid" };
+    throw error;
+  }
+  if (normalizedOrganizationId) {
+    headers.set("X-Organization-Id", normalizedOrganizationId);
+  }
 
 
 
@@ -249,7 +395,7 @@ async function fetchJson<TResponse = any>(
 
     const message = getNetworkErrorMessage(error);
 
-    const networkError = new Error(message) as Error & { status?: number; body?: any };
+    const networkError = new Error(message) as Error & { status?: number; body?: unknown };
 
     throw networkError;
 
@@ -257,24 +403,22 @@ async function fetchJson<TResponse = any>(
 
 
 
-  const body = await response.json().catch(() => ({}));
-
   if (!response.ok) {
-
-    const message = (body as any).error ?? (body as any).message ?? `API respondeu com status ${response.status}`;
-
-    const error = new Error(message) as Error & { status?: number; body?: any };
-
-    error.status = response.status;
-
-    error.body = body;
+    const apiError = await parseApiError(response, apiUrl(path));
+    const message = apiError.message;
+    const error = new Error(message) as Error & { status?: number; body?: unknown };
+    error.status = apiError.status;
+    error.body = apiError.body;
 
     throw error;
 
   }
 
+  if (response.status === 204) {
+    return {} as TResponse;
+  }
 
-
+  const body = await response.json().catch(() => ({}));
   return body as TResponse;
 
 }
@@ -314,7 +458,7 @@ export const App = () => {
 
   );
 
-  const [subscription, setSubscription] = useState<any | null>(null);
+  const [subscription, setSubscription] = useState<JsonRecord | null>(null);
 
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
 
@@ -326,7 +470,7 @@ export const App = () => {
 
     if (typeof window === "undefined") return null;
 
-    return window.localStorage.getItem(SELECTED_ORG_KEY);
+    return normalizeOrganizationId(window.localStorage.getItem(SELECTED_ORG_KEY));
 
   });
 
@@ -346,10 +490,15 @@ export const App = () => {
   const isAllProjectsSelected = selectedProjectId === "all";
 
   const activeProjectId = isAllProjectsSelected ? null : selectedProjectId;
+  const normalizedSelectedOrganizationId = useMemo(
+    () => normalizeOrganizationId(selectedOrganizationId),
+    [selectedOrganizationId]
+  );
+  const normalizedActiveProjectId = useMemo(() => normalizeUuid(activeProjectId), [activeProjectId]);
 
 
 
-const [members, setMembers] = useState<any[]>([]);
+const [members, setMembers] = useState<ProjectMember[]>([]);
 
 const [membersError, setMembersError] = useState<string | null>(null);
 
@@ -359,15 +508,16 @@ const [wbsNodes, setWbsNodes] = useState<WbsNode[]>([]);
 
 const [wbsError, setWbsError] = useState<string | null>(null);
 
-const [serviceCatalog, setServiceCatalog] = useState<any[]>([]);
+const [serviceCatalog, setServiceCatalog] = useState<ServiceCatalogItem[]>([]);
 
 const [serviceCatalogError, setServiceCatalogError] = useState<string | null>(null);
 
 const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+const normalizedSelectedNodeId = useMemo(() => normalizeUuid(selectedNodeId), [selectedNodeId]);
 
 
 
-  const [comments, setComments] = useState<any[]>([]);
+  const [comments, setComments] = useState<WbsComment[]>([]);
 
   const [commentsError, setCommentsError] = useState<string | null>(null);
 
@@ -379,21 +529,21 @@ const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
 
 
-  const [ganttTasks, setGanttTasks] = useState<any[]>([]);
+  const [ganttTasks, setGanttTasks] = useState<GanttItem[]>([]);
 
-  const [ganttMilestones, setGanttMilestones] = useState<any[]>([]);
+  const [ganttMilestones, setGanttMilestones] = useState<GanttItem[]>([]);
 
   const [ganttError, setGanttError] = useState<string | null>(null);
 
 
 
-  const [projectSummary, setProjectSummary] = useState<any | null>(null);
+  const [projectSummary, setProjectSummary] = useState<JsonRecord | null>(null);
 
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
 
 
-  const [attachments, setAttachments] = useState<any[]>([]);
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
 
   const [attachmentsError, setAttachmentsError] = useState<string | null>(null);
 
@@ -403,13 +553,11 @@ const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const [portfolio, setPortfolio] = useState<PortfolioProject[]>([]);
 
-  const [portfolioRefresh, setPortfolioRefresh] = useState(0);
-
   const [portfolioError, setPortfolioError] = useState<string | null>(null);
 
   const [portfolioLoading, setPortfolioLoading] = useState(false);
 
-const [reportMetrics, setReportMetrics] = useState<any | null>(null);
+const [reportMetrics, setReportMetrics] = useState<JsonRecord | null>(null);
 
 const [reportMetricsError, setReportMetricsError] = useState<string | null>(null);
 
@@ -447,7 +595,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     try {
 
-      const data = await fetchJson<{ subscription: any }>("/me/subscription", token);
+      const data = await fetchJson<{ subscription?: JsonRecord | null }>("/me/subscription", token);
 
       const currentSubscription = data.subscription ?? null;
 
@@ -459,7 +607,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     } catch (error) {
 
-      const message = error instanceof Error ? error.message : "Erro ao carregar assinatura";
+      const message = getApiErrorMessage(error, "Erro ao carregar assinatura");
 
       setSubscriptionStatus("error");
 
@@ -493,29 +641,9 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   const [organizationsRefresh, setOrganizationsRefresh] = useState(0);
 
-  const [organizationLimits, setOrganizationLimits] = useState<{
+  const [organizationLimits, setOrganizationLimits] = useState<LimitSummary | null>(null);
 
-    planCode: string | null;
-
-    max: number | null;
-
-    used: number;
-
-    remaining: number | null;
-
-  } | null>(null);
-
-  const [projectLimits, setProjectLimits] = useState<{
-
-    planCode: string | null;
-
-    max: number | null;
-
-    used: number;
-
-    remaining: number | null;
-
-  } | null>(null);
+  const [projectLimits, setProjectLimits] = useState<LimitSummary | null>(null);
 
 
 
@@ -599,7 +727,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
       }
 
-      (column.tasks ?? []).forEach((rawTask: any) => {
+      (column.tasks ?? []).forEach((rawTask) => {
 
         const matchedStatus = resolveStatus(rawTask.status) ?? columnStatus ?? statusOrder[0];
 
@@ -677,23 +805,23 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         setOrgError(null);
 
-        const data = await fetchJson<{ organizations: Organization[]; organizationLimits?: any }>("/me", token);
+        const data = await fetchJson<{ organizations: Organization[]; organizationLimits?: LimitSummary | null }>("/me", token);
 
         const normalized = (data.organizations ?? []).map((org) => ({
 
           ...org,
 
-          status: (org as any).status ?? "ACTIVE",
+          status: org.status ?? "ACTIVE",
 
-          deletedAt: (org as any).deletedAt ?? null,
+          deletedAt: org.deletedAt ?? null,
 
           activeProjects:
 
             org.activeProjects ??
 
-            (org as any).projectsCount ??
+            org.projectsCount ??
 
-            (org as any).projectCount ??
+            org.projectCount ??
 
             0,
 
@@ -701,15 +829,17 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
             org.projectsCount ??
 
-            (org as any).projectCount ??
+            org.projectsCount ??
+
+            org.projectCount ??
 
             org.activeProjects ??
 
             0,
 
-          domain: org.domain ?? (org as any).domain ?? null,
+          domain: org.domain ?? null,
 
-          createdAt: org.createdAt ?? (org as any).createdAt,
+          createdAt: org.createdAt,
 
           isActive: typeof org.isActive === "boolean" ? org.isActive : true
 
@@ -739,7 +869,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
       } catch (error) {
 
-        const message = error instanceof Error ? error.message : "Falha ao carregar organizações";
+        const message = getApiErrorMessage(error, "Falha ao carregar organizacoes");
 
         setOrgError(message);
 
@@ -860,9 +990,9 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     if (typeof window !== "undefined") {
 
-      if (selectedOrganizationId) {
+      if (normalizedSelectedOrganizationId) {
 
-        window.localStorage.setItem(SELECTED_ORG_KEY, selectedOrganizationId);
+        window.localStorage.setItem(SELECTED_ORG_KEY, normalizedSelectedOrganizationId);
 
       } else {
 
@@ -958,13 +1088,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     setSummaryRefresh(0);
 
-  }, [selectedOrganizationId]);
+  }, [selectedOrganizationId, normalizedSelectedOrganizationId]);
 
 
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
 
       setProjects([]);
 
@@ -984,7 +1114,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         setProjectsError(null);
 
-        const data = await fetchJson<{ projects: Project[] }>("/projects", token, undefined, selectedOrganizationId);
+        const data = await fetchJson<{ projects: Project[] }>("/projects", token, undefined, normalizedSelectedOrganizationId);
 
         const list = data.projects ?? [];
 
@@ -1004,7 +1134,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
         });
       } catch (error) {
 
-        const message = error instanceof Error ? error.message : "Falha ao carregar projetos";
+        const message = getApiErrorMessage(error, "Falha ao carregar projetos");
 
         setProjectsError(message);
 
@@ -1018,12 +1148,12 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     loadProjects();
 
-  }, [status, token, selectedOrganizationId, portfolioRefresh, routeProjectId, canUseAllProjects]);
+  }, [status, token, normalizedSelectedOrganizationId, routeProjectId, canUseAllProjects]);
 
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedActiveProjectId || !normalizedSelectedOrganizationId) {
 
       setProjectSummary(null);
 
@@ -1041,13 +1171,18 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         const query = new URLSearchParams({ rangeDays: String(filters.rangeDays) });
 
-        const data = await fetchJson(`/projects/${activeProjectId}/summary?${query.toString()}`, token, undefined, selectedOrganizationId);
+        const data = await fetchJson<JsonRecord>(
+          `/projects/${normalizedActiveProjectId}/summary?${query.toString()}`,
+          token,
+          undefined,
+          normalizedSelectedOrganizationId
+        );
 
         setProjectSummary(data);
 
       } catch (error) {
 
-        const message = error instanceof Error ? error.message : "Erro ao carregar resumo";
+        const message = getApiErrorMessage(error, "Erro ao carregar resumo");
 
         setSummaryError(message);
 
@@ -1061,13 +1196,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     loadSummary();
 
-  }, [status, token, selectedProjectId, selectedOrganizationId, filters.rangeDays, summaryRefresh]);
+  }, [status, token, normalizedActiveProjectId, normalizedSelectedOrganizationId, filters.rangeDays, summaryRefresh]);
 
 
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedActiveProjectId || !normalizedSelectedOrganizationId) {
 
       setMembers([]);
 
@@ -1083,13 +1218,18 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         setMembersError(null);
 
-        const data = await fetchJson(`/projects/${activeProjectId}/members`, token, undefined, selectedOrganizationId);
+        const data = await fetchJson<{ members?: ProjectMember[] }>(
+          `/projects/${normalizedActiveProjectId}/members`,
+          token,
+          undefined,
+          normalizedSelectedOrganizationId
+        );
 
         setMembers(data.members ?? []);
 
       } catch (error) {
 
-        const message = error instanceof Error ? error.message : "Erro ao carregar equipe";
+        const message = getApiErrorMessage(error, "Erro ao carregar equipe");
 
         setMembersError(message);
 
@@ -1101,13 +1241,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     loadMembers();
 
-  }, [status, token, selectedProjectId, selectedOrganizationId]);
+  }, [status, token, normalizedActiveProjectId, normalizedSelectedOrganizationId]);
 
 
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !activeProjectId || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedActiveProjectId || !normalizedSelectedOrganizationId) {
 
       setServiceCatalog([]);
 
@@ -1123,13 +1263,18 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         setServiceCatalogError(null);
 
-        const data = await fetchJson(`/service-catalog?projectId=${activeProjectId}`, token, undefined, selectedOrganizationId);
+        const data = await fetchJson<ServiceCatalogItem[]>(
+          `/service-catalog?projectId=${normalizedActiveProjectId}`,
+          token,
+          undefined,
+          normalizedSelectedOrganizationId
+        );
 
         setServiceCatalog(data ?? []);
 
       } catch (error) {
 
-        const message = error instanceof Error ? error.message : "Erro ao carregar catálogo de serviços";
+        const message = getApiErrorMessage(error, "Erro ao carregar catalogo de servicos");
 
         setServiceCatalogError(message);
 
@@ -1141,13 +1286,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     loadServiceCatalog();
 
-  }, [status, token, selectedProjectId, selectedOrganizationId, serviceCatalogRefresh]);
+  }, [status, token, normalizedActiveProjectId, normalizedSelectedOrganizationId, serviceCatalogRefresh]);
 
 
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
 
       setWbsNodes([]);
 
@@ -1165,7 +1310,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     }
 
-    if (!activeProjectId) {
+    if (!normalizedActiveProjectId) {
 
       setWbsNodes([]);
 
@@ -1183,7 +1328,12 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         setWbsError(null);
 
-        const data = await fetchJson(`/projects/${activeProjectId}/wbs`, token, undefined, selectedOrganizationId);
+        const data = await fetchJson<{ nodes?: WbsNode[] }>(
+          buildWbsQueryPath(normalizedActiveProjectId),
+          token,
+          undefined,
+          normalizedSelectedOrganizationId
+        );
 
         const nodes = ensureWbsTree(data.nodes ?? []);
 
@@ -1199,7 +1349,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
       } catch (error) {
 
-        const message = error instanceof Error ? error.message : "Erro ao carregar WBS";
+        const message = getApiErrorMessage(error, "Erro ao carregar WBS");
 
         setWbsError(message);
 
@@ -1211,13 +1361,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     loadWbs();
 
-  }, [status, token, selectedProjectId, selectedOrganizationId, wbsRefresh]);
+  }, [status, token, selectedProjectId, normalizedActiveProjectId, normalizedSelectedOrganizationId, wbsRefresh]);
 
 
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !selectedOrganizationId || selectedProjectId !== "all") {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId || selectedProjectId !== "all") {
 
       return;
 
@@ -1231,6 +1381,21 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     }
 
+    const validProjects = projects
+      .map((project) => {
+        const projectId = normalizeUuid(project.id ?? project.projectId);
+        if (!projectId) return null;
+        return {
+          projectId,
+          projectName: project.name ?? project.projectName ?? "Projeto"
+        };
+      })
+      .filter((project): project is { projectId: string; projectName: string } => Boolean(project));
+    if (!validProjects.length) {
+      setWbsNodes([]);
+      return;
+    }
+
 
 
     const loadAllWbs = async () => {
@@ -1241,15 +1406,15 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         const results = await Promise.allSettled(
 
-          projects.map((project) =>
+          validProjects.map((project) =>
 
-            fetchJson(`/projects/${project.id}/wbs`, token, undefined, selectedOrganizationId).then((data) => ({
+            fetchJson<{ nodes?: WbsNode[] }>(buildWbsQueryPath(project.projectId), token, undefined, normalizedSelectedOrganizationId).then((data) => ({
 
               ...data,
 
-              projectId: project.id,
+              projectId: project.projectId,
 
-              projectName: project.name
+              projectName: project.projectName
 
             }))
 
@@ -1306,10 +1471,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
 
         setWbsNodes(merged);
+        if (results.some((result) => result.status === "rejected")) {
+          setWbsError("Alguns projetos nao puderam ter a EAP carregada.");
+        }
 
       } catch (error) {
 
-        const message = error instanceof Error ? error.message : "Erro ao carregar WBS";
+        const message = getApiErrorMessage(error, "Erro ao carregar WBS");
 
         setWbsError(message);
 
@@ -1321,13 +1489,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     loadAllWbs();
 
-  }, [status, token, selectedProjectId, selectedOrganizationId, projects, wbsRefresh]);
+  }, [status, token, selectedProjectId, normalizedSelectedOrganizationId, projects, wbsRefresh]);
 
 
 
   useEffect(() => {
 
-    if (!selectedNodeId || status !== "authenticated" || !token || !selectedOrganizationId) {
+    if (!normalizedSelectedNodeId || status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
 
       setComments([]);
 
@@ -1343,15 +1511,20 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         setCommentsError(null);
 
-        const data = await fetchJson(`/wbs/${selectedNodeId}/comments`, token, undefined, selectedOrganizationId);
+        const data = await fetchJson<WbsComment[] | { comments?: WbsComment[] }>(
+          `/wbs/${normalizedSelectedNodeId}/comments`,
+          token,
+          undefined,
+          normalizedSelectedOrganizationId
+        );
 
-        const nextComments = Array.isArray(data) ? data : data?.comments ?? [];
+        const nextComments = Array.isArray(data) ? data : data.comments ?? [];
 
         setComments(nextComments);
 
       } catch (error) {
 
-        const message = error instanceof Error ? error.message : "Erro ao carregar comentários";
+        const message = getApiErrorMessage(error, "Erro ao carregar comentarios");
 
         setCommentsError(message);
 
@@ -1363,13 +1536,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     loadComments();
 
-  }, [status, token, selectedNodeId, selectedOrganizationId, commentsRefresh]);
+  }, [status, token, normalizedSelectedNodeId, normalizedSelectedOrganizationId, commentsRefresh]);
 
 
 
   const loadBoardColumns = useCallback(async () => {
 
-    if (status !== "authenticated" || !token || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
 
       return;
 
@@ -1383,7 +1556,18 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         setBoardError(null);
 
-        if (!projects.length) {
+        const validProjects = projects
+          .map((project) => {
+            const projectId = normalizeUuid(project.id ?? project.projectId);
+            if (!projectId) return null;
+            return {
+              projectId,
+              projectName: project.name ?? project.projectName ?? "Projeto"
+            };
+          })
+          .filter((project): project is { projectId: string; projectName: string } => Boolean(project));
+
+        if (!validProjects.length) {
 
           setBoardColumns([]);
 
@@ -1395,19 +1579,19 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         const results = await Promise.allSettled(
 
-          projects.map((project) =>
+          validProjects.map((project) =>
 
             fetchJson<BoardResponse>(
 
-              `/projects/${project.id}/board`,
+              `/projects/${project.projectId}/board`,
 
               token,
 
               undefined,
 
-              selectedOrganizationId
+              normalizedSelectedOrganizationId
 
-            ).then((data) => ({ ...data, projectId: project.id, projectName: project.name }))
+            ).then((data) => ({ ...data, projectId: project.projectId, projectName: project.projectName }))
 
           )
 
@@ -1471,7 +1655,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
           const data = result.value as BoardResponse & { projectId?: string; projectName?: string };
 
-          (data.columns ?? []).forEach((column: any) => {
+          (data.columns ?? []).forEach((column) => {
 
             const columnStatus =
 
@@ -1483,7 +1667,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
               statusOrder[0];
 
-            (column.tasks ?? []).forEach((task: any) => {
+            (column.tasks ?? []).forEach((task) => {
 
               const taskStatus = resolveStatus(task.status) ?? columnStatus ?? statusOrder[0];
 
@@ -1521,7 +1705,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
       } catch (error) {
 
-        const message = error instanceof Error ? error.message : "Erro ao carregar quadro";
+        const message = getApiErrorMessage(error, "Erro ao carregar quadro");
 
         setBoardError(message);
 
@@ -1533,7 +1717,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
 
 
-    if (!activeProjectId) {
+    if (!normalizedActiveProjectId) {
 
       return;
 
@@ -1547,19 +1731,19 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
       const data = await fetchJson<BoardResponse>(
 
-        `/projects/${activeProjectId}/board`,
+        `/projects/${normalizedActiveProjectId}/board`,
 
         token,
 
         undefined,
 
-        selectedOrganizationId
+        normalizedSelectedOrganizationId
 
       );
 
-      const projectName = projects.find((project) => project.id === activeProjectId)?.name;
+      const projectName = projects.find((project) => normalizeUuid(project.id ?? project.projectId) === normalizedActiveProjectId)?.name;
 
-      const normalized = (data.columns ?? []).map((column: any) => ({
+      const normalized = (data.columns ?? []).map((column) => ({
 
         ...column,
 
@@ -1567,7 +1751,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
-          .map((task: any) => ({
+          .map((task) => ({
 
             ...task,
 
@@ -1597,19 +1781,19 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     } catch (error) {
 
-      const message = error instanceof Error ? error.message : "Erro ao carregar quadro";
+      const message = getApiErrorMessage(error, "Erro ao carregar quadro");
 
       setBoardError(message);
 
     }
 
-  }, [status, token, selectedProjectId, selectedOrganizationId, activeProjectId, projects]);
+  }, [status, token, selectedProjectId, normalizedSelectedOrganizationId, normalizedActiveProjectId, projects]);
 
 
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
 
       setBoardColumns([]);
 
@@ -1617,7 +1801,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     }
 
-    if (!activeProjectId && selectedProjectId !== "all") {
+    if (!normalizedActiveProjectId && selectedProjectId !== "all") {
 
       setBoardColumns([]);
 
@@ -1629,7 +1813,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     loadBoardColumns();
 
-  }, [status, token, selectedProjectId, selectedOrganizationId, activeProjectId, boardRefresh, loadBoardColumns]);
+  }, [status, token, selectedProjectId, normalizedSelectedOrganizationId, normalizedActiveProjectId, boardRefresh, loadBoardColumns]);
 
 
 
@@ -1637,9 +1821,9 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     async (file: File | null) => {
 
-      if (!file || !token || !activeProjectId || !selectedOrganizationId) {
+      if (!file || !token || !normalizedActiveProjectId || !normalizedSelectedOrganizationId) {
 
-        throw new Error("Arquivo e projeto são obrigatórios.");
+        throw new Error("Arquivo e projeto sao obrigatorios.");
 
       }
 
@@ -1647,37 +1831,15 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
       formData.append("file", file);
 
-      const response = await fetch(
-
-        apiUrl(`/service-catalog/import?projectId=${activeProjectId}`),
-
+      const body = await fetchJson(
+        `/service-catalog/import?projectId=${normalizedActiveProjectId}`,
+        token,
         {
-
           method: "POST",
-
-          headers: {
-
-            Authorization: `Bearer ${token}`,
-
-            "X-Organization-Id": selectedOrganizationId
-
-          },
-
           body: formData
-
-        }
-
+        },
+        normalizedSelectedOrganizationId
       );
-
-      const body = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-
-        const message = (body as any)?.message ?? "Erro ao importar catálogo";
-
-        throw new Error(message);
-
-      }
 
       setServiceCatalogRefresh((value) => value + 1);
 
@@ -1685,7 +1847,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     },
 
-    [token, selectedProjectId, selectedOrganizationId]
+    [token, normalizedActiveProjectId, normalizedSelectedOrganizationId]
 
   );
 
@@ -1693,7 +1855,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
 
       setGanttTasks([]);
 
@@ -1707,7 +1869,18 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     if (selectedProjectId === "all") {
 
-      if (!projects.length) {
+      const validProjects = projects
+        .map((project) => {
+          const projectId = normalizeUuid(project.id ?? project.projectId);
+          if (!projectId) return null;
+          return {
+            projectId,
+            projectName: project.name ?? project.projectName ?? "Projeto"
+          };
+        })
+        .filter((project): project is { projectId: string; projectName: string } => Boolean(project));
+
+      if (!validProjects.length) {
 
         setGanttTasks([]);
 
@@ -1727,15 +1900,20 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
           const results = await Promise.allSettled(
 
-            projects.map((project) =>
+            validProjects.map((project) =>
 
-              fetchJson(`/projects/${project.id}/gantt`, token, undefined, selectedOrganizationId).then((data) => ({
+              fetchJson<{ tasks?: GanttItem[]; milestones?: GanttItem[] }>(
+                `/projects/${project.projectId}/gantt`,
+                token,
+                undefined,
+                normalizedSelectedOrganizationId
+              ).then((data) => ({
 
                 ...data,
 
-                projectId: project.id,
+                projectId: project.projectId,
 
-                projectName: project.name
+                projectName: project.projectName
 
               }))
 
@@ -1751,7 +1929,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
             const { tasks = [], projectId, projectName } = result.value as {
 
-              tasks?: any[];
+              tasks?: GanttItem[];
 
               projectId?: string;
 
@@ -1779,7 +1957,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
             const { milestones = [], projectId, projectName } = result.value as {
 
-              milestones?: any[];
+              milestones?: GanttItem[];
 
               projectId?: string;
 
@@ -1807,7 +1985,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         } catch (error) {
 
-          const message = error instanceof Error ? error.message : "Erro ao carregar Gantt";
+          const message = getApiErrorMessage(error, "Erro ao carregar Gantt");
 
           setGanttError(message);
 
@@ -1825,7 +2003,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
 
 
-    if (!activeProjectId) {
+    if (!normalizedActiveProjectId) {
 
       setGanttTasks([]);
 
@@ -1843,7 +2021,12 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         setGanttError(null);
 
-        const data = await fetchJson(`/projects/${activeProjectId}/gantt`, token, undefined, selectedOrganizationId);
+        const data = await fetchJson<{ tasks?: GanttItem[]; milestones?: GanttItem[] }>(
+          `/projects/${normalizedActiveProjectId}/gantt`,
+          token,
+          undefined,
+          normalizedSelectedOrganizationId
+        );
 
         setGanttTasks(data.tasks ?? []);
 
@@ -1851,7 +2034,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
       } catch (error) {
 
-        const message = error instanceof Error ? error.message : "Erro ao carregar Gantt";
+        const message = getApiErrorMessage(error, "Erro ao carregar Gantt");
 
         setGanttError(message);
 
@@ -1863,13 +2046,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     loadGantt();
 
-  }, [status, token, selectedProjectId, selectedOrganizationId, activeProjectId, projects]);
+  }, [status, token, selectedProjectId, normalizedSelectedOrganizationId, normalizedActiveProjectId, projects]);
 
 
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
 
       setAttachments([]);
 
@@ -1893,7 +2076,18 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         if (selectedProjectId === "all") {
 
-          if (!projects.length) {
+          const validProjects = projects
+            .map((project) => {
+              const projectId = normalizeUuid(project.id ?? project.projectId);
+              if (!projectId) return null;
+              return {
+                projectId,
+                projectName: project.projectName ?? project.name ?? "Projeto"
+              };
+            })
+            .filter((project): project is { projectId: string; projectName: string } => Boolean(project));
+
+          if (!validProjects.length) {
 
             setAttachments([]);
 
@@ -1905,13 +2099,10 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
           const responses = await Promise.all(
 
-            projects.map(async (project) => {
+            validProjects.map(async (project) => {
+              const projectId = project.projectId;
 
-              const projectId = project.id ?? project.projectId;
-
-              if (!projectId) return [];
-
-              const data = await fetchJson<{ attachments: any[] }>(
+              const data = await fetchJson<{ attachments: AttachmentItem[] }>(
 
                 `/projects/${projectId}/attachments`,
 
@@ -1919,11 +2110,11 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
                 undefined,
 
-                selectedOrganizationId
+                normalizedSelectedOrganizationId
 
               );
 
-              const projectName = project.projectName ?? project.name ?? "Projeto";
+              const projectName = project.projectName;
 
               return (data.attachments ?? []).map((attachment) => ({
 
@@ -1949,7 +2140,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
 
 
-        if (!activeProjectId) {
+        if (!normalizedActiveProjectId) {
 
           setAttachments([]);
 
@@ -1959,23 +2150,23 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
 
 
-        const data = await fetchJson<{ attachments: any[] }>(
+        const data = await fetchJson<{ attachments: AttachmentItem[] }>(
 
-          `/projects/${activeProjectId}/attachments`,
+          `/projects/${normalizedActiveProjectId}/attachments`,
 
           token,
 
           undefined,
 
-          selectedOrganizationId
+          normalizedSelectedOrganizationId
 
         );
 
         const projectName =
 
-          projects.find((project) => (project.id ?? project.projectId) === activeProjectId)?.projectName ??
+          projects.find((project) => (project.id ?? project.projectId) === normalizedActiveProjectId)?.projectName ??
 
-          projects.find((project) => (project.id ?? project.projectId) === activeProjectId)?.name ??
+          projects.find((project) => (project.id ?? project.projectId) === normalizedActiveProjectId)?.name ??
 
           "Projeto";
 
@@ -1985,7 +2176,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
             ...attachment,
 
-            projectId: activeProjectId,
+            projectId: normalizedActiveProjectId,
 
             projectName
 
@@ -1995,7 +2186,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
       } catch (error) {
 
-        const message = error instanceof Error ? error.message : "Erro ao carregar documentos";
+        const message = getApiErrorMessage(error, "Erro ao carregar documentos");
 
         setAttachmentsError(message);
 
@@ -2013,7 +2204,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     loadAttachments();
 
-  }, [status, token, selectedProjectId, selectedOrganizationId, activeProjectId, projects]);
+  }, [status, token, selectedProjectId, normalizedSelectedOrganizationId, normalizedActiveProjectId, projects]);
 
 
 
@@ -2021,7 +2212,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
 
       setPortfolio([]);
 
@@ -2043,13 +2234,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         setPortfolioError(null);
 
-        const data = await fetchJson<{ projects: PortfolioProject[] }>("/reports/portfolio", token, undefined, selectedOrganizationId);
+        const data = await fetchJson<{ projects: PortfolioProject[] }>("/reports/portfolio", token, undefined, normalizedSelectedOrganizationId);
 
         setPortfolio(data.projects ?? []);
 
       } catch (error) {
 
-        const message = error instanceof Error ? error.message : "Erro ao carregar portfólio";
+        const message = getApiErrorMessage(error, "Erro ao carregar portfolio");
 
         setPortfolioError(message);
 
@@ -2067,13 +2258,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     loadPortfolio();
 
-  }, [status, token, selectedOrganizationId, portfolioRefresh]);
+  }, [status, token, normalizedSelectedOrganizationId]);
 
 
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !selectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
 
       setReportMetrics(null);
 
@@ -2093,13 +2284,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
         setReportMetricsError(null);
 
-        const data = await fetchJson("/reports/metrics", token, undefined, selectedOrganizationId);
+        const data = await fetchJson<JsonRecord>("/reports/metrics", token, undefined, normalizedSelectedOrganizationId);
 
         setReportMetrics(data);
 
       } catch (error) {
 
-        const message = error instanceof Error ? error.message : "Erro ao carregar relatórios";
+        const message = getApiErrorMessage(error, "Erro ao carregar relatorios");
 
         setReportMetricsError(message);
 
@@ -2117,11 +2308,7 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
     loadMetrics();
 
-  }, [status, token, selectedOrganizationId]);
-
-
-
-    const onReloadPortfolio = () => setPortfolioRefresh((value) => value + 1);
+  }, [status, token, normalizedSelectedOrganizationId]);
 
 
 
@@ -2129,7 +2316,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     event.preventDefault();
 
-    if (!token || !activeProjectId || !selectedOrganizationId || !newTaskColumn || !newTaskTitle.trim()) {
+    if (!token || !normalizedActiveProjectId || !normalizedSelectedOrganizationId || !newTaskColumn || !newTaskTitle.trim()) {
 
       return false;
 
@@ -2141,7 +2328,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       await fetchJson(
 
-        `/projects/${activeProjectId}/board/tasks`,
+        `/projects/${normalizedActiveProjectId}/board/tasks`,
 
         token,
 
@@ -2167,7 +2354,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
         },
 
-        selectedOrganizationId
+        normalizedSelectedOrganizationId
 
       );
 
@@ -2191,7 +2378,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     } catch (error) {
 
-      const message = error instanceof Error ? error.message : "Falha ao criar tarefa";
+      const message = getApiErrorMessage(error, "Falha ao criar tarefa");
 
       setBoardError(message);
 
@@ -2207,7 +2394,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     event.preventDefault();
 
-    if (!token || !selectedNodeId || !selectedOrganizationId || !commentBody.trim()) return;
+    if (!token || !normalizedSelectedNodeId || !normalizedSelectedOrganizationId || !commentBody.trim()) return;
 
 
 
@@ -2215,7 +2402,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       await fetchJson(
 
-        `/wbs/${selectedNodeId}/comments`,
+        `/wbs/${normalizedSelectedNodeId}/comments`,
 
         token,
 
@@ -2227,7 +2414,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
         },
 
-        selectedOrganizationId
+        normalizedSelectedOrganizationId
 
       );
 
@@ -2239,7 +2426,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     } catch (error) {
 
-      const message = error instanceof Error ? error.message : "Erro ao criar comentário";
+      const message = getApiErrorMessage(error, "Erro ao criar comentario");
 
       setCommentsError(message);
 
@@ -2253,7 +2440,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     event.preventDefault();
 
-    if (!token || !selectedNodeId || !selectedOrganizationId || !timeEntryHours || !timeEntryDate) return;
+    if (!token || !normalizedSelectedNodeId || !normalizedSelectedOrganizationId || !timeEntryHours || !timeEntryDate) return;
 
 
 
@@ -2263,7 +2450,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       await fetchJson(
 
-        `/wbs/${selectedNodeId}/time-entries`,
+        `/wbs/${normalizedSelectedNodeId}/time-entries`,
 
         token,
 
@@ -2283,7 +2470,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
         },
 
-        selectedOrganizationId
+        normalizedSelectedOrganizationId
 
       );
 
@@ -2297,7 +2484,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     } catch (error) {
 
-      const message = error instanceof Error ? error.message : "Erro ao registrar horas";
+      const message = getApiErrorMessage(error, "Erro ao registrar horas");
 
       setTimeEntryError(message);
 
@@ -2309,9 +2496,9 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
   const handleCreateProject = async (payload: CreateProjectPayload) => {
 
-    if (!token || !selectedOrganizationId) {
+    if (!token || !normalizedSelectedOrganizationId) {
 
-      throw new Error("Selecione uma organização para criar projetos.");
+      throw new Error("Selecione uma organizacao para criar projetos.");
 
     }
 
@@ -2333,15 +2520,15 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
         },
 
-        selectedOrganizationId
+        normalizedSelectedOrganizationId
 
       );
 
 
 
-      const createdProject = (response as any).project ?? response;
+      const createdProject = extractProjectFromResponse(response);
 
-      if (!createdProject?.id) {
+      if (!createdProject) {
 
         throw new Error("Projeto criado, mas resposta inesperada da API.");
 
@@ -2413,19 +2600,8 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       setProjectsError(null);
 
-    } catch (error: any) {
-
-      const status = error?.status ?? error?.response?.status;
-
-      const code = error?.body?.code ?? error?.response?.data?.code;
-
-      const message =
-
-        error?.body?.message ??
-
-        error?.response?.data?.message ??
-
-        (error instanceof Error ? error.message : "Erro ao criar projeto");
+    } catch (error) {
+      const { status, code, message } = readApiError(error);
 
 
 
@@ -2451,17 +2627,21 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
   const handleUpdateProject = async (projectId: string, payload: CreateProjectPayload) => {
 
-    if (!token || !selectedOrganizationId) {
+    if (!token || !normalizedSelectedOrganizationId) {
 
-      throw new Error("Selecione uma organização antes de editar projeto.");
+      throw new Error("Selecione uma organizacao antes de editar projeto.");
 
+    }
+    const normalizedProjectId = normalizeUuid(projectId);
+    if (!normalizedProjectId) {
+      throw new Error("Projeto invalido para atualizacao.");
     }
 
 
 
     const response = await fetchJson(
 
-      `/projects/${projectId}`,
+      `/projects/${normalizedProjectId}`,
 
       token,
 
@@ -2473,17 +2653,20 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       },
 
-      selectedOrganizationId
+      normalizedSelectedOrganizationId
 
     );
 
-    const updatedProject = (response as any).project ?? response;
+    const updatedProject = extractProjectFromResponse(response);
+    if (!updatedProject) {
+      throw new Error("Resposta inesperada ao atualizar projeto.");
+    }
 
 
 
     setProjects((current) =>
 
-      current.map((project) => (project.id === projectId ? { ...project, name: updatedProject.name } : project))
+      current.map((project) => (normalizeUuid(project.id ?? project.projectId) === normalizedProjectId ? { ...project, name: updatedProject.name } : project))
 
     );
 
@@ -2493,7 +2676,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       current.map((project) =>
 
-        project.projectId === projectId
+        project.projectId === normalizedProjectId
 
           ? {
 
@@ -2541,7 +2724,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     if (organizationLimits && !canCreate) {
 
-      setOrgError("Limite de organizações do plano atingido. Atualize o plano para criar mais.");
+      setOrgError("Limite de organizacoes do plano atingido. Atualize o plano para criar mais.");
 
       return;
 
@@ -2605,23 +2788,12 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       navigate("/projects", { replace: true });
 
-    } catch (error: any) {
-
-      const status = error?.status ?? error?.response?.status;
-
-      const code = error?.body?.code ?? error?.response?.data?.code;
-
-      const message =
-
-        error?.body?.message ??
-
-        error?.response?.data?.message ??
-
-        (error instanceof Error ? error.message : "Erro ao criar organização");
+    } catch (error) {
+      const { status, code, message } = readApiError(error);
 
       if (status === 409 && code === "ORG_LIMIT_REACHED") {
 
-        setOrgError("Limite de organizações do seu plano atingido.");
+        setOrgError("Limite de organizacoes do seu plano atingido.");
 
       } else {
 
@@ -2656,6 +2828,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
   const handleDragEnd = async (result: DropResult) => {
 
     const { destination, source, draggableId } = result;
+    const normalizedDraggableId = normalizeUuid(draggableId);
 
     if (
 
@@ -2663,9 +2836,11 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       !token ||
 
-      !activeProjectId ||
+      !normalizedActiveProjectId ||
 
-      !selectedOrganizationId ||
+      !normalizedSelectedOrganizationId ||
+
+      !normalizedDraggableId ||
 
       (destination.droppableId === source.droppableId && destination.index === source.index)
 
@@ -2683,9 +2858,9 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
 
 
-    // Atualização otimista do estado local
+    // Atualizacao otimista do estado local
 
-    setBoardColumns((prev) => reorderBoard(prev, source, destination, draggableId, newStatus));
+    setBoardColumns((prev) => reorderBoard(prev, source, destination, normalizedDraggableId, newStatus));
 
     
 
@@ -2695,7 +2870,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       await fetchJson(
 
-        `/projects/${activeProjectId}/board/tasks/${draggableId}`,
+        `/projects/${normalizedActiveProjectId}/board/tasks/${normalizedDraggableId}`,
 
         token,
 
@@ -2715,13 +2890,13 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
         },
 
-        selectedOrganizationId
+        normalizedSelectedOrganizationId
 
       );
 
       
 
-      // Recarrega para garantir sincronização
+      // Recarrega para garantir sincronizacao
 
       setBoardRefresh((value) => value + 1);
 
@@ -2729,7 +2904,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     } catch (error) {
 
-      const message = error instanceof Error ? error.message : "Erro ao mover tarefa";
+      const message = getApiErrorMessage(error, "Erro ao mover tarefa");
 
       setBoardError(message);
 
@@ -2745,9 +2920,15 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
   const handleWbsMove = async (nodeId: string, parentId: string | null, position: number) => {
 
-    if (!token || !selectedOrganizationId) return;
+    if (!token || !normalizedSelectedOrganizationId) return;
+    const normalizedNodeId = normalizeUuid(nodeId);
+    const normalizedParentId = parentId ? normalizeUuid(parentId) : null;
+    if (!normalizedNodeId || (parentId && !normalizedParentId)) {
+      setWbsError("Identificador de tarefa invalido para mover.");
+      return;
+    }
 
-    setWbsNodes((prev) => updateNodeParent(prev, nodeId, parentId, position));
+    setWbsNodes((prev) => updateNodeParent(prev, normalizedNodeId, normalizedParentId, position));
 
 
 
@@ -2755,7 +2936,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       await fetchJson(
 
-        `/wbs/${nodeId}`,
+        `/wbs/${normalizedNodeId}`,
 
         token,
 
@@ -2763,11 +2944,11 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
           method: "PATCH",
 
-          body: JSON.stringify({ parentId, order: position })
+          body: JSON.stringify({ parentId: normalizedParentId, order: position })
 
         },
 
-        selectedOrganizationId
+        normalizedSelectedOrganizationId
 
       );
 
@@ -2775,7 +2956,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     } catch (error) {
 
-      const message = error instanceof Error ? error.message : "Erro ao mover item";
+      const message = getApiErrorMessage(error, "Erro ao mover item");
 
       setWbsError(message);
 
@@ -2797,7 +2978,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     if (raw === "ALTA" || raw === "HIGH") return "HIGH";
 
-    if (raw === "MEDIA" || raw === "MÉDIA" || raw === "MEDIUM") return "MEDIUM";
+    if (raw === "MEDIA" || raw === "MEDIA" || raw === "MEDIUM") return "MEDIUM";
 
     if (raw === "BAIXA" || raw === "LOW") return "LOW";
 
@@ -2841,16 +3022,25 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
     }
 
   ) => {
-    if (!token || !selectedOrganizationId) return;
+    if (!token || !normalizedSelectedOrganizationId) return;
+    const normalizedNodeId = normalizeUuid(nodeId);
+    if (!normalizedNodeId) {
+      setWbsError("Identificador de tarefa invalido para atualizar.");
+      return;
+    }
     const { owner, ...rest } = changes;
-    const payload: Record<string, any> = { ...rest };
+    const payload: Record<string, unknown> = { ...rest };
     if (Object.keys(payload).length === 0 && owner === undefined) {
       return;
     }
     if ("dependencies" in payload) {
-      payload.dependencies = Array.isArray(payload.dependencies) ? payload.dependencies : [];
+      payload.dependencies = Array.isArray(payload.dependencies)
+        ? payload.dependencies
+            .map((dependencyId) => normalizeUuid(typeof dependencyId === "string" ? dependencyId : null))
+            .filter((dependencyId): dependencyId is string => Boolean(dependencyId))
+        : [];
     }
-    if ("status" in payload && payload.status !== undefined && payload.status !== null) {
+    if ("status" in payload && typeof payload.status === "string" && payload.status.trim()) {
       payload.status = toBackendStatus(payload.status);
     }
 
@@ -2862,8 +3052,8 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
 
 
-    // Recalcula datas automaticamente quando a dependência muda
-    const currentNode = findWbsNode(wbsNodes, nodeId);
+    // Recalcula datas automaticamente quando a dependencia muda
+    const currentNode = findWbsNode(wbsNodes, normalizedNodeId);
     if (
       "dependencies" in payload &&
       Array.isArray(payload.dependencies) &&
@@ -2886,8 +3076,8 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
           : payload.estimateHours.toString();
     }
 
-    // Recalcula serviceHours = hoursBase × multiplier
-    if ("priority" in payload && payload.priority !== undefined && payload.priority !== null) {
+    // Recalcula serviceHours = hoursBase x multiplier
+    if ("priority" in payload && typeof payload.priority === "string" && payload.priority.trim()) {
       const normalizedPriority = normalizePriority(payload.priority);
       payload.priority = normalizedPriority;
       if (currentNode && "prioridade" in currentNode) payload.prioridade = normalizedPriority;
@@ -2902,17 +3092,19 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     }
 
-    const selectedServiceCatalogId = payload.serviceCatalogId ?? currentNode?.serviceCatalogId ?? null;
+    const selectedServiceCatalogId =
+      typeof payload.serviceCatalogId === "string"
+        ? payload.serviceCatalogId
+        : currentNode?.serviceCatalogId ?? null;
 
-    const normalizedMultiplier =
-
-      payload.serviceMultiplier ?? currentNode?.serviceMultiplier ?? (selectedServiceCatalogId ? 1 : undefined);
+    const payloadMultiplier = typeof payload.serviceMultiplier === "number" ? payload.serviceMultiplier : undefined;
+    const normalizedMultiplier = payloadMultiplier ?? currentNode?.serviceMultiplier ?? (selectedServiceCatalogId ? 1 : undefined);
 
 
 
     if (selectedServiceCatalogId) {
 
-      const catalogItem = serviceCatalog.find((service: any) => service.id === selectedServiceCatalogId);
+      const catalogItem = serviceCatalog.find((service) => service.id === selectedServiceCatalogId);
 
       const hoursBaseRaw = catalogItem?.hoursBase ?? catalogItem?.hours ?? null;
 
@@ -2940,7 +3132,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
 
 
-    setWbsNodes((prev) => patchWbsNode(prev, nodeId, payloadForState));
+    setWbsNodes((prev) => patchWbsNode(prev, normalizedNodeId, payloadForState));
 
 
 
@@ -2948,7 +3140,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       await fetchJson(
 
-        `/wbs/${nodeId}`,
+        `/wbs/${normalizedNodeId}`,
 
         token,
 
@@ -2960,7 +3152,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
         },
 
-        selectedOrganizationId
+        normalizedSelectedOrganizationId
 
       );
 
@@ -2968,7 +3160,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     } catch (error) {
 
-      const message = error instanceof Error ? error.message : "Erro ao atualizar tarefa";
+      const message = getApiErrorMessage(error, "Erro ao atualizar tarefa");
 
       setWbsError(message);
 
@@ -2982,25 +3174,35 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
   const handleWbsResponsibleChange = async (nodeId: string, membershipId: string | null) => {
 
-    if (!token || !selectedOrganizationId) return;
+    if (!token || !normalizedSelectedOrganizationId) return;
+    const normalizedNodeId = normalizeUuid(nodeId);
+    const normalizedMembershipId = membershipId ? normalizeUuid(membershipId) : null;
+    if (!normalizedNodeId) {
+      setWbsError("Identificador de tarefa invalido para atualizar responsavel.");
+      return;
+    }
+    if (membershipId && !normalizedMembershipId) {
+      setWbsError("Responsavel invalido para esta tarefa.");
+      return;
+    }
 
 
 
     const optimisticResponsible =
 
-      membershipId && members.length
+      normalizedMembershipId && members.length
 
         ? members
 
-            .filter((member: any) => member.id === membershipId)
+            .filter((member) => member.id === normalizedMembershipId)
 
-            .map((member: any) => ({
+            .map((member) => ({
 
               membershipId: member.id,
 
               userId: member.userId,
 
-              name: member.name ?? member.email ?? "Responsável"
+              name: member.name ?? member.email ?? "Responsavel"
 
             }))[0] ?? null
 
@@ -3008,7 +3210,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
 
 
-    setWbsNodes((prev) => patchWbsNode(prev, nodeId, { responsible: optimisticResponsible }));
+    setWbsNodes((prev) => patchWbsNode(prev, normalizedNodeId, { responsible: optimisticResponsible }));
 
 
 
@@ -3016,7 +3218,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       const response = await fetchJson<{ id: string; responsible: WbsNode["responsible"] }>(
 
-        `/wbs/${nodeId}/responsible`,
+        `/wbs/${normalizedNodeId}/responsible`,
 
         token,
 
@@ -3024,21 +3226,21 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
           method: "PATCH",
 
-          body: JSON.stringify({ membershipId: membershipId ?? null })
+          body: JSON.stringify({ membershipId: normalizedMembershipId ?? null })
 
         },
 
-        selectedOrganizationId
+        normalizedSelectedOrganizationId
 
       );
 
 
 
-      setWbsNodes((prev) => patchWbsNode(prev, nodeId, { responsible: response.responsible ?? null }));
+      setWbsNodes((prev) => patchWbsNode(prev, normalizedNodeId, { responsible: response.responsible ?? null }));
 
     } catch (error) {
 
-      const message = error instanceof Error ? error.message : "Erro ao atualizar responsável";
+      const message = getApiErrorMessage(error, "Erro ao atualizar responsavel");
 
       setWbsError(message);
 
@@ -3050,13 +3252,13 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
 
 
-  const handleCreateWbsItem = async (parentId: string | null, data?: Record<string, any>) => {
+  const handleCreateWbsItem = async (parentId: string | null, data?: WbsCreateInput) => {
 
-    if (!token || !selectedOrganizationId || !activeProjectId) return;
+    if (!token || !normalizedSelectedOrganizationId || !normalizedActiveProjectId) return;
 
 
 
-    const payload: Record<string, any> = {
+    const payload: Record<string, unknown> = {
 
       title: data?.title ?? "Nova tarefa",
 
@@ -3092,7 +3294,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       const data = await fetchJson(
 
-        `/projects/${activeProjectId}/wbs`,
+        `/projects/${normalizedActiveProjectId}/wbs`,
 
         token,
 
@@ -3104,23 +3306,22 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
         },
 
-        selectedOrganizationId
+        normalizedSelectedOrganizationId
 
       );
 
-      const created = (data as any).node ?? null;
+      const createdNodeId = extractNodeIdFromResponse(data);
 
       setWbsRefresh((value) => value + 1);
 
-      if (created?.id) {
-
-        setSelectedNodeId(created.id);
+      if (createdNodeId) {
+        setSelectedNodeId(createdNodeId);
 
       }
 
     } catch (error) {
 
-      const message = error instanceof Error ? error.message : "Erro ao criar tarefa";
+      const message = getApiErrorMessage(error, "Erro ao criar tarefa");
 
       setWbsError(message);
 
@@ -3134,25 +3335,24 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
   const handleDownloadPortfolio = async () => {
 
-    if (!token || !selectedOrganizationId) return;
+    if (!token || !normalizedSelectedOrganizationId) return;
 
 
 
     try {
 
-      const response = await fetch(apiUrl("/reports/portfolio?format=csv"), {
-
-        headers: {
-
-          Authorization: `Bearer ${token}`,
-
-          "X-Organization-Id": selectedOrganizationId
-
-        }
-
+      const headers = new Headers({ Authorization: `Bearer ${token}` });
+      const normalizedOrganizationId = normalizeOrganizationId(selectedOrganizationId);
+      if (normalizedOrganizationId) {
+        headers.set("X-Organization-Id", normalizedOrganizationId);
+      }
+      const response = await apiFetch("/reports/portfolio?format=csv", {
+        headers
       });
-
-      if (!response.ok) throw new Error("Falha ao baixar CSV");
+      if (!response.ok) {
+        const apiError = await parseApiError(response, apiUrl("/reports/portfolio?format=csv"));
+        throw new Error(apiError.message || "Falha ao baixar CSV");
+      }
 
 
 
@@ -3176,7 +3376,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     } catch (error) {
 
-      const message = error instanceof Error ? error.message : "Erro ao exportar CSV";
+      const message = getApiErrorMessage(error, "Erro ao exportar CSV");
 
       setPortfolioError(message);
 
@@ -3224,9 +3424,9 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     async (payload: { name: string; hoursBase: number; description?: string | null }) => {
 
-      if (!token || !activeProjectId || !selectedOrganizationId) {
+      if (!token || !normalizedActiveProjectId || !normalizedSelectedOrganizationId) {
 
-        throw new Error("Projeto selecionado é obrigatório.");
+        throw new Error("Projeto selecionado e obrigatorio.");
 
       }
 
@@ -3234,7 +3434,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       const body = {
 
-        projectId: activeProjectId,
+        projectId: normalizedActiveProjectId,
 
         name: payload.name,
 
@@ -3260,7 +3460,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
         },
 
-        selectedOrganizationId
+        normalizedSelectedOrganizationId
 
       );
 
@@ -3270,7 +3470,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     },
 
-    [token, selectedProjectId, selectedOrganizationId]
+    [token, normalizedActiveProjectId, normalizedSelectedOrganizationId]
 
   );
 
@@ -3280,9 +3480,9 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     async (serviceId: string, payload: { name?: string; hoursBase?: number; description?: string | null }) => {
 
-      if (!token || !selectedOrganizationId) {
+      if (!token || !normalizedSelectedOrganizationId) {
 
-        throw new Error("Organização é obrigatória.");
+        throw new Error("Organizacao e obrigatoria.");
 
       }
 
@@ -3302,7 +3502,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
         },
 
-        selectedOrganizationId
+        normalizedSelectedOrganizationId
 
       );
 
@@ -3312,7 +3512,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     },
 
-    [token, selectedOrganizationId]
+    [token, normalizedSelectedOrganizationId]
 
   );
 
@@ -3322,9 +3522,9 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     async (serviceId: string) => {
 
-      if (!token || !selectedOrganizationId) {
+      if (!token || !normalizedSelectedOrganizationId) {
 
-        throw new Error("Organização é obrigatória.");
+        throw new Error("Organizacao e obrigatoria.");
 
       }
 
@@ -3342,7 +3542,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
         },
 
-        selectedOrganizationId
+        normalizedSelectedOrganizationId
 
       );
 
@@ -3352,7 +3552,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     },
 
-    [token, selectedOrganizationId]
+    [token, normalizedSelectedOrganizationId]
 
   );
 
@@ -3369,7 +3569,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
       if (storedProjId) setSelectedProjectId(storedProjId);
     } catch (error) {
 
-      console.error("Falha ao ler organização/projeto salvos", error);
+      console.error("Falha ao ler organizacao/projeto salvos", error);
 
     }
 
@@ -3421,9 +3621,13 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
   useEffect(() => {
     if (!projects.length) return;
-    if (routeProjectId && projects.some((project) => project.id === routeProjectId)) {
-      if (selectedProjectId !== routeProjectId) {
-        setSelectedProjectId(routeProjectId);
+    const projectIds = projects
+      .map((project) => normalizeUuid(project.id ?? project.projectId))
+      .filter((projectId): projectId is string => Boolean(projectId));
+    const normalizedRouteProjectId = normalizeUuid(routeProjectId);
+    if (normalizedRouteProjectId && projectIds.includes(normalizedRouteProjectId)) {
+      if (selectedProjectId !== normalizedRouteProjectId) {
+        setSelectedProjectId(normalizedRouteProjectId);
       }
       return;
     }
@@ -3431,21 +3635,24 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
       const stored = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_PROJECT_KEY) : null;
       if (stored === "all" && canUseAllProjects) {
         setSelectedProjectId("all");
-      } else if (stored && stored !== "all" && projects.some((project) => project.id === stored)) {
-        setSelectedProjectId(stored);
-      } else if (projects.length === 1) {
-        setSelectedProjectId(projects[0].id);
+      } else {
+        const normalizedStoredProjectId = normalizeUuid(stored);
+        if (normalizedStoredProjectId && projectIds.includes(normalizedStoredProjectId)) {
+          setSelectedProjectId(normalizedStoredProjectId);
+        } else if (projectIds.length === 1) {
+          setSelectedProjectId(projectIds[0]);
+        }
       }
       return;
     }
     if (selectedProjectId === "all") {
-      if (!canUseAllProjects && projects.length) {
-        setSelectedProjectId(projects[0].id);
+      if (!canUseAllProjects && projectIds.length) {
+        setSelectedProjectId(projectIds[0]);
       }
       return;
     }
-    const exists = projects.some((project) => project.id === selectedProjectId);
-    if (!exists) {
+    const normalizedCurrentProjectId = normalizeUuid(selectedProjectId);
+    if (!normalizedCurrentProjectId || !projectIds.includes(normalizedCurrentProjectId)) {
       setSelectedProjectId(null);
       if (typeof window !== "undefined") window.localStorage.removeItem(SELECTED_PROJECT_KEY);
     }
@@ -3466,7 +3673,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
   if (status === "loading") {
 
-    return <p style={{ padding: "2rem" }}>Carregando autenticação...</p>;
+    return <p style={{ padding: "2rem" }}>Carregando autenticacao...</p>;
 
   }
 
@@ -3486,10 +3693,6 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
 
 
-  const storedOrganizationId = typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
-
-  const hasStoredOrganization = Boolean(selectedOrganizationId || storedOrganizationId);
-
   const isOnCheckoutRoute = location.pathname === "/checkout";
 
   
@@ -3498,7 +3701,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     if (isOnCheckoutRoute) {
 
-      // Permite abrir o checkout enquanto o status é carregado
+      // Permite abrir o checkout enquanto o status e carregado
 
     } else {
 
@@ -3554,7 +3757,9 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
         setSelectedNodeId(null);
         return;
       }
-      const fallback = projects[0]?.id ?? "";
+      const fallback = projects
+        .map((project) => normalizeUuid(project.id ?? project.projectId))
+        .find((projectId): projectId is string => Boolean(projectId));
       if (fallback) {
         setSelectedProjectId(fallback);
       } else {
@@ -3565,17 +3770,24 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
     }
 
 
-    setSelectedProjectId(projectId);
+    const normalizedProjectId = normalizeUuid(projectId);
+    if (!normalizedProjectId) {
+      setSelectedProjectId(null);
+      setSelectedNodeId(null);
+      return;
+    }
 
-    if (!projectId) return;
+    setSelectedProjectId(normalizedProjectId);
+
+    if (!normalizedProjectId) return;
 
 
 
     if (lowerPath.includes("/eap") || lowerPath.includes("/edt")) {
 
-      if (selectedOrganizationId) {
+      if (normalizedSelectedOrganizationId) {
 
-        navigate(`/EAP/organizacao/${selectedOrganizationId}/projeto/${projectId}`, { replace: true });
+        navigate(`/EAP/organizacao/${normalizedSelectedOrganizationId}/projeto/${normalizedProjectId}`, { replace: true });
 
       }
 
@@ -3589,7 +3801,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
       const suffix = currentPath.replace(/\/projects\/[^/]+/i, "");
 
-      navigate(`/projects/${projectId}${suffix}`, { replace: true });
+      navigate(`/projects/${normalizedProjectId}${suffix}`, { replace: true });
 
     }
 
@@ -3619,7 +3831,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
             onOrganizationChange={setSelectedOrganizationId}
 
-            currentOrgRole={(currentOrgRole as any) ?? null}
+            currentOrgRole={currentOrgRole ?? null}
 
             currentOrgModulePermissions={currentOrgModulePermissions}
 
@@ -3793,7 +4005,9 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
               subscriptionError={subscriptionError}
 
-              onSubscriptionActivated={fetchSubscription}
+              onSubscriptionActivated={async () => {
+                await fetchSubscription();
+              }}
 
             />
 
@@ -3833,7 +4047,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
               userEmail={user?.email ?? null}
 
-              currentOrgRole={(currentOrgRole as any) ?? null}
+              currentOrgRole={normalizeOrgRole(currentOrgRole)}
 
               organizationLimits={organizationLimits}
 
@@ -3931,13 +4145,13 @@ function reorderBoard(
 
   columns: BoardColumn[], 
 
-  source: any, 
+  source: DragLocation, 
 
-  destination: any, 
+  destination: DragLocation, 
 
   taskId: string,
 
-  newStatus?: string
+  newStatus?: TaskStatus
 
 ) {
 
@@ -3973,7 +4187,7 @@ function reorderBoard(
 
     boardColumnId: destinationColumn.id,
 
-    status: newStatus || destinationColumn.id // Usa o ID da coluna como status
+    status: newStatus ?? (destinationColumn.id as TaskStatus) // Usa o ID da coluna como status
 
   };
 
@@ -4384,6 +4598,7 @@ function resolveDependencySchedule(
     estimateHours: durationInDays * 8
   };
 }
+
 
 
 

@@ -20,6 +20,10 @@ export const MODULE_PERMISSION_ACTIONS = ["view", "create", "edit", "delete"] as
 export type ModulePermissionKey = (typeof MODULE_PERMISSION_KEYS)[number];
 export type ModulePermissionAction = (typeof MODULE_PERMISSION_ACTIONS)[number];
 export type ModulePermissionMatrix = Record<ModulePermissionKey, Record<ModulePermissionAction, boolean>>;
+export type ModulePermissionMembershipLike = {
+  role: MembershipRole;
+  modulePermissions?: unknown;
+} | null;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -106,4 +110,16 @@ export const normalizeModulePermissionsForRole = (
   });
 
   return normalized;
+};
+
+export const hasModulePermission = (
+  membership: ModulePermissionMembershipLike | undefined,
+  moduleKey: ModulePermissionKey,
+  action: ModulePermissionAction
+) => {
+  if (!membership) return false;
+  const normalized = normalizeModulePermissionsForRole(membership.role, membership.modulePermissions);
+  const moduleMatrix = normalized[moduleKey];
+  if (!moduleMatrix?.view) return false;
+  return Boolean(moduleMatrix[action]);
 };

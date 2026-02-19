@@ -1,7 +1,7 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { Calculator, CheckCircle2, Coins, Layers, Loader2, Package, Plus, Save, Trash2, TrendingUp, Users, Wrench } from "lucide-react";
-import { apiUrl } from "../config/api";
+import { apiRequest, getApiErrorMessage } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
 
@@ -24,6 +24,7 @@ type BudgetState = {
 };
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const BUDGET_CATEGORIES: BudgetCategory[] = ["Mao de Obra", "Material", "Equipamento", "Custos Indiretos", "Outros"];
 
@@ -157,9 +158,49 @@ const normalizeIncomingItems = (items: unknown): BudgetItem[] => {
     .slice(0, 500);
 };
 
+const computeBudgetTotals = (items: BudgetItem[], contingency: number, projectValue: number) => {
+  const itemTotals = items.map((item) => ({
+    ...item,
+    category: normalizeCategory(item.category),
+    total: item.quantity * item.unitValue
+  }));
+
+  const subtotal = itemTotals.reduce((acc, item) => acc + item.total, 0);
+  const contingencyValue = subtotal * (contingency / 100);
+  const costTotal = subtotal + contingencyValue;
+  const profit = projectValue - costTotal;
+  const laborTotal = itemTotals
+    .filter((item) => item.category === "Mao de Obra")
+    .reduce((acc, item) => acc + item.total, 0);
+
+  const categories = BUDGET_CATEGORIES.map((category) => ({
+    category,
+    total: itemTotals.filter((item) => item.category === category).reduce((acc, item) => acc + item.total, 0)
+  }));
+
+  return {
+    itemTotals,
+    subtotal,
+    contingencyValue,
+    costTotal,
+    profit,
+    profitMargin: projectValue > 0 ? (profit / projectValue) * 100 : 0,
+    laborTotal,
+    categories
+  };
+};
+
 export const ActivitiesPage = () => {
   const { token } = useAuth();
   const { selectedProject, selectedProjectId, selectedOrganizationId } = useOutletContext<DashboardOutletContext>();
+  const normalizedSelectedOrganizationId = (() => {
+    const raw = selectedOrganizationId?.trim() ?? "";
+    return UUID_REGEX.test(raw) ? raw : "";
+  })();
+  const normalizedSelectedProjectId = (() => {
+    const raw = selectedProjectId?.trim() ?? "";
+    return UUID_REGEX.test(raw) ? raw : "";
+  })();
 
   const buildDefaultBudget = useCallback((): BudgetState => {
     const projectName = selectedProject?.projectName ?? selectedProject?.name ?? "";
@@ -187,7 +228,7 @@ export const ActivitiesPage = () => {
 
   const saveBudget = useCallback(
     async (payload: ReturnType<typeof buildPayloadFromBudget>, serialized: string) => {
-      if (!token || !selectedOrganizationId || !selectedProjectId || selectedProjectId === "all") return;
+      if (!token || !normalizedSelectedOrganizationId || !normalizedSelectedProjectId) return;
 
       const requestSequence = saveSequenceRef.current + 1;
       saveSequenceRef.current = requestSequence;
@@ -196,20 +237,14 @@ export const ActivitiesPage = () => {
       setSaveError(null);
 
       try {
-        const response = await fetch(apiUrl(`/projects/${selectedProjectId}/budget`), {
+        await apiRequest(`/projects/${normalizedSelectedProjectId}/budget`, {
           method: "PUT",
           headers: {
-            "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
-            "X-Organization-Id": selectedOrganizationId
+            "X-Organization-Id": normalizedSelectedOrganizationId
           },
           body: JSON.stringify(payload)
         });
-
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(body?.message ?? "Falha ao salvar orcamento");
-        }
 
         if (requestSequence !== saveSequenceRef.current) return;
 
@@ -219,14 +254,14 @@ export const ActivitiesPage = () => {
       } catch (error) {
         if (requestSequence !== saveSequenceRef.current) return;
         setSaveStatus("error");
-        setSaveError(error instanceof Error ? error.message : "Falha ao salvar orcamento");
+        setSaveError(getApiErrorMessage(error, "Falha ao salvar orcamento"));
       }
     },
-    [selectedOrganizationId, selectedProjectId, token]
+    [normalizedSelectedOrganizationId, normalizedSelectedProjectId, token]
   );
 
   useEffect(() => {
-    if (!selectedProjectId || selectedProjectId === "all") {
+    if (!normalizedSelectedProjectId) {
       const fallback = buildDefaultBudget();
       setBudgetState(fallback);
       hydratedRef.current = false;
@@ -236,7 +271,7 @@ export const ActivitiesPage = () => {
       return;
     }
 
-    if (!token || !selectedOrganizationId) {
+    if (!token || !normalizedSelectedOrganizationId) {
       return;
     }
 
@@ -250,17 +285,12 @@ export const ActivitiesPage = () => {
       hydratedRef.current = false;
 
       try {
-        const response = await fetch(apiUrl(`/projects/${selectedProjectId}/budget`), {
+        const body = await apiRequest<{ budget?: Record<string, unknown> }>(`/projects/${normalizedSelectedProjectId}/budget`, {
           headers: {
             Authorization: `Bearer ${token}`,
-            "X-Organization-Id": selectedOrganizationId
+            "X-Organization-Id": normalizedSelectedOrganizationId
           }
         });
-
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(body?.message ?? "Falha ao carregar orcamento");
-        }
 
         if (!active) return;
 
@@ -287,10 +317,11 @@ export const ActivitiesPage = () => {
         setLastSavedAt(new Date());
       } catch (error) {
         if (!active) return;
-        setBudgetError(error instanceof Error ? error.message : "Falha ao carregar orcamento");
+        setBudgetError(getApiErrorMessage(error, "Falha ao carregar orcamento"));
       } finally {
-        if (!active) return;
-        setLoadingBudget(false);
+        if (active) {
+          setLoadingBudget(false);
+        }
       }
     };
 
@@ -299,12 +330,12 @@ export const ActivitiesPage = () => {
     return () => {
       active = false;
     };
-  }, [buildDefaultBudget, selectedOrganizationId, selectedProjectId, token]);
+  }, [buildDefaultBudget, normalizedSelectedOrganizationId, normalizedSelectedProjectId, token]);
 
   useEffect(() => {
     if (!hydratedRef.current || loadingBudget) return;
-    if (!selectedProjectId || selectedProjectId === "all") return;
-    if (!token || !selectedOrganizationId) return;
+    if (!normalizedSelectedProjectId) return;
+    if (!token || !normalizedSelectedOrganizationId) return;
 
     const payload = buildPayloadFromBudget(budgetState);
     const serialized = JSON.stringify(payload);
@@ -316,52 +347,22 @@ export const ActivitiesPage = () => {
     }, 700);
 
     return () => window.clearTimeout(timeoutId);
-  }, [budgetState, loadingBudget, saveBudget, selectedOrganizationId, selectedProjectId, token]);
+  }, [budgetState, loadingBudget, normalizedSelectedOrganizationId, normalizedSelectedProjectId, saveBudget, token]);
 
   const handleSaveNow = async () => {
-    if (!selectedProjectId || selectedProjectId === "all") return;
-    if (!token || !selectedOrganizationId) return;
+    if (!normalizedSelectedProjectId) return;
+    if (!token || !normalizedSelectedOrganizationId) return;
 
     const payload = buildPayloadFromBudget(budgetState);
     const serialized = JSON.stringify(payload);
     await saveBudget(payload, serialized);
   };
 
-  const { projectName, projectValue, contingency, notes, items } = budgetState;
+  const { projectName, projectValue, contingency, notes } = budgetState;
+  const items = Array.isArray(budgetState.items) ? budgetState.items : [];
+  const totals = computeBudgetTotals(items, contingency, projectValue);
 
-  const totals = useMemo(() => {
-    const itemTotals = items.map((item) => ({
-      ...item,
-      category: normalizeCategory(item.category),
-      total: item.quantity * item.unitValue
-    }));
-
-    const subtotal = itemTotals.reduce((acc, item) => acc + item.total, 0);
-    const contingencyValue = subtotal * (contingency / 100);
-    const costTotal = subtotal + contingencyValue;
-    const profit = projectValue - costTotal;
-    const laborTotal = itemTotals
-      .filter((item) => item.category === "Mao de Obra")
-      .reduce((acc, item) => acc + item.total, 0);
-
-    const categories = BUDGET_CATEGORIES.map((category) => ({
-      category,
-      total: itemTotals.filter((item) => item.category === category).reduce((acc, item) => acc + item.total, 0)
-    }));
-
-    return {
-      itemTotals,
-      subtotal,
-      contingencyValue,
-      costTotal,
-      profit,
-      profitMargin: projectValue > 0 ? (profit / projectValue) * 100 : 0,
-      laborTotal,
-      categories
-    };
-  }, [contingency, items, projectValue]);
-
-  if (!selectedProjectId || selectedProjectId === "all") {
+  if (!normalizedSelectedProjectId) {
     return (
       <section className="budget-page">
         <header className="budget-header">
@@ -637,3 +638,4 @@ export const ActivitiesPage = () => {
 };
 
 export default ActivitiesPage;
+

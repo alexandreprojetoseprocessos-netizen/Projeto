@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { apiUrl } from "../config/api";
+import { apiFetch, apiRequest, parseApiError } from "../config/api";
 import { WbsTreeView, type DashboardOutletContext } from "../components/DashboardLayout";
 import { DependenciesDropdown, type DependencyOption } from "../components/DependenciesDropdown";
 import { CleanFilterSelect } from "../components/CleanFilterSelect";
 import ServiceCatalogModal from "../components/ServiceCatalogModal";
 import { StatusSelect } from "../components/StatusSelect";
+import { canAccessModule, type OrgRole } from "../components/permissions";
 import { normalizeStatus, STATUS_ORDER, type Status } from "../utils/status";
 
 const MS_IN_DAY = 1000 * 60 * 60 * 24;
@@ -88,8 +89,6 @@ type DetailsDraft = {
   responsibleId: string;
 };
 
-console.log("[EAP] page mounted:", "EDTPage.tsx", new Date().toISOString());
-
 const EDTPage: React.FC = () => {
   const navigate = useNavigate();
   const { token } = useAuth();
@@ -107,6 +106,8 @@ const EDTPage: React.FC = () => {
     projects,
     selectedProjectId,
     selectedOrganizationId,
+    currentOrgRole,
+    currentOrgModulePermissions,
     onReloadWbs,
     serviceCatalog,
     onImportServiceCatalog,
@@ -138,20 +139,16 @@ const EDTPage: React.FC = () => {
   const [reloadingDependencies, setReloadingDependencies] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
-  useEffect(() => {
-    if (!trashOpen) return;
-    console.log("[trash] modal render state", {
-      loading: trashLoading,
-      error: trashError,
-      itemsCount: trashItems?.length,
-    });
-  }, [trashOpen, trashLoading, trashError, trashItems?.length]);
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
   const [detailsEditing, setDetailsEditing] = useState(false);
   const [detailsDraft, setDetailsDraft] = useState<DetailsDraft | null>(null);
 
   const currentProject =
     projects?.find((project: any) => project.id === selectedProjectId) ?? null;
+  const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
+  const canCreateEap = canAccessModule(orgRole, currentOrgModulePermissions, "eap", "create");
+  const canEditEap = canAccessModule(orgRole, currentOrgModulePermissions, "eap", "edit");
+  const canDeleteEap = canAccessModule(orgRole, currentOrgModulePermissions, "eap", "delete");
 
   const serviceCatalogOptions = useMemo(() => {
     const list = Array.isArray(serviceCatalog) ? serviceCatalog : [];
@@ -289,6 +286,10 @@ const EDTPage: React.FC = () => {
   };
 
   const handleReloadWithDependencySync = async () => {
+    if (!canEditEap) {
+      setImportError("Seu perfil não possui permissão para recalcular datas da EAP.");
+      return;
+    }
     if (reloadingDependencies) return;
 
     if (!onUpdateWbsNode) {
@@ -422,6 +423,10 @@ const EDTPage: React.FC = () => {
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!canCreateEap) {
+      setImportError("Seu perfil não possui permissão para criar tarefas na EAP.");
+      return;
+    }
     if (!createTitle.trim()) return;
     await onCreateWbsItem?.(null, { title: createTitle.trim(), status: createStatus });
     setIsCreateOpen(false);
@@ -431,6 +436,7 @@ const EDTPage: React.FC = () => {
   };
 
   const handleBulkUpdate = async (nodeId: string, changes: WbsUpdate) => {
+    if (!canEditEap) return;
     if (!onUpdateWbsNode) return;
     const selected = selectedIds.length > 0 && selectedIds.includes(nodeId);
     const bulkFields = ["status", "startDate", "endDate"];
@@ -464,6 +470,7 @@ const EDTPage: React.FC = () => {
   };
 
   const handleBulkResponsible = async (nodeId: string, membershipId: string | null) => {
+    if (!canEditEap) return;
     if (!onUpdateWbsResponsible) return;
     const selected = selectedIds.length > 0 && selectedIds.includes(nodeId);
     const targetIds = selected ? selectedIds : [nodeId];
@@ -488,15 +495,14 @@ const EDTPage: React.FC = () => {
       if (currentProject?.name) params.set("projectName", currentProject.name);
       const headers: Record<string, string> = {};
       if (token) headers.Authorization = `Bearer ${token}`;
-      if (selectedOrganizationId) headers["x-organization-id"] = selectedOrganizationId;
-      const response = await fetch(apiUrl(`/wbs/export?${params.toString()}`), {
+      if (selectedOrganizationId) headers["X-Organization-Id"] = selectedOrganizationId;
+      const response = await apiFetch(`/wbs/export?${params.toString()}`, {
         method: "GET",
         headers,
-        credentials: "include",
       });
       if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Erro ao exportar (${response.status}). ${text || ""}`.trim());
+        const apiError = await parseApiError(response, `/wbs/export?${params.toString()}`);
+        throw new Error(`Erro ao exportar (${response.status}). ${apiError.message || ""}`.trim());
       }
       const blob = await response.blob();
       const link = document.createElement("a");
@@ -513,6 +519,10 @@ const EDTPage: React.FC = () => {
   };
 
   const handleImportClick = () => {
+    if (!canCreateEap && !canEditEap) {
+      setImportError("Seu perfil não possui permissão para importar tarefas na EAP.");
+      return;
+    }
     setImportFeedback(null);
     setImportError(null);
     importInputRef.current?.click();
@@ -541,6 +551,11 @@ const EDTPage: React.FC = () => {
 
 
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canCreateEap && !canEditEap) {
+      setImportError("Seu perfil não possui permissão para importar tarefas na EAP.");
+      event.target.value = "";
+      return;
+    }
     setImportError(null);
     setImportFeedback(null);
     const file = event.target.files?.[0];
@@ -556,17 +571,12 @@ const EDTPage: React.FC = () => {
       formData.append("file", file);
       const headers: Record<string, string> = {};
       if (token) headers.Authorization = `Bearer ${token}`;
-      if (selectedOrganizationId) headers["x-organization-id"] = selectedOrganizationId;
-      const response = await fetch(apiUrl(`/wbs/import?projectId=${selectedProjectId}`), {
+      if (selectedOrganizationId) headers["X-Organization-Id"] = selectedOrganizationId;
+      const data = await apiRequest<Record<string, any>>(`/wbs/import?projectId=${selectedProjectId}`, {
         method: "POST",
         headers,
-        credentials: "include",
         body: formData,
       });
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Erro ao importar (${response.status}). ${text || ""}`.trim());
-      }      const data = await response.json().catch(() => ({}));
       const created = data?.created ?? 0;
       const updated = data?.updated ?? 0;
       const errors = data?.errors?.length ?? 0;
@@ -633,20 +643,14 @@ const EDTPage: React.FC = () => {
     }
   };
 
-  const doFetchJson = async (path: string, init?: RequestInit) => {
-    const headers: Record<string, string> = init?.headers ? { ...(init.headers as any) } : {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    if (selectedOrganizationId) headers["x-organization-id"] = selectedOrganizationId;
-    const response = await fetch(apiUrl(path), {
-      credentials: "include",
+  const doFetchJson = async <TResponse = any>(path: string, init?: RequestInit): Promise<TResponse> => {
+    const headers = new Headers(init?.headers ?? undefined);
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    if (selectedOrganizationId) headers.set("X-Organization-Id", selectedOrganizationId);
+    return apiRequest<TResponse>(path, {
       ...init,
       headers,
     });
-    const json = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(json?.message || "Erro na requisição");
-    }
-    return json;
   };
 
   const loadTrash = async () => {
@@ -664,6 +668,10 @@ const EDTPage: React.FC = () => {
   };
 
   const handleRestore = async (id: string) => {
+    if (!canDeleteEap) {
+      setTrashError("Seu perfil não possui permissão para restaurar tarefas da lixeira.");
+      return;
+    }
     try {
       await doFetchJson(`/wbs/${id}/restore`, { method: "PATCH" });
       await loadTrash();
@@ -674,6 +682,10 @@ const EDTPage: React.FC = () => {
   };
 
   const handleHardDelete = async (id: string, title: string) => {
+    if (!canDeleteEap) {
+      setTrashError("Seu perfil não possui permissão para excluir tarefas definitivamente.");
+      return;
+    }
     const ok = window.confirm(`Excluir definitivamente a tarefa "${title}"? Esta ação não pode ser desfeita.`);
     if (!ok) return;
     try {
@@ -717,6 +729,7 @@ const EDTPage: React.FC = () => {
   };
 
   const handleDetailsEdit = () => {
+    if (!canEditEap) return;
     if (!selectedTask) return;
     setDetailsDraft(buildDetailsDraft(selectedTask));
     setDetailsEditing(true);
@@ -730,6 +743,10 @@ const EDTPage: React.FC = () => {
   };
 
   const handleDetailsSave = async () => {
+    if (!canEditEap) {
+      setDetailsEditing(false);
+      return;
+    }
     if (!selectedTask || !detailsDraft) {
       setDetailsEditing(false);
       return;
@@ -901,17 +918,24 @@ const EDTPage: React.FC = () => {
 
             <div className="eap-toolbar2" style={{ marginBottom: 12 }}>
         <div className="eap-actions-left">
-          <button className="eap-btn" onClick={() => setIsCreateOpen(true)}>
+          <button
+            className="eap-btn"
+            onClick={() => setIsCreateOpen(true)}
+            disabled={!canCreateEap}
+            title={!canCreateEap ? "Sem permissão para criar tarefas." : undefined}
+          >
             + Nova tarefa
           </button>
           <button
             className="eap-btn"
             onClick={handleReloadWithDependencySync}
-            disabled={reloadingDependencies}
+            disabled={!canEditEap || reloadingDependencies}
             title={
-              reloadingDependencies
-                ? "Sincronizando datas por dependência..."
-                : "Recalcular datas por dependência e recarregar"
+              !canEditEap
+                ? "Sem permissão para editar tarefas."
+                : reloadingDependencies
+                  ? "Sincronizando datas por dependência..."
+                  : "Recalcular datas por dependência e recarregar"
             }
           >
             {reloadingDependencies ? "Recarregando..." : "Recarregar"}
@@ -920,7 +944,12 @@ const EDTPage: React.FC = () => {
           <button className="eap-btn" onClick={handleExport}>
             Exportar
           </button>
-          <button className="eap-btn" onClick={handleImportClick}>
+          <button
+            className="eap-btn"
+            onClick={handleImportClick}
+            disabled={!canCreateEap && !canEditEap}
+            title={!canCreateEap && !canEditEap ? "Sem permissão para importar tarefas." : undefined}
+          >
             Importar
           </button>
           <input
@@ -931,10 +960,20 @@ const EDTPage: React.FC = () => {
             style={{ display: "none" }}
             onChange={handleImport}
           />
-          <button className="eap-btn" onClick={() => setCatalogOpen(true)}>
+          <button
+            className="eap-btn"
+            onClick={() => setCatalogOpen(true)}
+            disabled={!canEditEap}
+            title={!canEditEap ? "Sem permissão para editar tarefas." : undefined}
+          >
             Importar serviços
           </button>
-          <button className="eap-btn eap-btn-danger" onClick={() => { setTrashOpen(true); loadTrash(); }}>
+          <button
+            className="eap-btn eap-btn-danger"
+            onClick={() => { setTrashOpen(true); loadTrash(); }}
+            disabled={!canDeleteEap}
+            title={!canDeleteEap ? "Sem permissão para excluir tarefas." : undefined}
+          >
             Lixeira
           </button>
         </div>
@@ -956,7 +995,7 @@ const EDTPage: React.FC = () => {
                 value={filterService}
                 options={serviceFilterOptions}
                 onChange={setFilterService}
-                ariaLabel="Filtrar por catÃ¡logo"
+                ariaLabel="Filtrar por catálogo"
               />
             </div>
             <div className="eap-filter-field">
@@ -965,7 +1004,7 @@ const EDTPage: React.FC = () => {
                 value={filterOwner}
                 options={ownerFilterOptions}
                 onChange={setFilterOwner}
-                ariaLabel="Filtrar por responsÃ¡vel"
+                ariaLabel="Filtrar por responsável"
               />
             </div>
             <div className="eap-filter-field">
@@ -984,7 +1023,7 @@ const EDTPage: React.FC = () => {
                 value={filterLevel}
                 options={levelFilterOptions}
                 onChange={setFilterLevel}
-                ariaLabel="Filtrar por nÃ­vel"
+                ariaLabel="Filtrar por nível"
                 size="small"
               />
             </div>
@@ -1024,15 +1063,21 @@ const EDTPage: React.FC = () => {
               nodes={wbsNodes}
               loading={wbsLoading}
               error={wbsError}
-              onCreate={(parentId) => onCreateWbsItem?.(parentId ?? null)}
-              onMove={onMoveNode}
+              onCreate={canCreateEap ? (parentId) => onCreateWbsItem?.(parentId ?? null) : undefined}
+              onMove={(id, parentId, position) => {
+                if (!canEditEap) return;
+                onMoveNode?.(id, parentId, position);
+              }}
               onUpdate={handleBulkUpdate}
-              onChangeResponsible={handleBulkResponsible}
+              onChangeResponsible={canEditEap ? handleBulkResponsible : undefined}
               members={members}
               selectedNodeId={selectedNodeId}
               onSelect={onSelectNode}
               onOpenDetails={handleOpenDetails}
               serviceCatalog={serviceCatalogOptions}
+              canCreate={canCreateEap}
+              canEdit={canEditEap}
+              canDelete={canDeleteEap}
               onSelectionChange={(ids: string[]) => setSelectedIds(ids)}
               clearSelectionKey={0}
               filterText={filterText}
@@ -1094,10 +1139,14 @@ const EDTPage: React.FC = () => {
           selectedCount={selectedIds.length}
           onClose={() => setCatalogOpen(false)}
           onImport={onImportServiceCatalog}
-          onCreate={onCreateServiceCatalog}
-          onUpdate={onUpdateServiceCatalog}
-          onDelete={onDeleteServiceCatalog}
+          onCreate={canEditEap ? onCreateServiceCatalog : undefined}
+          onUpdate={canEditEap ? onUpdateServiceCatalog : undefined}
+          onDelete={canEditEap ? onDeleteServiceCatalog : undefined}
           onApply={async (svc) => {
+            if (!canEditEap) {
+              setImportError("Seu perfil não possui permissão para editar tarefas da EAP.");
+              return;
+            }
             if (selectedIds.length === 0) {
               setImportError("Selecione ao menos 1 tarefa.");
               return;
@@ -1352,9 +1401,11 @@ const EDTPage: React.FC = () => {
                   <button type="button" className="btn-secondary" onClick={handleCloseDetails}>
                     Fechar
                   </button>
-                  <button type="button" className="btn-primary" onClick={handleDetailsEdit}>
-                    Editar
-                  </button>
+                  {canEditEap ? (
+                    <button type="button" className="btn-primary" onClick={handleDetailsEdit}>
+                      Editar
+                    </button>
+                  ) : null}
                 </>
               )}
             </div>

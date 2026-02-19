@@ -2,6 +2,7 @@
 import { Prisma, ProjectRole, AttachmentTargetType, TaskStatus, ProjectStatus, TaskPriority } from "@prisma/client";
 import { prisma } from "@gestao/database";
 import { authMiddleware } from "../middleware/auth";
+import { ensureModulePermission } from "../middleware/modulePermission";
 import { organizationMiddleware } from "../middleware/organization";
 import { ensureProjectMembership } from "../services/rbac";
 import { logger } from "../config/logger";
@@ -11,6 +12,7 @@ import { canManageProjects } from "../services/permissions";
 import { getActiveSubscriptionForUser } from "../services/subscriptions";
 import { countProjectsForLimit } from "../services/planLimitCounts";
 import { getProjectLimitForPlan } from "../services/subscriptionLimits";
+import { normalizeUuid } from "../utils/uuid";
 
 type FlatWbsNode = {
   id: string;
@@ -146,8 +148,8 @@ const DEFAULT_BOARD_COLUMNS: Array<{ label: string; status: TaskStatus; wipLimit
   { label: "Backlog", status: TaskStatus.BACKLOG },
   { label: "Planejamento", status: TaskStatus.TODO },
   { label: "Em andamento", status: TaskStatus.IN_PROGRESS, wipLimit: 6 },
-  { label: "Revis├úo", status: TaskStatus.REVIEW, wipLimit: 4 },
-  { label: "Conclu├¡do", status: TaskStatus.DONE }
+  { label: "Revisão", status: TaskStatus.REVIEW, wipLimit: 4 },
+  { label: "Concluído", status: TaskStatus.DONE }
 ];
 
 const ensureBoardColumns = async (projectId: string) => {
@@ -320,6 +322,8 @@ const buildBudgetResponse = (project: {
 
 export const projectsRouter = Router();
 
+const parseProjectIdParam = (value: unknown) => normalizeUuid(value);
+
 projectsRouter.use(authMiddleware);
 projectsRouter.use(organizationMiddleware);
 
@@ -392,8 +396,22 @@ projectsRouter.patch("/:projectId/trash", async (req, res) => {
   if (!canManageProjects(role)) {
     return res.status(403).json({ message: "Você não tem permissão para enviar projetos para a lixeira." });
   }
+  if (
+    !ensureModulePermission(
+      req,
+      res,
+      "projects",
+      "delete",
+      "Você não tem permissão para enviar projetos para a lixeira."
+    )
+  ) {
+    return;
+  }
 
-  const { projectId } = req.params;
+  const projectId = parseProjectIdParam(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
 
   try {
     const project = await prisma.project.findFirst({
@@ -424,40 +442,59 @@ projectsRouter.patch("/:projectId/trash", async (req, res) => {
 });
 
 projectsRouter.get("/:projectId/members", async (req, res) => {
-  const { projectId } = req.params;
-  const userId = (req as any).user?.id as string | undefined;
-
-  if (!userId) {
-    return res.status(401).json({ message: "User not authenticated" });
+  const projectId = parseProjectIdParam(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
   }
+  const membership = await ensureProjectMembership(req, res, projectId);
+  if (!membership) return;
 
-  const project = await prisma.project.findUnique({
-    where: { id: projectId }
-  });
+  try {
+    const [organizationMembers, projectMembers] = await Promise.all([
+      prisma.organizationMembership.findMany({
+        where: { organizationId: req.organization!.id },
+        include: { user: true },
+        orderBy: [
+          { role: "asc" },
+          {
+            user: {
+              fullName: "asc"
+            }
+          }
+        ]
+      }),
+      prisma.projectMember.findMany({
+        where: { projectId },
+        select: {
+          id: true,
+          userId: true,
+          role: true,
+          capacityWeekly: true
+        }
+      })
+    ]);
 
-  if (!project) {
-    return res.status(404).json({ message: "Project not found" });
+    const projectMemberByUserId = new Map(projectMembers.map((member) => [member.userId, member]));
+
+    const members = organizationMembers.map((organizationMember) => {
+      const projectMember = projectMemberByUserId.get(organizationMember.userId) ?? null;
+      return {
+        id: organizationMember.id,
+        userId: organizationMember.userId,
+        name: organizationMember.user.fullName ?? organizationMember.user.email ?? organizationMember.userId,
+        email: organizationMember.user.email,
+        role: organizationMember.role,
+        projectMemberId: projectMember?.id ?? null,
+        projectRole: projectMember?.role ?? null,
+        capacityWeekly: projectMember?.capacityWeekly ?? null
+      };
+    });
+
+    return res.json({ projectId, members });
+  } catch (error) {
+    logger.error({ err: error, projectId }, "Failed to load project members");
+    return res.status(500).json({ message: "Failed to load project members" });
   }
-
-  const memberships = await prisma.organizationMembership.findMany({
-    where: { organizationId: project.organizationId },
-    include: { user: true },
-    orderBy: {
-      user: {
-        fullName: "asc"
-      }
-    }
-  });
-
-  const members = memberships.map((membership) => ({
-    id: membership.id,
-    userId: membership.userId,
-    name: membership.user.fullName ?? membership.user.email ?? membership.userId,
-    email: membership.user.email,
-    role: membership.role
-  }));
-
-  return res.json({ members });
 });
 
 projectsRouter.post("/", async (req, res) => {
@@ -467,18 +504,29 @@ projectsRouter.post("/", async (req, res) => {
 
   const role = req.organizationMembership?.role as any;
   if (!canManageProjects(role)) {
-    return res.status(403).json({ message: "Voc├¬ n├úo tem permiss├úo para criar projetos nesta organiza├º├úo." });
+    return res.status(403).json({ message: "Você não tem permissão para criar projetos nesta organização." });
+  }
+  if (
+    !ensureModulePermission(
+      req,
+      res,
+      "projects",
+      "create",
+      "Você não tem permissão para criar projetos nesta organização."
+    )
+  ) {
+    return;
   }
 
   const { name, clientName, budget, repositoryUrl, startDate, endDate, description, teamMembers, status, priority } =
     req.body ?? {};
 
   if (!name || typeof name !== "string" || !name.trim()) {
-    return res.status(400).json({ message: "Nome do projeto ├® obrigat├│rio." });
+    return res.status(400).json({ message: "Nome do projeto é obrigatório." });
   }
 
   if (!clientName || typeof clientName !== "string" || !clientName.trim()) {
-    return res.status(400).json({ message: "Cliente respons├ível ├® obrigat├│rio." });
+    return res.status(400).json({ message: "Cliente responsável é obrigatório." });
   }
 
   const normalizedStatus = normalizeProjectStatus(status);
@@ -605,8 +653,22 @@ projectsRouter.patch("/:projectId/restore", async (req, res) => {
   if (!canManageProjects(role)) {
     return res.status(403).json({ message: "Você não tem permissão para restaurar projetos nesta organização." });
   }
+  if (
+    !ensureModulePermission(
+      req,
+      res,
+      "projects",
+      "edit",
+      "Você não tem permissão para restaurar projetos nesta organização."
+    )
+  ) {
+    return;
+  }
 
-  const { projectId } = req.params;
+  const projectId = parseProjectIdParam(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
 
   try {
     const project = await prisma.project.findFirst({
@@ -661,8 +723,16 @@ projectsRouter.delete("/:projectId", async (req, res) => {
   if (!canManageProjects(role)) {
     return res.status(403).json({ message: "Você não tem permissão para excluir projetos nesta organização." });
   }
+  if (
+    !ensureModulePermission(req, res, "projects", "delete", "Você não tem permissão para excluir projetos nesta organização.")
+  ) {
+    return;
+  }
 
-  const { projectId } = req.params;
+  const projectId = parseProjectIdParam(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
 
   try {
     const project = await prisma.project.findFirst({
@@ -691,18 +761,27 @@ projectsRouter.delete("/:projectId", async (req, res) => {
 });
 
 projectsRouter.put("/:projectId", async (req, res) => {
-  const { projectId } = req.params;
+  if (
+    !ensureModulePermission(req, res, "projects", "edit", "Você não tem permissão para editar projetos nesta organização.")
+  ) {
+    return;
+  }
+
+  const projectId = parseProjectIdParam(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
   const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER]);
   if (!membership) return;
 
   const { name, clientName, budget, repositoryUrl, startDate, endDate, description, status, priority } = req.body ?? {};
 
   if (!name || typeof name !== "string" || !name.trim()) {
-    return res.status(400).json({ message: "Nome do projeto ├® obrigat├│rio." });
+    return res.status(400).json({ message: "Nome do projeto é obrigatório." });
   }
 
   if (!clientName || typeof clientName !== "string" || !clientName.trim()) {
-    return res.status(400).json({ message: "Cliente respons├ível ├® obrigat├│rio." });
+    return res.status(400).json({ message: "Cliente responsável é obrigatório." });
   }
 
   const normalizedStatus = normalizeProjectStatus(status);
@@ -779,7 +858,10 @@ projectsRouter.put("/:projectId", async (req, res) => {
 });
 
 projectsRouter.get("/:projectId/budget", async (req, res) => {
-  const { projectId } = req.params;
+  const projectId = parseProjectIdParam(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
   const membership = await ensureProjectMembership(req, res, projectId);
   if (!membership) return;
 
@@ -821,7 +903,14 @@ projectsRouter.get("/:projectId/budget", async (req, res) => {
 });
 
 projectsRouter.put("/:projectId/budget", async (req, res) => {
-  const { projectId } = req.params;
+  if (!ensureModulePermission(req, res, "budget", "edit", "Você não tem permissão para editar o orçamento.")) {
+    return;
+  }
+
+  const projectId = parseProjectIdParam(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
   const membership = await ensureProjectMembership(req, res, projectId, [
     ProjectRole.MANAGER,
     ProjectRole.CONTRIBUTOR,
@@ -1030,35 +1119,11 @@ projectsRouter.put("/:projectId/budget", async (req, res) => {
   }
 });
 
-projectsRouter.get("/:projectId/members", async (req, res) => {
-  const { projectId } = req.params;
-
-  const membership = await ensureProjectMembership(req, res, projectId);
-  if (!membership) return;
-
-  const members = await prisma.projectMember.findMany({
-    where: { projectId },
-    include: {
-      user: true
-    },
-    orderBy: [{ role: "asc" }, { createdAt: "asc" }]
-  });
-
-  return res.json({
-    projectId,
-    members: members.map((member) => ({
-      id: member.id,
-      userId: member.userId,
-      role: member.role,
-      capacityWeekly: member.capacityWeekly,
-      name: member.user.fullName,
-      email: member.user.email
-    }))
-  });
-});
-
 projectsRouter.get("/:projectId/summary", async (req, res) => {
-  const { projectId } = req.params;
+  const projectId = parseProjectIdParam(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
   const rangeDays = Number(req.query.rangeDays ?? "7");
   const now = new Date();
   const startRange = subtractDays(now, rangeDays);
@@ -1170,7 +1235,10 @@ projectsRouter.get("/:projectId/summary", async (req, res) => {
 });
 
 projectsRouter.get("/:projectId/board", async (req, res) => {
-  const { projectId } = req.params;
+  const projectId = parseProjectIdParam(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
 
   const membership = await ensureProjectMembership(req, res, projectId);
   if (!membership) return;
@@ -1222,7 +1290,11 @@ projectsRouter.get("/:projectId/board", async (req, res) => {
 });
 
 projectsRouter.post("/:projectId/board/tasks", async (req, res) => {
-  const { projectId } = req.params;
+  if (!ensureModulePermission(req, res, "kanban", "create", "Você não tem permissão para criar tarefas no Kanban.")) {
+    return;
+  }
+
+  const projectId = parseProjectIdParam(req.params.projectId);
   const { title, columnId, parentId, priority = "MEDIUM", estimateHours, startDate, endDate, ownerId } = req.body as {
     title?: string;
     columnId?: string;
@@ -1233,16 +1305,31 @@ projectsRouter.post("/:projectId/board/tasks", async (req, res) => {
     endDate?: string;
     ownerId?: string | null;
   };
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
 
   if (!title || !columnId) {
     return res.status(400).json({ message: "title and columnId are required" });
+  }
+  const normalizedColumnId = normalizeUuid(columnId);
+  if (!normalizedColumnId) {
+    return res.status(400).json({ message: "columnId is invalid" });
+  }
+  const normalizedParentId = parentId ? normalizeUuid(parentId) : null;
+  if (parentId && !normalizedParentId) {
+    return res.status(400).json({ message: "parentId is invalid" });
+  }
+  const normalizedOwnerId = ownerId ? normalizeUuid(ownerId) : null;
+  if (ownerId && !normalizedOwnerId) {
+    return res.status(400).json({ message: "ownerId is invalid" });
   }
 
   const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
   if (!membership) return;
 
   const column = await prisma.boardColumn.findFirst({
-    where: { id: columnId, projectId }
+    where: { id: normalizedColumnId, projectId }
   });
 
   if (!column) {
@@ -1250,9 +1337,9 @@ projectsRouter.post("/:projectId/board/tasks", async (req, res) => {
   }
 
   let parentLevel = -1;
-  if (parentId) {
+  if (normalizedParentId) {
     const parentNode = await prisma.wbsNode.findFirst({
-      where: { id: parentId, projectId }
+      where: { id: normalizedParentId, projectId }
     });
     if (!parentNode) {
       return res.status(400).json({ message: "Parent not found in this project" });
@@ -1261,15 +1348,15 @@ projectsRouter.post("/:projectId/board/tasks", async (req, res) => {
   }
 
   const order = await prisma.wbsNode.count({
-    where: { projectId, parentId: parentId ?? null }
+    where: { projectId, parentId: normalizedParentId ?? null }
   });
 
-  if (ownerId) {
+  if (normalizedOwnerId) {
     const member = await prisma.projectMember.findFirst({
-      where: { projectId, userId: ownerId }
+      where: { projectId, userId: normalizedOwnerId }
     });
     if (!member) {
-      return res.status(400).json({ message: "Respons├ível informado n├úo pertence ao projeto" });
+      return res.status(400).json({ message: "Responsável informado não pertence ao projeto" });
     }
   }
 
@@ -1277,7 +1364,7 @@ projectsRouter.post("/:projectId/board/tasks", async (req, res) => {
     const task = await prisma.wbsNode.create({
       data: {
         projectId,
-        parentId: parentId ?? null,
+        parentId: normalizedParentId ?? null,
         level: parentLevel + 1,
         order,
         title,
@@ -1290,7 +1377,7 @@ projectsRouter.post("/:projectId/board/tasks", async (req, res) => {
           : undefined,
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
-        ownerId: ownerId ?? null
+        ownerId: normalizedOwnerId ?? null
       }
     });
 
@@ -1302,13 +1389,28 @@ projectsRouter.post("/:projectId/board/tasks", async (req, res) => {
 });
 
 projectsRouter.patch("/:projectId/board/tasks/:taskId", async (req, res) => {
-  const { projectId, taskId } = req.params;
+  if (!ensureModulePermission(req, res, "kanban", "edit", "Você não tem permissão para editar tarefas no Kanban.")) {
+    return;
+  }
+
+  const projectId = parseProjectIdParam(req.params.projectId);
+  const taskId = normalizeUuid(req.params.taskId);
   const { columnId, status, priority, order } = req.body as {
     columnId?: string;
     status?: string;
     priority?: string;
     order?: number;
   };
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
+  if (!taskId) {
+    return res.status(400).json({ message: "taskId is invalid" });
+  }
+  const normalizedColumnId = columnId ? normalizeUuid(columnId) : null;
+  if (columnId && !normalizedColumnId) {
+    return res.status(400).json({ message: "columnId is invalid" });
+  }
 
   const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
   if (!membership) return;
@@ -1321,7 +1423,7 @@ projectsRouter.patch("/:projectId/board/tasks/:taskId", async (req, res) => {
     return res.status(404).json({ message: "Task not found" });
   }
 
-  const targetColumnId = columnId ?? existingTask.boardColumnId;
+  const targetColumnId = normalizedColumnId ?? existingTask.boardColumnId;
   if (!targetColumnId) {
     return res.status(400).json({ message: "Column is required" });
   }
@@ -1393,7 +1495,10 @@ projectsRouter.patch("/:projectId/board/tasks/:taskId", async (req, res) => {
 });
 
 projectsRouter.get("/:projectId/wbs", async (req, res) => {
-  const { projectId } = req.params;
+  const projectId = parseProjectIdParam(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
 
   const membership = await ensureProjectMembership(req, res, projectId);
   if (!membership) return;
@@ -1530,7 +1635,11 @@ projectsRouter.get("/:projectId/wbs", async (req, res) => {
 });
 
 projectsRouter.post("/:projectId/wbs", async (req, res) => {
-  const { projectId } = req.params;
+  if (!ensureModulePermission(req, res, "eap", "create", "Você não tem permissão para criar itens na EAP.")) {
+    return;
+  }
+
+  const projectId = parseProjectIdParam(req.params.projectId);
   const {
     title,
     type = "TASK",
@@ -1544,16 +1653,23 @@ projectsRouter.post("/:projectId/wbs", async (req, res) => {
     progress
   } = req.body as Record<string, any>;
 
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
   const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
   if (!membership) return;
 
   if (!title) {
     return res.status(400).json({ message: "title is required" });
   }
+  const normalizedParentId = parentId ? normalizeUuid(parentId) : null;
+  if (parentId && !normalizedParentId) {
+    return res.status(400).json({ message: "parentId is invalid" });
+  }
 
   let parentLevel = -1;
-  if (parentId) {
-    const parent = await prisma.wbsNode.findFirst({ where: { id: parentId, projectId } });
+  if (normalizedParentId) {
+    const parent = await prisma.wbsNode.findFirst({ where: { id: normalizedParentId, projectId } });
     if (!parent) {
       return res.status(400).json({ message: "Parent not found" });
     }
@@ -1561,13 +1677,13 @@ projectsRouter.post("/:projectId/wbs", async (req, res) => {
   }
 
   const lastSibling = await prisma.wbsNode.findFirst({
-    where: { projectId, parentId: parentId ?? null, deletedAt: null },
+    where: { projectId, parentId: normalizedParentId ?? null, deletedAt: null },
     orderBy: { sortOrder: "desc" },
     select: { sortOrder: true }
   });
 
   const siblingsCount = await prisma.wbsNode.count({
-    where: { projectId, parentId: parentId ?? null, deletedAt: null }
+    where: { projectId, parentId: normalizedParentId ?? null, deletedAt: null }
   });
 
   const nextSortOrder = (lastSibling?.sortOrder ?? 0) + 1000;
@@ -1576,7 +1692,7 @@ projectsRouter.post("/:projectId/wbs", async (req, res) => {
     const node = await prisma.wbsNode.create({
       data: {
         projectId,
-        parentId: parentId ?? null,
+        parentId: normalizedParentId ?? null,
         level: parentLevel + 1,
         order: typeof order === "number" ? order : siblingsCount,
         title,
@@ -1660,7 +1776,10 @@ projectsRouter.post("/:projectId/wbs", async (req, res) => {
 });
 
 projectsRouter.get("/:projectId/gantt", async (req, res) => {
-  const { projectId } = req.params;
+  const projectId = parseProjectIdParam(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
 
   const membership = await ensureProjectMembership(req, res, projectId);
   if (!membership) return;
@@ -1709,7 +1828,10 @@ projectsRouter.get("/:projectId/gantt", async (req, res) => {
 });
 
 projectsRouter.get("/:projectId/attachments", async (req, res) => {
-  const { projectId } = req.params;
+  const projectId = parseProjectIdParam(req.params.projectId);
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
 
   const membership = await ensureProjectMembership(req, res, projectId);
   if (!membership) return;
@@ -1759,12 +1881,23 @@ projectsRouter.get("/:projectId/attachments", async (req, res) => {
 });
 
 projectsRouter.post("/:projectId/attachments", async (req, res) => {
-  const { projectId } = req.params;
+  if (!ensureModulePermission(req, res, "documents", "create", "Você não tem permissão para enviar anexos.")) {
+    return;
+  }
+
+  const projectId = parseProjectIdParam(req.params.projectId);
   const { fileName, contentType, fileBase64, targetType, wbsNodeId, category } = req.body ?? {};
   const allowedTargetTypes = new Set(Object.values(AttachmentTargetType));
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
 
   if (!fileName || !contentType || !fileBase64) {
-    return res.status(400).json({ message: "fileName, contentType e fileBase64 s├úo obrigat├│rios" });
+    return res.status(400).json({ message: "fileName, contentType e fileBase64 são obrigatórios" });
+  }
+  const normalizedWbsNodeId = wbsNodeId ? normalizeUuid(wbsNodeId) : null;
+  if (wbsNodeId && !normalizedWbsNodeId) {
+    return res.status(400).json({ message: "wbsNodeId is invalid" });
   }
 
   const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
@@ -1777,13 +1910,13 @@ projectsRouter.post("/:projectId/attachments", async (req, res) => {
     const base64Payload = fileBase64.replace(/^data:.*;base64,/, "");
     const buffer = Buffer.from(base64Payload, "base64");
     if (!buffer.length) {
-      return res.status(400).json({ message: "Arquivo inv├ílido" });
+      return res.status(400).json({ message: "Arquivo inválido" });
     }
 
-    if (wbsNodeId) {
-      const node = await prisma.wbsNode.findFirst({ where: { id: wbsNodeId, projectId } });
+    if (normalizedWbsNodeId) {
+      const node = await prisma.wbsNode.findFirst({ where: { id: normalizedWbsNodeId, projectId } });
       if (!node) {
-        return res.status(400).json({ message: "O item de WBS informado n├úo pertence ao projeto" });
+        return res.status(400).json({ message: "O item de WBS informado não pertence ao projeto" });
       }
     }
 
@@ -1801,7 +1934,7 @@ projectsRouter.post("/:projectId/attachments", async (req, res) => {
       data: {
         projectId,
         targetType: resolvedTargetType,
-        wbsNodeId: wbsNodeId ?? null,
+        wbsNodeId: normalizedWbsNodeId ?? null,
         uploadedById: req.user!.id,
         fileKey: upload.fileKey,
         fileName: fileName.trim(),
@@ -1823,7 +1956,18 @@ projectsRouter.post("/:projectId/attachments", async (req, res) => {
 });
 
 projectsRouter.delete("/:projectId/attachments/:attachmentId", async (req, res) => {
-  const { projectId, attachmentId } = req.params;
+  if (!ensureModulePermission(req, res, "documents", "delete", "Você não tem permissão para excluir anexos.")) {
+    return;
+  }
+
+  const projectId = parseProjectIdParam(req.params.projectId);
+  const attachmentId = normalizeUuid(req.params.attachmentId);
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is invalid" });
+  }
+  if (!attachmentId) {
+    return res.status(400).json({ message: "attachmentId is invalid" });
+  }
 
   const membership = await ensureProjectMembership(req, res, projectId, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
   if (!membership) return;

@@ -4,10 +4,12 @@ import multer from "multer";
 import * as XLSX from "xlsx";
 import { prisma } from "@gestao/database";
 import { authMiddleware } from "../middleware/auth";
+import { ensureModulePermission } from "../middleware/modulePermission";
 import { organizationMiddleware } from "../middleware/organization";
 import type { RequestWithUser } from "../types/http";
 import { recomputeProjectWbsCodes } from "../services/wbsCode";
 import { setNodeDependencies, enforceDependencyDates, DependencyValidationError } from "../services/wbsDependencies";
+import { normalizeUuid } from "../utils/uuid";
 
 export const wbsRouter = Router();
 
@@ -50,7 +52,7 @@ const parseDateValue = (value: any): Date | null => {
     }
   }
 
-  const brMatch = cleaned.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})(?:\s|T|$)/);
+  const brMatch = cleaned.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s|T|$)/);
   if (brMatch) {
     const day = Number(brMatch[1]);
     const month = Number(brMatch[2]);
@@ -76,8 +78,9 @@ const parseDateValue = (value: any): Date | null => {
 };
 
 const assertProjectAccess = async (req: RequestWithUser, res: any, projectId?: string) => {
-  if (!projectId) {
-    res.status(400).json({ message: "projectId is required" });
+  const normalizedProjectId = normalizeUuid(projectId);
+  if (!normalizedProjectId) {
+    res.status(400).json({ message: "projectId is invalid" });
     return null;
   }
 
@@ -87,7 +90,7 @@ const assertProjectAccess = async (req: RequestWithUser, res: any, projectId?: s
   }
 
   const project = await prisma.project.findUnique({
-    where: { id: projectId },
+    where: { id: normalizedProjectId },
     select: { id: true, organizationId: true }
   });
   if (!project || project.organizationId !== req.organization.id) {
@@ -96,7 +99,7 @@ const assertProjectAccess = async (req: RequestWithUser, res: any, projectId?: s
   }
 
   const membership = await prisma.projectMember.findFirst({
-    where: { projectId, userId: req.user.id }
+    where: { projectId: normalizedProjectId, userId: req.user.id }
   });
   if (!membership) {
     res.status(403).json({ message: "Access denied for this project" });
@@ -107,13 +110,18 @@ const assertProjectAccess = async (req: RequestWithUser, res: any, projectId?: s
 };
 
 const assertNodeAccess = async (req: RequestWithUser, res: any, nodeId: string, roles?: ProjectRole[]) => {
+  const normalizedNodeId = normalizeUuid(nodeId);
+  if (!normalizedNodeId) {
+    res.status(400).json({ message: "nodeId is invalid" });
+    return null;
+  }
   if (!req.user || !req.organization) {
     res.status(401).json({ message: "Authentication required" });
     return null;
   }
 
   const node = await prisma.wbsNode.findUnique({
-    where: { id: nodeId },
+    where: { id: normalizedNodeId },
     select: {
       id: true,
       projectId: true,
@@ -155,7 +163,7 @@ wbsRouter.get("/:nodeId/comments", async (req, res) => {
 
   try {
     const comments = await prisma.wbsComment.findMany({
-      where: { wbsNodeId: nodeId },
+      where: { wbsNodeId: access.node.id },
       orderBy: { createdAt: "asc" }
     });
     return res.json(comments);
@@ -167,6 +175,10 @@ wbsRouter.get("/:nodeId/comments", async (req, res) => {
 
 // POST /wbs/:nodeId/comments
 wbsRouter.post("/:nodeId/comments", async (req: RequestWithUser, res) => {
+  if (!ensureModulePermission(req, res, "eap", "create", "Você não tem permissão para comentar na EAP.")) {
+    return;
+  }
+
   const { nodeId } = req.params;
   const { message, authorName, authorId } = req.body as {
     message?: string;
@@ -185,7 +197,7 @@ wbsRouter.post("/:nodeId/comments", async (req: RequestWithUser, res) => {
   try {
     const comment = await prisma.wbsComment.create({
       data: {
-        wbsNodeId: nodeId,
+        wbsNodeId: access.node.id,
         message: trimmed,
         authorName: authorName ?? req.user?.fullName ?? null,
         authorId: authorId ?? req.user?.id ?? null
@@ -201,6 +213,10 @@ wbsRouter.post("/:nodeId/comments", async (req: RequestWithUser, res) => {
 
 // PATCH /wbs/:nodeId/comments/:commentId
 wbsRouter.patch("/:nodeId/comments/:commentId", async (req: RequestWithUser, res) => {
+  if (!ensureModulePermission(req, res, "eap", "edit", "Você não tem permissão para editar comentários da EAP.")) {
+    return;
+  }
+
   const { nodeId, commentId } = req.params;
   const { message } = req.body as { message?: string };
 
@@ -217,7 +233,7 @@ wbsRouter.patch("/:nodeId/comments/:commentId", async (req: RequestWithUser, res
     select: { id: true, wbsNodeId: true, authorId: true }
   });
 
-  if (!existing || existing.wbsNodeId !== nodeId) {
+  if (!existing || existing.wbsNodeId !== access.node.id) {
     return res.status(404).json({ message: "Comentario nao encontrado" });
   }
 
@@ -242,6 +258,10 @@ wbsRouter.patch("/:nodeId/comments/:commentId", async (req: RequestWithUser, res
 
 // DELETE /wbs/:nodeId/comments/:commentId
 wbsRouter.delete("/:nodeId/comments/:commentId", async (req: RequestWithUser, res) => {
+  if (!ensureModulePermission(req, res, "eap", "delete", "Você não tem permissão para excluir comentários da EAP.")) {
+    return;
+  }
+
   const { nodeId, commentId } = req.params;
   const access = await assertNodeAccess(req, res, nodeId);
   if (!access) return;
@@ -251,7 +271,7 @@ wbsRouter.delete("/:nodeId/comments/:commentId", async (req: RequestWithUser, re
     select: { id: true, wbsNodeId: true, authorId: true }
   });
 
-  if (!existing || existing.wbsNodeId !== nodeId) {
+  if (!existing || existing.wbsNodeId !== access.node.id) {
     return res.status(404).json({ message: "Comentario nao encontrado" });
   }
 
@@ -276,9 +296,10 @@ wbsRouter.get("/", async (req: RequestWithUser, res) => {
   const { projectId } = req.query as { projectId?: string };
   const access = await assertProjectAccess(req, res, projectId);
   if (!access) return;
+  const resolvedProjectId = access.project.id;
 
   const nodes = await prisma.wbsNode.findMany({
-    where: { projectId: projectId!, deletedAt: null },
+    where: { projectId: resolvedProjectId, deletedAt: null },
     orderBy: [{ level: "asc" }, { sortOrder: "asc" }, { order: "asc" }, { createdAt: "asc" }],
     include: {
       parent: { select: { id: true, wbsCode: true } },
@@ -300,6 +321,10 @@ wbsRouter.get("/", async (req: RequestWithUser, res) => {
 
 // PATCH /wbs/reorder
 wbsRouter.patch("/reorder", async (req: RequestWithUser, res) => {
+  if (!ensureModulePermission(req, res, "eap", "edit", "Você não tem permissão para reorganizar itens da EAP.")) {
+    return;
+  }
+
   const { projectId, parentId, orderedIds } = req.body as {
     projectId?: string;
     parentId?: string | null;
@@ -308,15 +333,26 @@ wbsRouter.patch("/reorder", async (req: RequestWithUser, res) => {
 
   const access = await assertProjectAccess(req, res, projectId);
   if (!access) return;
+  const resolvedProjectId = access.project.id;
 
   if (!orderedIds || !Array.isArray(orderedIds) || orderedIds.length === 0) {
     return res.status(400).json({ message: "orderedIds is required" });
   }
+  const normalizedOrderedIds = orderedIds
+    .map((id) => normalizeUuid(id))
+    .filter((id): id is string => Boolean(id));
+  if (!normalizedOrderedIds.length) {
+    return res.status(400).json({ message: "orderedIds must contain valid ids" });
+  }
+  const normalizedParentId = parentId ? normalizeUuid(parentId) : null;
+  if (parentId && !normalizedParentId) {
+    return res.status(400).json({ message: "parentId is invalid" });
+  }
 
   const nodes = await prisma.wbsNode.findMany({
     where: {
-      projectId: projectId!,
-      id: { in: orderedIds },
+      projectId: resolvedProjectId,
+      id: { in: normalizedOrderedIds },
       deletedAt: null
     },
     select: { id: true, parentId: true, wbsCode: true }
@@ -325,17 +361,17 @@ wbsRouter.patch("/reorder", async (req: RequestWithUser, res) => {
   const activeParents = new Set(
     (
       await prisma.wbsNode.findMany({
-        where: { projectId: projectId!, deletedAt: null },
+        where: { projectId: resolvedProjectId, deletedAt: null },
         select: { id: true }
       })
     ).map((n) => n.id)
   );
   const normalizeParent = (value: string | null) => (value && activeParents.has(value) ? value : null);
 
-  let invalid = nodes.some((n) => (parentId ?? null) !== normalizeParent(n.parentId ?? null));
-  if (invalid && parentId) {
+  let invalid = nodes.some((n) => (normalizedParentId ?? null) !== normalizeParent(n.parentId ?? null));
+  if (invalid && normalizedParentId) {
     const allNodes = await prisma.wbsNode.findMany({
-      where: { projectId: projectId!, deletedAt: null },
+      where: { projectId: resolvedProjectId, deletedAt: null },
       select: { id: true, wbsCode: true }
     });
     const codeToId = new Map(
@@ -348,7 +384,7 @@ wbsRouter.patch("/reorder", async (req: RequestWithUser, res) => {
       .map((n) => {
         const parentCode = String(n.wbsCode).split(".").slice(0, -1).join(".");
         const inferredParentId = codeToId.get(parentCode.toLowerCase()) ?? null;
-        if (inferredParentId && inferredParentId === parentId) {
+        if (inferredParentId && inferredParentId === normalizedParentId) {
           return { id: n.id, parentId: inferredParentId };
         }
         return null;
@@ -366,13 +402,13 @@ wbsRouter.patch("/reorder", async (req: RequestWithUser, res) => {
       );
       const refreshed = await prisma.wbsNode.findMany({
         where: {
-          projectId: projectId!,
-          id: { in: orderedIds },
+          projectId: resolvedProjectId,
+          id: { in: normalizedOrderedIds },
           deletedAt: null
         },
         select: { id: true, parentId: true }
       });
-      invalid = refreshed.some((n) => (parentId ?? null) !== (n.parentId ?? null));
+      invalid = refreshed.some((n) => (normalizedParentId ?? null) !== (n.parentId ?? null));
     }
   }
   if (invalid) {
@@ -380,13 +416,13 @@ wbsRouter.patch("/reorder", async (req: RequestWithUser, res) => {
   }
 
   const existingIds = new Set(nodes.map((n) => n.id));
-  const normalizedOrderedIds = orderedIds.filter((id) => existingIds.has(id));
-  if (!normalizedOrderedIds.length) {
+  const existingOrderedIds = normalizedOrderedIds.filter((id) => existingIds.has(id));
+  if (!existingOrderedIds.length) {
     return res.status(400).json({ message: "No valid ids to reorder" });
   }
 
   await prisma.$transaction(
-    normalizedOrderedIds.map((id, index) =>
+    existingOrderedIds.map((id, index) =>
       prisma.wbsNode.update({
         where: { id },
         data: {
@@ -397,20 +433,30 @@ wbsRouter.patch("/reorder", async (req: RequestWithUser, res) => {
     )
   );
 
-  await recomputeProjectWbsCodes(projectId!);
+  await recomputeProjectWbsCodes(resolvedProjectId);
 
   return res.json({ success: true });
 });
 
 // PATCH /wbs/bulk-delete
 wbsRouter.patch("/bulk-delete", async (req: RequestWithUser, res) => {
+  if (!ensureModulePermission(req, res, "eap", "delete", "Você não tem permissão para excluir itens da EAP.")) {
+    return;
+  }
+
   const { ids } = req.body as { ids?: string[] };
   if (!ids || !Array.isArray(ids) || !ids.length) {
     return res.status(400).json({ message: "ids array is required" });
   }
+  const normalizedIds = ids
+    .map((id) => normalizeUuid(id))
+    .filter((id): id is string => Boolean(id));
+  if (!normalizedIds.length) {
+    return res.status(400).json({ message: "ids must contain valid node ids" });
+  }
 
   const nodes = await prisma.wbsNode.findMany({
-    where: { id: { in: ids } },
+    where: { id: { in: normalizedIds } },
     select: { id: true, project: { select: { organizationId: true, id: true } } }
   });
 
@@ -436,6 +482,10 @@ wbsRouter.patch("/bulk-delete", async (req: RequestWithUser, res) => {
 
 // PATCH /wbs/:id
 wbsRouter.patch("/:id", async (req: RequestWithUser, res) => {
+  if (!ensureModulePermission(req, res, "eap", "edit", "Você não tem permissão para editar itens da EAP.")) {
+    return;
+  }
+
   const { id } = req.params;
   const {
     title,
@@ -457,6 +507,7 @@ wbsRouter.patch("/:id", async (req: RequestWithUser, res) => {
 
   const access = await assertNodeAccess(req, res, id, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
   if (!access) return;
+  const resolvedNodeId = access.node.id;
 
   const data: Prisma.WbsNodeUncheckedUpdateInput = {};
   if (title !== undefined) data.title = title;
@@ -534,7 +585,7 @@ wbsRouter.patch("/:id", async (req: RequestWithUser, res) => {
   }
 
   const node = await prisma.wbsNode.update({
-    where: { id },
+    where: { id: resolvedNodeId },
     data
   });
 
@@ -543,9 +594,11 @@ wbsRouter.patch("/:id", async (req: RequestWithUser, res) => {
     if (!Array.isArray(dependencies)) {
       return res.status(400).json({ message: "dependencies must be an array" });
     }
-    const dependencyIds = dependencies.map((d: any) => String(d));
+    const dependencyIds = dependencies
+      .map((d: any) => normalizeUuid(String(d)))
+      .filter((dependencyId): dependencyId is string => Boolean(dependencyId));
     try {
-      dependenciesChanged = await setNodeDependencies(access.node.projectId, id, dependencyIds);
+      dependenciesChanged = await setNodeDependencies(access.node.projectId, resolvedNodeId, dependencyIds);
     } catch (error) {
       if (error instanceof DependencyValidationError) {
         return res.status(400).json({ message: error.message });
@@ -556,24 +609,33 @@ wbsRouter.patch("/:id", async (req: RequestWithUser, res) => {
 
   await recomputeProjectWbsCodes(access.node.projectId);
   if (dependenciesChanged || startDate !== undefined || endDate !== undefined) {
-    await enforceDependencyDates(access.node.projectId, [id]);
+    await enforceDependencyDates(access.node.projectId, [resolvedNodeId]);
   }
 
-  const refreshed = await prisma.wbsNode.findUnique({ where: { id } });
+  const refreshed = await prisma.wbsNode.findUnique({ where: { id: resolvedNodeId } });
   return res.json({ node: refreshed ?? node });
 });
 
 // PATCH /wbs/:id/responsible
 wbsRouter.patch("/:id/responsible", async (req: RequestWithUser, res) => {
+  if (!ensureModulePermission(req, res, "eap", "edit", "Você não tem permissão para alterar responsáveis na EAP.")) {
+    return;
+  }
+
   const { id } = req.params;
   const { membershipId } = req.body as { membershipId?: string | null };
 
   const access = await assertNodeAccess(req, res, id, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
   if (!access) return;
+  const resolvedNodeId = access.node.id;
+  const resolvedMembershipId = membershipId ? normalizeUuid(membershipId) : null;
+  if (membershipId && !resolvedMembershipId) {
+    return res.status(400).json({ message: "membershipId is invalid" });
+  }
 
   const updated = await prisma.wbsNode.update({
-    where: { id },
-    data: { responsibleMembershipId: membershipId || null },
+    where: { id: resolvedNodeId },
+    data: { responsibleMembershipId: resolvedMembershipId || null },
     include: {
       responsibleMembership: { include: { user: true } }
     }
@@ -596,9 +658,14 @@ wbsRouter.patch("/:id/responsible", async (req: RequestWithUser, res) => {
 
 // POST /wbs/import?projectId=...
 wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, res) => {
+  if (!ensureModulePermission(req, res, "eap", "create", "Você não tem permissão para importar a EAP.")) {
+    return;
+  }
+
   const { projectId } = req.query as { projectId?: string };
   const access = await assertProjectAccess(req, res, projectId);
   if (!access) return;
+  const resolvedProjectId = access.project.id;
 
   if (!req.file) {
     return res.status(400).json({ message: "File not provided. Use multipart/form-data with field 'file'." });
@@ -669,7 +736,7 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
         }));
 
     const existingNodes = await prisma.wbsNode.findMany({
-      where: { projectId: projectId! },
+      where: { projectId: resolvedProjectId },
       select: { id: true, wbsCode: true, title: true, level: true, parentId: true, deletedAt: true }
     });
     const nodesByCode = new Map(
@@ -677,7 +744,7 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
     );
 
     const serviceCatalog = await prisma.serviceCatalog.findMany({
-      where: { projectId: projectId! },
+      where: { projectId: resolvedProjectId },
       select: { id: true, name: true, hoursBase: true }
     });
     const catalogById = new Map(serviceCatalog.map((c) => [c.id, c]));
@@ -904,7 +971,7 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
       const existing = codeKey ? nodesByCode.get(codeKey) : null;
 
       const payload: Prisma.WbsNodeUncheckedCreateInput = {
-        projectId: projectId!,
+        projectId: resolvedProjectId,
         title: row.title,
         status: (row.status as any) ?? ("BACKLOG" as any),
         startDate: row.startDate ?? null,
@@ -1014,7 +1081,7 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
           .map((code) => codeToId.get(code.toLowerCase()))
           .filter((id): id is string => Boolean(id));
         try {
-          await setNodeDependencies(projectId!, row.id, depIds);
+          await setNodeDependencies(resolvedProjectId, row.id, depIds);
         } catch (error: any) {
           warnings.push({
             row: row.rowNumber ?? 0,
@@ -1044,17 +1111,7 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
       levelStack.push({ id: row.id, level: row.level });
     }
 
-    await recomputeProjectWbsCodes(projectId!);
-
-    console.log("[WBS Import]", {
-      projectId,
-      totalRows: parsedRows.length,
-      created,
-      updated,
-      errors: errors.length,
-      warnings: warnings.length,
-      rows: rowLogs.slice(0, 50)
-    });
+    await recomputeProjectWbsCodes(resolvedProjectId);
 
     return res.json({ success: true, created, updated, errors, warnings });
   } catch (error) {
@@ -1068,9 +1125,10 @@ wbsRouter.get("/export", async (req: RequestWithUser, res) => {
   const { projectId, format, projectName } = req.query as { projectId?: string; format?: string; projectName?: string };
   const access = await assertProjectAccess(req, res, projectId);
   if (!access) return;
+  const resolvedProjectId = access.project.id;
 
   const nodes = await prisma.wbsNode.findMany({
-    where: { projectId: projectId!, deletedAt: null },
+    where: { projectId: resolvedProjectId, deletedAt: null },
     orderBy: [{ level: "asc" }, { order: "asc" }, { createdAt: "asc" }],
     include: {
       parent: { select: { wbsCode: true } },
@@ -1146,9 +1204,10 @@ wbsRouter.get("/trash", async (req: RequestWithUser, res) => {
   const { projectId } = req.query as { projectId?: string };
   const access = await assertProjectAccess(req, res, projectId);
   if (!access) return;
+  const resolvedProjectId = access.project.id;
 
   const items = await prisma.wbsNode.findMany({
-    where: { projectId: projectId!, deletedAt: { not: null } },
+    where: { projectId: resolvedProjectId, deletedAt: { not: null } },
     orderBy: [{ deletedAt: "desc" }],
     select: {
       id: true,
@@ -1164,12 +1223,17 @@ wbsRouter.get("/trash", async (req: RequestWithUser, res) => {
 
 // PATCH /wbs/:id/restore
 wbsRouter.patch("/:id/restore", async (req: RequestWithUser, res) => {
+  if (!ensureModulePermission(req, res, "eap", "edit", "Você não tem permissão para restaurar itens da EAP.")) {
+    return;
+  }
+
   const { id } = req.params;
   const access = await assertNodeAccess(req, res, id);
   if (!access) return;
+  const resolvedNodeId = access.node.id;
 
   await prisma.wbsNode.update({
-    where: { id },
+    where: { id: resolvedNodeId },
     data: { deletedAt: null }
   });
 

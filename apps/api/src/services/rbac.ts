@@ -2,6 +2,7 @@ import { ProjectRole } from "@prisma/client";
 import { prisma } from "@gestao/database";
 import type { Response } from "express";
 import type { RequestWithUser } from "../types/http";
+import { normalizeUuid } from "../utils/uuid";
 
 export const ensureProjectMembership = async (
   req: RequestWithUser,
@@ -13,9 +14,14 @@ export const ensureProjectMembership = async (
     res.status(401).json({ message: "Authentication required" });
     return null;
   }
+  const normalizedProjectId = normalizeUuid(projectId);
+  if (!normalizedProjectId) {
+    res.status(400).json({ message: "projectId is invalid" });
+    return null;
+  }
 
   const project = await prisma.project.findUnique({
-    where: { id: projectId },
+    where: { id: normalizedProjectId },
     select: { organizationId: true }
   });
 
@@ -26,7 +32,7 @@ export const ensureProjectMembership = async (
 
   const member = await prisma.projectMember.findFirst({
     where: {
-      projectId,
+      projectId: normalizedProjectId,
       userId: req.user.id
     }
   });

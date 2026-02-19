@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import type { Organization, OrganizationMembership } from "@prisma/client";
+import type { OrgRole } from "../services/permissions";
 
 export type AuthenticatedUser = {
   id: string;
@@ -19,6 +20,9 @@ export type RequestWithUser = Request & {
   user?: AuthenticatedUser;
   organization?: Organization;
   organizationMembership?: OrganizationMembership;
+  organizationId?: string;
+  organizationRole?: OrgRole;
+  rawBody?: string;
   file?: UploadedFile;
 };
 
@@ -27,6 +31,9 @@ declare module "express-serve-static-core" {
     user?: AuthenticatedUser;
     organization?: Organization;
     organizationMembership?: OrganizationMembership;
+    organizationId?: string;
+    organizationRole?: OrgRole;
+    rawBody?: string;
     file?: UploadedFile;
   }
 }

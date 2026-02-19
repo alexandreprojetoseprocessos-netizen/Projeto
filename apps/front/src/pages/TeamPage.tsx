@@ -1,9 +1,10 @@
-﻿import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useOutletContext } from "react-router-dom";
 import { CheckCircle2, Search, TrendingUp, UserPlus, Users, X, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
 import {
+  canAccessModule,
   canManageTeam,
   getDefaultModulePermissions,
   MODULE_PERMISSION_ACTIONS,
@@ -14,7 +15,7 @@ import {
   type ModulePermissionMatrix,
   type OrgRole
 } from "../components/permissions";
-import { apiUrl } from "../config/api";
+import { apiRequest, getApiErrorMessage, isApiRequestError } from "../config/api";
 
 type MemberRole = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
 
@@ -49,6 +50,17 @@ type TaskNode = {
     membershipId?: string | null;
     userId?: string | null;
   } | null;
+};
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const normalizeUuid = (value?: string | null) => {
+  const trimmed = value?.trim() ?? "";
+  return UUID_REGEX.test(trimmed) ? trimmed : "";
+};
+const shouldIgnoreTaskLoadError = (error: unknown) => {
+  if (!isApiRequestError(error)) return false;
+  return error.status === 400 || error.status === 403 || error.status === 404;
 };
 
 const normalizeTaskStatus = (value?: string | null) =>
@@ -90,26 +102,43 @@ const resolveTaskStatus = (value?: string | null) => {
   return key.toUpperCase().replace(/ /g, "_");
 };
 
-const flattenWbsNodes = (nodes: any[], projectId: string): TaskNode[] => {
+const flattenWbsNodes = (nodes: unknown[], projectId: string): TaskNode[] => {
   const result: TaskNode[] = [];
   const stack = [...nodes];
   while (stack.length) {
-    const node = stack.pop();
-    if (!node) continue;
-    if (node.children?.length) {
-      stack.push(...node.children);
+    const rawNode = stack.pop();
+    if (!rawNode || typeof rawNode !== "object") continue;
+    const node = rawNode as Record<string, unknown>;
+    const children = Array.isArray(node.children) ? node.children : [];
+    if (children.length) {
+      stack.push(...children);
     }
+    const responsible =
+      node.responsible && typeof node.responsible === "object"
+        ? (node.responsible as Record<string, unknown>)
+        : null;
+    const responsibleMembership =
+      node.responsibleMembership && typeof node.responsibleMembership === "object"
+        ? (node.responsibleMembership as Record<string, unknown>)
+        : null;
+    const id = typeof node.id === "string" ? node.id : "";
+    if (!id) continue;
     result.push({
-      id: node.id,
-      status: node.status,
-      type: node.type,
+      id,
+      status: typeof node.status === "string" ? node.status : "",
+      type: typeof node.type === "string" ? node.type : null,
       projectId,
-      responsible: node.responsible
+      responsible: responsible
         ? {
-            membershipId: node.responsible.membershipId,
-            userId: node.responsible.userId
+            membershipId: typeof responsible.membershipId === "string" ? responsible.membershipId : null,
+            userId: typeof responsible.userId === "string" ? responsible.userId : null
           }
-        : null
+        : responsibleMembership
+          ? {
+              membershipId: typeof responsibleMembership.id === "string" ? responsibleMembership.id : null,
+              userId: typeof responsibleMembership.userId === "string" ? responsibleMembership.userId : null
+            }
+          : null
     });
   }
   return result;
@@ -157,8 +186,16 @@ const areModulePermissionsEqual = (left: ModulePermissionMatrix, right: ModulePe
 
 export const TeamPage = () => {
   const { token, user } = useAuth();
-  const { selectedOrganizationId, currentOrgRole, projects, organizations } = useOutletContext<DashboardOutletContext>();
+  const { selectedOrganizationId, currentOrgRole, currentOrgModulePermissions, projects, organizations } =
+    useOutletContext<DashboardOutletContext>();
   const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
+  const roleCanManageTeam = canManageTeam(orgRole);
+  const canCreateTeamMembers =
+    roleCanManageTeam && canAccessModule(orgRole, currentOrgModulePermissions, "team", "create");
+  const canEditTeamMembers = roleCanManageTeam && canAccessModule(orgRole, currentOrgModulePermissions, "team", "edit");
+  const canDeleteTeamMembers =
+    roleCanManageTeam && canAccessModule(orgRole, currentOrgModulePermissions, "team", "delete");
+  const normalizedSelectedOrganizationId = useMemo(() => normalizeUuid(selectedOrganizationId), [selectedOrganizationId]);
 
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(false);
@@ -169,7 +206,7 @@ export const TeamPage = () => {
   const [tasksError, setTasksError] = useState<string | null>(null);
 
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteOrganizationId, setInviteOrganizationId] = useState(selectedOrganizationId ?? "");
+  const [inviteOrganizationId, setInviteOrganizationId] = useState(() => normalizeUuid(selectedOrganizationId));
   const [inviteRole, setInviteRole] = useState<MemberRole>("MEMBER");
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -210,6 +247,19 @@ export const TeamPage = () => {
   const [modulePermissionsBaseline, setModulePermissionsBaseline] = useState<ModulePermissionMatrix>(() =>
     getDefaultModulePermissions("MEMBER")
   );
+  const membersRequestRef = useRef(0);
+  const tasksRequestRef = useRef(0);
+  const validProjectIdsKey = useMemo(() => {
+    const ids = Array.from(
+      new Set(
+        (projects ?? [])
+          .map((project) => project?.id)
+          .filter((id): id is string => typeof id === "string" && UUID_REGEX.test(id.trim()))
+          .map((id) => id.trim())
+      )
+    ).sort();
+    return ids.join(",");
+  }, [projects]);
 
   const openProfileModal = (member: Member) => {
     setEditingMember(member);
@@ -237,14 +287,18 @@ export const TeamPage = () => {
   };
 
   const handleSaveProfile = async () => {
-    if (!editingMember || !token || !selectedOrganizationId) return;
+    if (!editingMember || !token || !normalizedSelectedOrganizationId) return;
+    const canSaveProfile = editingMember.user.id === currentUserId || canManageMemberAccess(editingMember);
+    if (!canSaveProfile) {
+      setProfileError("Seu perfil não possui permissão para editar este membro.");
+      return;
+    }
     setProfileSaving(true);
     setProfileError(null);
     try {
-      const response = await fetch(apiUrl(`/organizations/${selectedOrganizationId}/members/${editingMember.id}`), {
+      await apiRequest(`/organizations/${normalizedSelectedOrganizationId}/members/${editingMember.id}`, {
         method: "PATCH",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
@@ -265,35 +319,37 @@ export const TeamPage = () => {
           avatarContentType: avatarPayload?.contentType
         })
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(body?.message ?? "Falha ao salvar perfil");
-      }
       setEditingMember(null);
       await fetchMembers();
     } catch (err) {
-      setProfileError(err instanceof Error ? err.message : "Falha ao salvar perfil");
+      setProfileError(getApiErrorMessage(err, "Falha ao salvar perfil"));
     } finally {
       setProfileSaving(false);
     }
   };
 
-  const fetchMembers = async () => {
-    if (!token || !selectedOrganizationId) return;
+  const fetchMembers = useCallback(async () => {
+    const organizationId = normalizedSelectedOrganizationId;
+    if (!token || !organizationId) {
+      setMembers([]);
+      setPendingRoles({});
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    const requestId = membersRequestRef.current + 1;
+    membersRequestRef.current = requestId;
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(apiUrl(`/organizations/${selectedOrganizationId}/members`), {
+      const body = await apiRequest<{ members?: Member[] }>(`/organizations/${organizationId}/members`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const message = body?.message ?? "Falha ao carregar a equipe";
-        throw new Error(message);
-      }
-      const fetchedMembers = (body.members ?? []) as Member[];
+      if (requestId !== membersRequestRef.current) return;
+      const fetchedMembers = body.members ?? [];
       setMembers(fetchedMembers);
       setPendingRoles(
         fetchedMembers.reduce<Record<string, MemberRole>>((acc, member) => {
@@ -302,66 +358,101 @@ export const TeamPage = () => {
         }, {})
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao carregar a equipe");
+      if (requestId !== membersRequestRef.current) return;
+      setError(getApiErrorMessage(err, "Falha ao carregar a equipe"));
       setMembers([]);
       setPendingRoles({});
     } finally {
-      setLoading(false);
+      if (requestId === membersRequestRef.current) {
+        setLoading(false);
+      }
     }
-  };
+  }, [normalizedSelectedOrganizationId, token]);
 
-  const fetchTasks = async () => {
-    if (!token || !selectedOrganizationId) return;
-    if (!projects?.length) {
+  const fetchTasks = useCallback(async () => {
+    const organizationId = normalizedSelectedOrganizationId;
+    if (!token || !organizationId) {
       setTaskNodes([]);
+      setTasksError(null);
+      setTasksLoading(false);
       return;
     }
+
+    const validProjectIds = validProjectIdsKey ? validProjectIdsKey.split(",").filter(Boolean) : [];
+    if (!validProjectIds.length) {
+      setTaskNodes([]);
+      setTasksError(null);
+      setTasksLoading(false);
+      return;
+    }
+
+    const requestId = tasksRequestRef.current + 1;
+    tasksRequestRef.current = requestId;
     setTasksLoading(true);
     setTasksError(null);
     try {
-      const errors: string[] = [];
-      const results = await Promise.all(
-        projects.map(async (project) => {
-          try {
-            const response = await fetch(apiUrl(`/projects/${project.id}/wbs`), {
+      const results: PromiseSettledResult<TaskNode[]>[] = [];
+      const chunkSize = 6;
+      for (let index = 0; index < validProjectIds.length; index += chunkSize) {
+        const chunk = validProjectIds.slice(index, index + chunkSize);
+        const chunkResults = await Promise.allSettled(
+          chunk.map(async (projectId) => {
+            const body = await apiRequest<{ nodes?: unknown[] }>(`/wbs?projectId=${encodeURIComponent(projectId)}`, {
               headers: {
                 Authorization: `Bearer ${token}`,
-                ...(selectedOrganizationId ? { "X-Organization-Id": selectedOrganizationId } : {})
-              }
+                "X-Organization-Id": organizationId
+              },
+              silentHttpStatuses: [400, 403, 404]
             });
-            const body = await response.json().catch(() => ({}));
-            if (!response.ok) {
-              throw new Error(body?.message ?? "Falha ao carregar tarefas");
-            }
-            return flattenWbsNodes(body.nodes ?? [], project.id);
-          } catch (err) {
-            errors.push(err instanceof Error ? err.message : "Falha ao carregar tarefas");
-            return [];
-          }
-        })
-      );
-      setTaskNodes(results.flat());
-      if (errors.length) {
-        setTasksError("Alguns dados de tarefas não puderam ser carregados.");
+            return flattenWbsNodes(Array.isArray(body.nodes) ? body.nodes : [], projectId);
+          })
+        );
+        results.push(...chunkResults);
       }
+
+      if (requestId !== tasksRequestRef.current) return;
+
+      const fulfilledNodes = results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+      const rejectedErrors = results
+        .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+        .map((result) => result.reason);
+      const hasCriticalFailures = rejectedErrors.some((error) => !shouldIgnoreTaskLoadError(error));
+
+      setTaskNodes(fulfilledNodes);
+      setTasksError(hasCriticalFailures ? "Alguns dados de tarefas não puderam ser carregados." : null);
+    } catch {
+      if (requestId !== tasksRequestRef.current) return;
+      setTaskNodes([]);
+      setTasksError("Não foi possível carregar tarefas da equipe.");
     } finally {
-      setTasksLoading(false);
+      if (requestId === tasksRequestRef.current) {
+        setTasksLoading(false);
+      }
     }
-  };
+  }, [normalizedSelectedOrganizationId, token, validProjectIdsKey]);
 
   useEffect(() => {
-    fetchMembers();
-  }, [selectedOrganizationId, token]);
+    void fetchMembers();
+  }, [fetchMembers]);
 
   useEffect(() => {
-    fetchTasks();
-  }, [selectedOrganizationId, token, projects]);
+    void fetchTasks();
+  }, [fetchTasks]);
 
   const handleInvite = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!canCreateTeamMembers) {
+      setInviteError("Seu perfil não possui permissão para convidar membros.");
+      return;
+    }
     if (!token || !inviteOrganizationId) return;
-    if (!inviteEmail.trim()) {
+    const normalizedInviteEmail = inviteEmail.trim().toLowerCase();
+    if (!normalizedInviteEmail || !EMAIL_REGEX.test(normalizedInviteEmail)) {
       setInviteError("Informe um e-mail válido.");
+      return;
+    }
+    if (!UUID_REGEX.test(inviteOrganizationId)) {
+      setInviteError("Selecione uma organização válida para enviar o convite.");
       return;
     }
     if (!inviteTargetOrganization) {
@@ -376,33 +467,26 @@ export const TeamPage = () => {
     setInviteSubmitting(true);
     setInviteError(null);
     try {
-      const response = await fetch(apiUrl(`/organizations/${inviteOrganizationId}/members`), {
+      await apiRequest(`/organizations/${inviteOrganizationId}/members`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole })
+        body: JSON.stringify({ email: normalizedInviteEmail, role: inviteRole })
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const message = body?.message ?? "Falha ao enviar convite";
-        throw new Error(message);
-      }
       setInviteEmail("");
       setInviteRole(inviteRoleOptions[0] ?? "MEMBER");
-      if (inviteOrganizationId === selectedOrganizationId) {
+      if (inviteOrganizationId === normalizedSelectedOrganizationId) {
         await fetchMembers();
       }
       setShowInvite(false);
     } catch (err) {
-      setInviteError(err instanceof Error ? err.message : "Falha ao enviar convite");
+      setInviteError(getApiErrorMessage(err, "Falha ao enviar convite"));
     } finally {
       setInviteSubmitting(false);
     }
   };
 
-  const canManageCurrentOrgTeam = canManageTeam(orgRole);
   const currentUserId = user?.id ?? null;
 
   const roleLabels: Record<MemberRole, string> = {
@@ -437,9 +521,12 @@ export const TeamPage = () => {
 
   const organizationsForInvite = useMemo(
     () =>
-      (organizations ?? []).filter((organization) =>
-        canManageTeam(((organization.role ?? "MEMBER") as OrgRole) ?? "MEMBER")
-      ),
+      (organizations ?? []).filter((organization) => {
+        if (!normalizeUuid(organization.id)) return false;
+        const organizationRole = ((organization.role ?? "MEMBER") as OrgRole) ?? "MEMBER";
+        if (!canManageTeam(organizationRole)) return false;
+        return canAccessModule(organizationRole, organization.modulePermissions, "team", "create");
+      }),
     [organizations]
   );
 
@@ -449,7 +536,7 @@ export const TeamPage = () => {
   );
 
   const inviteTargetOrgRole = ((inviteTargetOrganization?.role ?? "MEMBER") as OrgRole) ?? "MEMBER";
-  const canInviteAnyOrganization = organizationsForInvite.length > 0;
+  const canInviteAnyOrganization = canCreateTeamMembers && organizationsForInvite.length > 0;
 
   const inviteRoleOptions = useMemo<MemberRole[]>(() => {
     if (inviteTargetOrgRole === "OWNER") return ["ADMIN", "MEMBER", "VIEWER"];
@@ -487,12 +574,12 @@ export const TeamPage = () => {
       if (current && organizationsForInvite.some((organization) => organization.id === current)) {
         return current;
       }
-      if (selectedOrganizationId && organizationsForInvite.some((organization) => organization.id === selectedOrganizationId)) {
-        return selectedOrganizationId;
+      if (normalizedSelectedOrganizationId && organizationsForInvite.some((organization) => organization.id === normalizedSelectedOrganizationId)) {
+        return normalizedSelectedOrganizationId;
       }
       return organizationsForInvite[0].id;
     });
-  }, [organizationsForInvite, selectedOrganizationId]);
+  }, [normalizedSelectedOrganizationId, organizationsForInvite]);
 
   useEffect(() => {
     if (!inviteRoleOptions.length) return;
@@ -502,11 +589,24 @@ export const TeamPage = () => {
   }, [inviteRoleOptions, inviteRole]);
 
   const canManageMemberAccess = (member: Member) => {
-    if (!canManageCurrentOrgTeam) return false;
+    if (!canEditTeamMembers) return false;
     if (member.user.id === currentUserId) return false;
     if (orgRole === "OWNER") return member.role !== "OWNER";
     if (orgRole === "ADMIN") return member.role === "MEMBER" || member.role === "VIEWER";
     return true;
+  };
+
+  const canRemoveMember = (member: Member) => {
+    if (!canDeleteTeamMembers) return false;
+    if (member.user.id === currentUserId) return false;
+    if (orgRole === "OWNER") return member.role !== "OWNER";
+    if (orgRole === "ADMIN") return member.role === "MEMBER" || member.role === "VIEWER";
+    return false;
+  };
+
+  const canEditMemberProfile = (member: Member) => {
+    if (member.user.id === currentUserId) return true;
+    return canManageMemberAccess(member);
   };
 
   const hasModulePermissionChanges = useMemo(
@@ -539,7 +639,8 @@ export const TeamPage = () => {
   };
 
   const handleRoleUpdate = async (member: Member) => {
-    if (!token || !selectedOrganizationId) return;
+    if (!token || !normalizedSelectedOrganizationId) return;
+    if (!canEditTeamMembers) return;
     const nextRole = pendingRoles[member.id] ?? member.role;
     if (nextRole === member.role) return;
     if (!canManageMemberAccess(member)) return;
@@ -548,18 +649,13 @@ export const TeamPage = () => {
     setMemberActionError(null);
 
     try {
-      const response = await fetch(apiUrl(`/organizations/${selectedOrganizationId}/members/${member.id}`), {
+      const body = await apiRequest<{ member?: Member }>(`/organizations/${normalizedSelectedOrganizationId}/members/${member.id}`, {
         method: "PATCH",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({ role: nextRole })
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(body?.message ?? "Não foi possível atualizar o papel do membro.");
-      }
       const updatedMember = (body?.member ?? null) as Member | null;
       if (updatedMember) {
         setMembers((current) => current.map((item) => (item.id === member.id ? updatedMember : item)));
@@ -568,35 +664,32 @@ export const TeamPage = () => {
       }
       setPendingRoles((current) => ({ ...current, [member.id]: nextRole }));
     } catch (err) {
-      setMemberActionError(err instanceof Error ? err.message : "Não foi possível atualizar o papel do membro.");
+      setMemberActionError(getApiErrorMessage(err, "Não foi possível atualizar o papel do membro."));
     } finally {
       setRoleUpdatingMemberId(null);
     }
   };
 
   const handleRemoveMember = async (member: Member) => {
-    if (!token || !selectedOrganizationId) return;
-    if (!canManageMemberAccess(member)) return;
+    if (!token || !normalizedSelectedOrganizationId) return;
+    if (!canDeleteTeamMembers) return;
+    if (!canRemoveMember(member)) return;
     if (!window.confirm(`Remover ${member.user.fullName || member.user.email} da organização?`)) return;
 
     setRemovingMemberId(member.id);
     setMemberActionError(null);
 
     try {
-      const response = await fetch(apiUrl(`/organizations/${selectedOrganizationId}/members/${member.id}`), {
+      await apiRequest(`/organizations/${normalizedSelectedOrganizationId}/members/${member.id}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(body?.message ?? "Não foi possível remover o membro.");
-      }
       await fetchMembers();
       await fetchTasks();
     } catch (err) {
-      setMemberActionError(err instanceof Error ? err.message : "Não foi possível remover o membro.");
+      setMemberActionError(getApiErrorMessage(err, "Não foi possível remover o membro."));
     } finally {
       setRemovingMemberId(null);
     }
@@ -653,6 +746,7 @@ export const TeamPage = () => {
   }, [memberStats, roleFilter, searchTerm]);
 
   const canConfigureModulePermissions = editingMember ? canManageMemberAccess(editingMember) : false;
+  const canEditSelectedProfile = editingMember ? canEditMemberProfile(editingMember) : false;
 
   return (
     <section className="team-page">
@@ -789,7 +883,7 @@ export const TeamPage = () => {
               </div>
               <div>
                 <h3>Produtividade</h3>
-                <strong>{totalTasks ? `${productivity}%` : "—"}</strong>
+                <strong>{totalTasks ? `${productivity}%` : "-"}</strong>
                 <span className="muted">Média de tarefas concluídas</span>
               </div>
               <div className="team-progress">
@@ -929,16 +1023,19 @@ export const TeamPage = () => {
                           >
                             {roleUpdatingMemberId === member.id ? "Salvando..." : "Aplicar acesso"}
                           </button>
-                          <button
-                            type="button"
-                            className="team-remove-button"
-                            onClick={() => handleRemoveMember(member)}
-                            disabled={removingMemberId === member.id}
-                          >
-                            <Trash2 size={14} />
-                            {removingMemberId === member.id ? "Removendo..." : "Remover"}
-                          </button>
                         </>
+                      ) : null}
+
+                      {canRemoveMember(member) ? (
+                        <button
+                          type="button"
+                          className="team-remove-button"
+                          onClick={() => handleRemoveMember(member)}
+                          disabled={removingMemberId === member.id}
+                        >
+                          <Trash2 size={14} />
+                          {removingMemberId === member.id ? "Removendo..." : "Remover"}
+                        </button>
                       ) : null}
 
                       <button
@@ -946,6 +1043,7 @@ export const TeamPage = () => {
                         className="team-edit-button"
                         onClick={() => openProfileModal(member)}
                         aria-label="Editar perfil"
+                        disabled={!canEditMemberProfile(member)}
                       >
                         <Pencil size={16} />
                         Editar perfil
@@ -957,7 +1055,7 @@ export const TeamPage = () => {
                     <div>
                       <span>Tarefas</span>
                       <strong>
-                        {member.assignedTasks ? `${member.completedTasks}/${member.assignedTasks}` : "—"}
+                        {member.assignedTasks ? `${member.completedTasks}/${member.assignedTasks}` : "-"}
                       </strong>
                     </div>
                     <div>
@@ -999,6 +1097,7 @@ export const TeamPage = () => {
             </header>
 
             <div className="team-modal-body">
+              <fieldset className="team-modal-fieldset" disabled={!canEditSelectedProfile || profileSaving}>
               <div className="team-modal-avatar-wrap">
                 <div className="team-modal-avatar">
                   {avatarPreview ? (
@@ -1214,13 +1313,19 @@ export const TeamPage = () => {
                   </div>
                 ) : null}
               </div>
+              </fieldset>
             </div>
 
             <footer className="team-modal-footer">
               <button type="button" className="secondary-button" onClick={() => setEditingMember(null)}>
                 Fechar
               </button>
-              <button type="button" className="primary-button" onClick={handleSaveProfile} disabled={profileSaving}>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={handleSaveProfile}
+                disabled={!canEditSelectedProfile || profileSaving}
+              >
                 {profileSaving ? "Salvando..." : "Salvar alterações"}
               </button>
             </footer>
@@ -1231,14 +1336,3 @@ export const TeamPage = () => {
     </section>
   );
 };
-
-
-
-
-
-
-
-
-
-
-

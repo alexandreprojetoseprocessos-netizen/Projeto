@@ -1,10 +1,10 @@
-﻿import type { DropResult } from "@hello-pangea/dnd";
+import type { DropResult } from "@hello-pangea/dnd";
 
 import { NavLink, Outlet, useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { createPortal } from "react-dom";
 
 import { useAuth } from "../contexts/AuthContext";
-import { apiUrl } from "../config/api";
+import { apiRequest, getApiErrorMessage } from "../config/api";
 
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, BarChart, Bar } from "recharts";
 
@@ -126,35 +126,6 @@ const svgStrokeProps = {
 
 
 
-const BriefcaseIcon: KPIIcon = (props) => (
-
-
-
-  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
-
-
-
-    <path d="M6 7V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
-
-
-
-    <rect x="3" y="7" width="18" height="13" rx="2" />
-
-
-
-    <path d="M16 7H8" />
-
-
-
-    <path d="M12 12v3" />
-
-
-
-  </svg>
-
-
-
-);
 
 const BudgetIcon: KPIIcon = (props) => (
   <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
@@ -233,43 +204,6 @@ const PlanIcon: KPIIcon = (props) => (
 
 
 
-const ListChecksIcon: KPIIcon = (props) => (
-
-
-
-  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
-
-
-
-    <rect x="3" y="4" width="10" height="16" rx="2" />
-
-
-
-    <path d="M8 8h3" />
-
-
-
-    <path d="M8 12h3" />
-
-
-
-    <path d="M8 16h3" />
-
-
-
-    <path d="M17 8l2 2 3-3" />
-
-
-
-    <path d="M17 14l2 2 3-3" />
-
-
-
-  </svg>
-
-
-
-);
 
 
 
@@ -277,31 +211,6 @@ const ListChecksIcon: KPIIcon = (props) => (
 
 
 
-const AlertTriangleIcon: KPIIcon = (props) => (
-
-
-
-  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
-
-
-
-    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
-
-
-
-    <line x1="12" y1="9" x2="12" y2="13" />
-
-
-
-    <line x1="12" y1="17" x2="12.01" y2="17" />
-
-
-
-  </svg>
-
-
-
-);
 
 
 
@@ -326,9 +235,9 @@ function SortableRow({
 
   children: (props: {
 
-    attributes: Record<string, any>;
+    attributes: Record<string, unknown>;
 
-    listeners: Record<string, any>;
+    listeners: Record<string, unknown>;
 
     isDragging: boolean;
 
@@ -384,7 +293,11 @@ function SortableRow({
 
     >
 
-      {children({ attributes: attributes ?? {}, listeners: listeners ?? {}, isDragging })}
+      {children({
+        attributes: (attributes ?? {}) as unknown as Record<string, unknown>,
+        listeners: (listeners ?? {}) as unknown as Record<string, unknown>,
+        isDragging
+      })}
 
     </tr>
 
@@ -402,27 +315,6 @@ function SortableRow({
 
 
 
-const ClockIcon: KPIIcon = (props) => (
-
-
-
-  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
-
-
-
-    <circle cx="12" cy="12" r="8" />
-
-
-
-    <path d="M12 8v5l3 2" />
-
-
-
-  </svg>
-
-
-
-);
 
 
 
@@ -466,35 +358,6 @@ const UsersIcon: KPIIcon = (props) => (
 
 
 
-const BarChartIcon: KPIIcon = (props) => (
-
-
-
-  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
-
-
-
-    <line x1="3" y1="21" x2="21" y2="21" />
-
-
-
-    <rect x="6" y="4" width="3" height="13" rx="1.5" />
-
-
-
-    <rect x="11" y="9" width="3" height="8" rx="1.5" />
-
-
-
-    <rect x="16" y="6" width="3" height="11" rx="1.5" />
-
-
-
-  </svg>
-
-
-
-);
 
 
 
@@ -502,17 +365,6 @@ const BarChartIcon: KPIIcon = (props) => (
 
 
 
-const SettingsIcon: KPIIcon = (props) => (
-
-  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
-
-    <circle cx="12" cy="12" r="3" />
-
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l0 0a2 2 0 1 1-2.83 2.83h0a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v0a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33h0a2 2 0 1 1-2.83-2.83h0a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h0a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82h0a2 2 0 1 1 2.83-2.83h0a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 9 3.1V3a2 2 0 0 1 4 0v0a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33h0a2 2 0 1 1 2.83 2.83h0a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h0a1.65 1.65 0 0 0-1.51 1Z" />
-
-  </svg>
-
-);
 
 
 
@@ -594,57 +446,12 @@ const BuildingIcon: KPIIcon = (props) => (
 
 
 
-const UploadCloudIcon: KPIIcon = (props) => (
-
-  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
-
-    <path d="M12 16V4" />
-
-    <path d="m6 10 6-6 6 6" />
-
-    <path d="M20 16.5a4.5 4.5 0 0 0-3.5-7.5h-1" />
-
-    <path d="M6 19a4 4 0 0 1 0-8h1" />
-
-  </svg>
-
-);
 
 
 
-const DownloadIcon: KPIIcon = (props) => (
-
-  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
-
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-
-    <path d="m7 10 5 5 5-5" />
-
-    <path d="M12 15V3" />
-
-  </svg>
-
-);
 
 
 
-const TrashIcon: KPIIcon = (props) => (
-
-  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
-
-    <path d="M3 6h18" />
-
-    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-
-    <path d="M14 10v8" />
-
-    <path d="M10 10v8" />
-
-    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-
-  </svg>
-
-);
 
 
 
@@ -692,6 +499,46 @@ const sidebarModuleById: Record<string, ModulePermissionKey> = {
   relatorios: "reports",
   equipe: "team",
   plano: "plan"
+};
+
+const moduleLabelByKey: Record<ModulePermissionKey, string> = {
+  organization: "Organizações",
+  dashboard: "Dashboard",
+  projects: "Projetos",
+  eap: "EAP",
+  kanban: "Kanban",
+  timeline: "Cronograma",
+  diagram: "Diagrama",
+  budget: "Orçamento",
+  documents: "Documentos",
+  reports: "Relatórios",
+  team: "Equipes",
+  plan: "Meu plano"
+};
+
+const resolveModuleFromPath = (pathname: string): ModulePermissionKey | null => {
+  const path = pathname.toLowerCase();
+  if (!path || path === "/") return null;
+
+  if (/^\/projects\/[^/]+\/edt(?:\/|$)/.test(path)) return "eap";
+  if (/^\/projects\/[^/]+\/board(?:\/|$)/.test(path)) return "kanban";
+  if (/^\/projects\/[^/]+\/cronograma(?:\/|$)/.test(path)) return "timeline";
+  if (/^\/projects\/[^/]+\/documentos(?:\/|$)/.test(path)) return "documents";
+  if (/^\/projects\/[^/]+\/atividades(?:\/|$)/.test(path)) return "budget";
+  if (path === "/projects" || path.startsWith("/projects/")) return "projects";
+  if (path === "/organizacao" || path.startsWith("/organizacao/")) return "organization";
+  if (path === "/dashboard" || path.startsWith("/dashboard/")) return "dashboard";
+  if (path === "/eap" || path.startsWith("/eap/") || path === "/edt" || path.startsWith("/edt/")) return "eap";
+  if (path === "/board" || path.startsWith("/board/") || path === "/kanban" || path.startsWith("/kanban/")) return "kanban";
+  if (path === "/cronograma" || path.startsWith("/cronograma/")) return "timeline";
+  if (path === "/diagrama" || path.startsWith("/diagrama/")) return "diagram";
+  if (path === "/atividades" || path.startsWith("/atividades/")) return "budget";
+  if (path === "/documentos" || path.startsWith("/documentos/")) return "documents";
+  if (path === "/relatorios" || path.startsWith("/relatorios/")) return "reports";
+  if (path === "/equipe" || path.startsWith("/equipe/")) return "team";
+  if (path === "/plano" || path.startsWith("/plano/") || path === "/checkout" || path.startsWith("/checkout/")) return "plan";
+
+  return null;
 };
 
 
@@ -1585,33 +1432,6 @@ export type DashboardOutletContext = {
 
 
 
-const CalendarIcon = () => (
-
-  <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-
-
-
-    <rect x="3" y="5.5" width="18" height="15" rx="2" ry="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
-
-
-
-    <line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" strokeWidth="1.5" />
-
-
-
-    <line x1="8" y1="3" x2="8" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-
-
-
-    <line x1="16" y1="3" x2="16" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-
-
-
-  </svg>
-
-
-
-);
 
 
 
@@ -1715,31 +1535,6 @@ const TaskIcon = () => (
 
 
 
-const MoreIcon = () => (
-
-
-
-  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-
-
-
-    <circle cx="5" cy="12" r="1.6" fill="currentColor" />
-
-
-
-    <circle cx="12" cy="12" r="1.6" fill="currentColor" />
-
-
-
-    <circle cx="19" cy="12" r="1.6" fill="currentColor" />
-
-
-
-  </svg>
-
-
-
-);
 
 
 
@@ -2116,6 +1911,9 @@ type WbsTreeViewProps = {
   filterOwner?: string;
   filterOverdue?: "ALL" | "OVERDUE";
   filterLevel?: string;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 };
 
 const PRIORITY_OPTIONS = [
@@ -2187,7 +1985,10 @@ export const WbsTreeView = ({
   filterService,
   filterOwner,
   filterOverdue,
-  filterLevel
+  filterLevel,
+  canCreate = true,
+  canEdit = true,
+  canDelete = true
 
 }: WbsTreeViewProps) => {
 
@@ -2737,6 +2538,7 @@ export const WbsTreeView = ({
     return map;
   }, [allRows]);
   useEffect(() => {
+    if (!canEdit) return;
     allRows.forEach((row) => {
       const rowId = String(row.node.id);
       const hasDependencies = Array.isArray(row.node.dependencies) && row.node.dependencies.length > 0;
@@ -2748,7 +2550,7 @@ export const WbsTreeView = ({
       clearedParentDependencyIdsRef.current.add(rowId);
       onUpdate(rowId, { dependencies: [] });
     });
-  }, [allRows, onUpdate]);
+  }, [allRows, canEdit, onUpdate]);
   const updateSiblingsInTree = useCallback(
 
     (list: any[], parentId: string | null, updatedSiblings: any[]): any[] => {
@@ -2865,6 +2667,7 @@ export const WbsTreeView = ({
 
 
     event.stopPropagation();
+    if (!canEdit) return;
 
 
 
@@ -2893,6 +2696,7 @@ export const WbsTreeView = ({
 
 
 
+    if (!canEdit) return;
     if (!editingNodeId) return;
 
 
@@ -2997,6 +2801,7 @@ export const WbsTreeView = ({
 
 
     event.stopPropagation();
+    if (!canEdit) return;
 
 
 
@@ -3027,6 +2832,7 @@ export const WbsTreeView = ({
 
 
     event.stopPropagation();
+    if (!canEdit) return;
 
 
 
@@ -3057,6 +2863,7 @@ export const WbsTreeView = ({
 
   const handlePriorityToggle = (event: MouseEvent<HTMLButtonElement>, nodeId: string) => {
     event.stopPropagation();
+    if (!canEdit) return;
     cancelTitleEdit();
     closeDependencyEditor();
     setOpenMenuId(null);
@@ -3072,6 +2879,7 @@ export const WbsTreeView = ({
 
   const handlePriorityChange = (event: { stopPropagation: () => void }, nodeId: string, priorityValue: string) => {
     event.stopPropagation();
+    if (!canEdit) return;
     setStatusPickerId(null);
     setPriorityPickerId(null);
     setStatusPickerOpenUpId(null);
@@ -3093,6 +2901,7 @@ export const WbsTreeView = ({
 
 
 
+    if (!canEdit) return;
     cancelTitleEdit();
 
 
@@ -3159,6 +2968,7 @@ export const WbsTreeView = ({
 
 
 
+    if (!canEdit) return;
     cancelTitleEdit();
 
 
@@ -3777,6 +3587,7 @@ export const WbsTreeView = ({
 
 
 
+      if (!canEdit) return;
       if (!over || active.id === over.id) return;
 
 
@@ -3845,13 +3656,11 @@ export const WbsTreeView = ({
 
       try {
 
-        const response = await fetch(apiUrl("/wbs/reorder"), {
+        await apiRequest("/wbs/reorder", {
 
           method: "PATCH",
 
           headers: {
-
-            "Content-Type": "application/json",
 
             Authorization: `Bearer ${authToken}`,
 
@@ -3870,10 +3679,6 @@ export const WbsTreeView = ({
           })
 
         });
-        if (!response.ok) {
-          const payload = await response.json().catch(() => null);
-          throw new Error(payload?.message ?? "Falha ao reordenar");
-        }
         if (typeof onReloadWbs === "function") {
           await onReloadWbs();
         }
@@ -3890,7 +3695,7 @@ export const WbsTreeView = ({
 
     },
 
-    [authToken, currentOrganizationId, nodes, onReloadWbs, rowMap, selectedProjectId, treeNodes, updateSiblingsInTree]
+    [authToken, canEdit, currentOrganizationId, nodes, onReloadWbs, rowMap, selectedProjectId, treeNodes, updateSiblingsInTree]
 
   );
 
@@ -3967,17 +3772,13 @@ export const WbsTreeView = ({
       await Promise.all(
         nodesWithoutCount.map(async (row) => {
           try {
-            const res = await fetch(apiUrl(`/wbs/${row.node.id}/comments`), {
+            const comments = await apiRequest<unknown[]>(`/wbs/${row.node.id}/comments`, {
               headers: {
                 Authorization: `Bearer ${authToken ?? ""}`,
                 "X-Organization-Id": currentOrganizationId
               },
               signal: controller.signal
             });
-
-            if (!res.ok) return;
-
-            const comments: unknown = await res.json();
             newCounts[row.node.id] = Array.isArray(comments) ? comments.length : 0;
           } catch (error) {
             if (controller.signal.aborted) return;
@@ -4034,20 +3835,12 @@ export const WbsTreeView = ({
 
     const loadComments = async () => {
       try {
-        const response = await fetch(apiUrl(`/wbs/${openChatTaskId}/comments`), {
+        const data = await apiRequest<WbsComment[]>(`/wbs/${openChatTaskId}/comments`, {
           headers: {
             Authorization: `Bearer ${authToken ?? ""}`,
             "X-Organization-Id": currentOrganizationId
           }
         });
-
-        if (!response.ok) {
-          console.error("Erro na API de Comentários (GET)", response.status, await response.text());
-          if (active) setChatError("Erro ao listar Comentários");
-          return;
-        }
-
-        const data = (await response.json()) as WbsComment[];
         if (!active) return;
         setChatMessages(data);
         setChatCounts((prev) => ({ ...prev, [openChatTaskId]: data.length }));
@@ -4078,23 +3871,14 @@ export const WbsTreeView = ({
     
     try {
       const sanitizedMessage = sanitizeChatHtml(chatDraft);
-      const response = await fetch(apiUrl(`/wbs/${openChatTaskId}/comments`), {
+      const created = await apiRequest<WbsComment>(`/wbs/${openChatTaskId}/comments`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${authToken ?? ""}`,
-          "Content-Type": "application/json",
           "X-Organization-Id": currentOrganizationId
         },
         body: JSON.stringify({ message: sanitizedMessage, authorName: (currentUser as { name?: string } | null)?.name ?? null })
       });
-      
-      if (!response.ok) {
-        console.error("Erro na API de Comentários (POST)", response.status, await response.text());
-        setChatError("Erro ao criar comentário");
-        return;
-      }
-      
-      const created = (await response.json()) as WbsComment;
       setChatMessages((prev) => [...prev, created]);
       setChatCounts((prev) => ({ ...prev, [openChatTaskId]: (prev[openChatTaskId] ?? 0) + 1 }));
       setChatDraft("");
@@ -4126,21 +3910,14 @@ export const WbsTreeView = ({
     setIsChatLoading(true);
     setChatError(null);
     try {
-      const response = await fetch(apiUrl(`/wbs/${openChatTaskId}/comments/${editingCommentId}`), {
+      const updated = await apiRequest<WbsComment>(`/wbs/${openChatTaskId}/comments/${editingCommentId}`, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${authToken ?? ""}`,
-          "Content-Type": "application/json",
           "X-Organization-Id": currentOrganizationId
         },
         body: JSON.stringify({ message: sanitizeChatHtml(editingDraftRef.current) })
       });
-      if (!response.ok) {
-        console.error("Erro na API de Comentários (PATCH)", response.status, await response.text());
-        setChatError("Erro ao editar comentário");
-        return;
-      }
-      const updated = (await response.json()) as WbsComment;
       setChatMessages((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
       handleCancelEditComment();
     } catch (error) {
@@ -4161,18 +3938,13 @@ export const WbsTreeView = ({
     setIsChatLoading(true);
     setChatError(null);
     try {
-      const response = await fetch(apiUrl(`/wbs/${openChatTaskId}/comments/${pendingDeleteCommentId}`), {
+      await apiRequest(`/wbs/${openChatTaskId}/comments/${pendingDeleteCommentId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${authToken ?? ""}`,
           "X-Organization-Id": currentOrganizationId
         }
       });
-      if (!response.ok) {
-        console.error("Erro na API de Comentários (DELETE)", response.status, await response.text());
-        setChatError("Erro ao excluir comentário");
-        return;
-      }
       setChatMessages((prev) => prev.filter((item) => item.id !== pendingDeleteCommentId));
       setChatCounts((prev) => ({ ...prev, [openChatTaskId]: Math.max((prev[openChatTaskId] ?? 1) - 1, 0) }));
       if (editingCommentId === pendingDeleteCommentId) handleCancelEditComment();
@@ -4197,6 +3969,7 @@ export const WbsTreeView = ({
 
 
     event.stopPropagation();
+    if (!canEdit) return;
 
 
 
@@ -4502,6 +4275,7 @@ export const WbsTreeView = ({
 
 
   const openDependencyEditorForNode = (nodeId: string, dependencies: string[]) => {
+    if (!canEdit) return;
 
 
 
@@ -4567,6 +4341,7 @@ export const WbsTreeView = ({
 
 
   ) => {
+    if (!canEdit) return;
 
 
 
@@ -4607,6 +4382,7 @@ export const WbsTreeView = ({
 
 
   const handleDependencyToggle = (nodeId: string, dependencyId: string, checked: boolean) => {
+    if (!canEdit) return;
 
 
 
@@ -4675,6 +4451,7 @@ export const WbsTreeView = ({
 
 
     event.stopPropagation();
+    if (!canEdit && !canCreate && !canDelete) return;
 
 
 
@@ -4719,6 +4496,7 @@ export const WbsTreeView = ({
 
   const moveRow = useCallback(
     async (nodeId: string, direction: "UP" | "DOWN") => {
+      if (!canEdit) return;
       if (!selectedProjectId || selectedProjectId === "all" || !authToken || !currentOrganizationId) return;
       const row = rowMap.get(nodeId);
       if (!row) return;
@@ -4739,10 +4517,9 @@ export const WbsTreeView = ({
       const orderedIds = reordered.map((s) => s.id);
 
       try {
-        const response = await fetch(apiUrl("/wbs/reorder"), {
+        await apiRequest("/wbs/reorder", {
           method: "PATCH",
           headers: {
-            "Content-Type": "application/json",
             Authorization: `Bearer ${authToken}`,
             "X-Organization-Id": currentOrganizationId
           },
@@ -4752,10 +4529,6 @@ export const WbsTreeView = ({
             orderedIds
           })
         });
-        if (!response.ok) {
-          const payload = await response.json().catch(() => null);
-          throw new Error(payload?.message ?? "Falha ao reordenar");
-        }
         if (typeof onReloadWbs === "function") {
           await onReloadWbs();
         }
@@ -4763,7 +4536,7 @@ export const WbsTreeView = ({
         console.error("Failed to reorder", error);
       }
     },
-    [authToken, currentOrganizationId, onReloadWbs, rowMap, selectedProjectId, treeNodes]
+    [authToken, canEdit, currentOrganizationId, onReloadWbs, rowMap, selectedProjectId, treeNodes]
   );
 
   const handleMenuAction = async (event: MouseEvent<HTMLButtonElement>, action: RowAction, node: any) => {
@@ -4775,6 +4548,22 @@ export const WbsTreeView = ({
     }
 
     const parentId = node.parentId ?? null;
+    if ((action === "MOVE_UP" || action === "MOVE_DOWN") && !canEdit) {
+      setOpenMenuId(null);
+      return;
+    }
+    if (action === "ADD_CHILD" && (!canCreate || typeof onCreate !== "function")) {
+      setOpenMenuId(null);
+      return;
+    }
+    if (action === "DUPLICATE" && !canCreate) {
+      setOpenMenuId(null);
+      return;
+    }
+    if (action === "TRASH" && !canDelete) {
+      setOpenMenuId(null);
+      return;
+    }
 
     try {
       if (action === "MOVE_UP") {
@@ -4806,16 +4595,14 @@ export const WbsTreeView = ({
 
         let newId: string | null = null;
         try {
-          const createRes = await fetch(apiUrl("/wbs"), {
+          const created = await apiRequest<{ id?: string; node?: { id?: string } }>("/wbs", {
             method: "POST",
             headers: {
-              "Content-Type": "application/json",
               Authorization: `Bearer ${authToken}`,
               "X-Organization-Id": currentOrganizationId
             },
             body: JSON.stringify({ projectId: selectedProjectId, ...payload })
           });
-          const created = await createRes.json();
           newId = created?.id ?? created?.node?.id ?? null;
         } catch (error) {
           console.error("Failed to duplicate node", error);
@@ -4830,10 +4617,9 @@ export const WbsTreeView = ({
             return arr;
           }, [] as string[]);
 
-          await fetch(apiUrl("/wbs/reorder"), {
+          await apiRequest("/wbs/reorder", {
             method: "PATCH",
             headers: {
-              "Content-Type": "application/json",
               Authorization: `Bearer ${authToken}`,
               "X-Organization-Id": currentOrganizationId
             },
@@ -4857,10 +4643,9 @@ export const WbsTreeView = ({
           setOpenMenuId(null);
           return;
         }
-        await fetch(apiUrl("/wbs/bulk-delete"), {
+        await apiRequest("/wbs/bulk-delete", {
           method: "PATCH",
           headers: {
-            "Content-Type": "application/json",
             Authorization: `Bearer ${authToken}`,
             "X-Organization-Id": currentOrganizationId
           },
@@ -4877,15 +4662,15 @@ export const WbsTreeView = ({
   };
 
   const handleBulkTrash = async () => {
+    if (!canDelete) return;
     if (!selectedProjectId || selectedProjectId === "all" || !authToken || !currentOrganizationId) return;
     if (selectedTaskIds.length === 0) return;
     const confirmMove = window.confirm(`Enviar ${selectedTaskIds.length} tarefas para a lixeira?`);
     if (!confirmMove) return;
     try {
-      await fetch(apiUrl("/wbs/bulk-delete"), {
+      await apiRequest("/wbs/bulk-delete", {
         method: "PATCH",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${authToken}`,
           "X-Organization-Id": currentOrganizationId
         },
@@ -4903,6 +4688,7 @@ export const WbsTreeView = ({
 
   const handleCreateBottomTask = async (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
+    if (!canCreate) return;
     if (isCreatingBottomTask) return;
     if (!selectedProjectId || selectedProjectId === "all") return;
     if (typeof onCreate !== "function") return;
@@ -5187,6 +4973,7 @@ export const WbsTreeView = ({
               });
 
               const applyDependencyDownChain = () => {
+                if (!canEdit) return;
                 const fromIndex = filteredRows.findIndex((candidate) => candidate.node.id === row.node.id);
                 if (fromIndex < 0 || fromIndex >= filteredRows.length - 1) return;
                 for (let index = fromIndex + 1; index < filteredRows.length; index += 1) {
@@ -5327,6 +5114,7 @@ export const WbsTreeView = ({
                         <button
                           type="button"
                           className="wbs-drag-handle"
+                          disabled={!canEdit}
                           onClick={(event) => event.stopPropagation()}
                           {...attributes}
                           {...listeners}
@@ -5387,6 +5175,7 @@ export const WbsTreeView = ({
                       <button
                         type="button"
                         onClick={(event) => handleLevelAdjust(event, row.node.id, "up")}
+                        disabled={!canEdit}
                         style={{
                           border: "none",
                           background: "transparent",
@@ -5414,6 +5203,7 @@ export const WbsTreeView = ({
                         <button
                           type="button"
                           onClick={(event) => handleLevelAdjust(event, row.node.id, "down")}
+                          disabled={!canEdit}
                           style={{
                             border: "none",
                             background: "transparent",
@@ -5625,6 +5415,7 @@ export const WbsTreeView = ({
                           type="button"
                           className={clsx("wbs-status-select wbs-choice-trigger", statusClass)}
                           onClick={(event) => handleStatusToggle(event, row.node.id)}
+                          disabled={!canEdit}
                           aria-label="Alterar situação da tarefa"
                           aria-haspopup="listbox"
                           aria-expanded={isStatusPickerOpen}
@@ -5674,6 +5465,7 @@ export const WbsTreeView = ({
                           type="button"
                           className={clsx("wbs-priority-select wbs-choice-trigger", `wbs-priority-${priorityTone}`)}
                           onClick={(event) => handlePriorityToggle(event, row.node.id)}
+                          disabled={!canEdit}
                           aria-label="Alterar prioridade da tarefa"
                           aria-haspopup="listbox"
                           aria-expanded={priorityPickerId === row.node.id}
@@ -5728,7 +5520,7 @@ export const WbsTreeView = ({
                           onChange={(nextValue) => handleDateFieldChange(row.node.id, "startDate", nextValue)}
                           placeholder="dd/mm/aaaa"
                           className="wbs-date-input"
-                          disabled={autoDateFromChildren}
+                          disabled={!canEdit || autoDateFromChildren}
                           title={autoDateFromChildren ? "Resumo automático do nível 1 com base nos filhos." : undefined}
                         />
                       </div>
@@ -5749,7 +5541,7 @@ export const WbsTreeView = ({
                             isDoneStatus && "wbs-date-input--done",
                             !isDoneStatus && !isEndDateOverdue && isInProgressStatus && "wbs-date-input--progress"
                           )}
-                          disabled={autoDateFromChildren}
+                          disabled={!canEdit || autoDateFromChildren}
                           title={autoDateFromChildren ? "Resumo automático do nível 1 com base nos filhos." : undefined}
                         />
                         {isEndDateOverdue && <span className="wbs-date-alert">!</span>}
@@ -5773,7 +5565,7 @@ export const WbsTreeView = ({
                         onChange={(event) => handleDurationInputChange(row.node.id, event.target.value)}
                         onClick={(event) => event.stopPropagation()}
                         className="wbs-duration-input"
-                        disabled={autoDateFromChildren}
+                        disabled={!canEdit || autoDateFromChildren}
                         title={autoDateFromChildren ? "Duracao calculada automaticamente pelos filhos." : undefined}
                         aria-label="Quantidade de dias"
                       />
@@ -5785,6 +5577,7 @@ export const WbsTreeView = ({
                       <select
                         className="wbs-responsible-select"
                         value={responsibleMembershipId}
+                        disabled={!canEdit}
                         onClick={(event) => event.stopPropagation()}
                         onChange={(event) => onChangeResponsible?.(row.node.id, event.target.value || null)}
                       >
@@ -5803,7 +5596,7 @@ export const WbsTreeView = ({
                       <select
                         className="wbs-service-select"
                         value={row.node.serviceCatalogId ?? ""}
-                        disabled={!serviceCatalog?.length}
+                        disabled={!canEdit || !serviceCatalog?.length}
                         title={
                           serviceCatalog?.length
                             ? "Selecione um serviço"
@@ -5857,6 +5650,7 @@ export const WbsTreeView = ({
                         step={1}
                         className="wbs-multiplier-input"
                         value={serviceMultiplierValue}
+                        disabled={!canEdit}
                         onClick={(event) => event.stopPropagation()}
                         onChange={(event) => {
                           event.stopPropagation();
@@ -5909,8 +5703,12 @@ export const WbsTreeView = ({
                           onApplyDownChain={autoDateFromChildren ? undefined : applyDependencyDownChain}
                           currentTaskName={row.node.title ?? row.node.name ?? "Tarefa sem nome"}
                           currentTaskCode={displayId}
-                          disabled={autoDateFromChildren}
-                          disabledReason="Tarefa com filhos e resumida automaticamente nao pode ter dependencia."
+                          disabled={!canEdit || autoDateFromChildren}
+                          disabledReason={
+                            !canEdit
+                              ? "Você não possui permissão para editar dependências."
+                              : "Tarefa com filhos e resumida automaticamente nao pode ter dependencia."
+                          }
                         />
                       )}
                     </td>
@@ -5950,7 +5748,7 @@ export const WbsTreeView = ({
 
 
             })}
-            {typeof onCreate === "function" && selectedProjectId && selectedProjectId !== "all" ? (
+            {canCreate && typeof onCreate === "function" && selectedProjectId && selectedProjectId !== "all" ? (
               <tr className="wbs-create-row" data-node-id="create-new-row">
                 <td colSpan={17}>
                   <button
@@ -5982,9 +5780,11 @@ export const WbsTreeView = ({
             <button type="button" className="btn-secondary" onClick={() => setSelectedTaskIds([])}>
               Limpar seleção
             </button>
-            <button type="button" className="btn-danger-ghost" onClick={handleBulkTrash}>
-              Enviar para lixeira
-            </button>
+            {canDelete ? (
+              <button type="button" className="btn-danger-ghost" onClick={handleBulkTrash}>
+                Enviar para lixeira
+              </button>
+            ) : null}
           </div>
           <span className="wbs-bulk-info">{selectedTaskIds.length} selecionada(s)</span>
         </div>
@@ -6005,12 +5805,14 @@ export const WbsTreeView = ({
           >
             <div className="wbs-actions-menu">
               {[
-                { label: "Subir tarefa", action: "MOVE_UP" },
-                { label: "Descer tarefa", action: "MOVE_DOWN" },
-                { label: "Adicionar subtarefa", action: "ADD_CHILD" },
-                { label: "Duplicar", action: "DUPLICATE" },
-                { label: "Enviar para lixeira", action: "TRASH" }
-              ].map((item) => (
+                { label: "Subir tarefa", action: "MOVE_UP", allowed: canEdit },
+                { label: "Descer tarefa", action: "MOVE_DOWN", allowed: canEdit },
+                { label: "Adicionar subtarefa", action: "ADD_CHILD", allowed: canCreate && typeof onCreate === "function" },
+                { label: "Duplicar", action: "DUPLICATE", allowed: canCreate },
+                { label: "Enviar para lixeira", action: "TRASH", allowed: canDelete }
+              ]
+                .filter((item) => item.allowed)
+                .map((item) => (
                 <button
                   type="button"
                   key={item.action}
@@ -8476,2882 +8278,93 @@ export const ProjectDetailsTabs = ({
 
 
   );
-
-
-
-
-
-
-
-  
-
-
-
-
-
-  const boardContent = (
-
-    <div className="tab-panel">
-
-      {boardError && <p className="error-text">{boardError}</p>}
-
-      <CustomKanbanBoard
-
-        columns={kanbanColumns}
-
-        onDragEnd={onDragTask}
-
-        onCreate={onCreateTask}
-
-        onTaskClick={onKanbanTaskClick}
-
-        newTaskTitle={newTaskTitle}
-
-        onTaskTitleChange={onTaskTitleChange}
-
-        newTaskColumn={newTaskColumn}
-
-        onTaskColumnChange={onTaskColumnChange}
-
-      />
-
-    </div>
-
-
-
-
-  );
-
-
-
-
-
-  const ganttContent = (
-
-
-
-    <div className="tab-panel">
-
-
-
-      {ganttError && <p className="error-text">{ganttError}</p>}
-
-
-
-      <GanttTimeline tasks={ganttTasks} milestones={ganttMilestones} />
-
-
-
-    </div>
-
-
-
-  );
-
-
-
-
-
-
-
-  const calendarContent = (
-
-
-
-    <div className="tab-panel">
-
-
-
-      {calendarEvents.length ? (
-
-
-
-        <ul className="calendar-list">
-
-
-
-          {calendarEvents.map((event) => (
-
-
-
-            <li key={event.id}>
-
-
-
-              <div className="calendar-date">
-
-
-
-                <span>{formatShortDate(event.date)}</span>
-
-
-
-                <small>{event.type}</small>
-
-
-
-              </div>
-
-
-
-              <strong>{event.title}</strong>
-
-
-
-            </li>
-
-
-
-          ))}
-
-
-
-        </ul>
-
-
-
-      ) : (
-
-
-
-        <p className="muted">Nenhum evento agendado.</p>
-
-
-
-      )}
-
-
-
-    </div>
-
-
-
-  );
-
-
-
-
-
-
-
-  const docsContent = (
-
-
-
-    <div className="tab-panel">
-
-
-
-      {attachmentsError && <p className="error-text">{attachmentsError}</p>}
-
-
-
-      {attachmentsLoading ? (
-
-
-
-        <div className="docs-grid">
-
-
-
-          {[0, 1, 2].map((index) => (
-
-
-
-            <article key={index} className="doc-card skeleton-card">
-
-
-
-              <div className="skeleton skeleton-title" />
-
-
-
-              <div className="skeleton skeleton-text" />
-
-
-
-              <div className="skeleton skeleton-text" style={{ width: "40%" }} />
-
-
-
-            </article>
-
-
-
-          ))}
-
-
-
-        </div>
-
-
-
-      ) : attachments.length ? (
-
-        <div className="docs-grid">
-
-          {attachments.map((doc) => (
-
-            <article key={doc.id} className="doc-card">
-
-              <div>
-
-                <h4>{doc.fileName}</h4>
-
-
-
-                <p className="subtext">{doc.category ?? "Documento"}</p>
-
-
-
-              </div>
-
-
-
-              <small>
-
-
-
-                {doc.uploadedBy?.fullName ?? doc.uploadedBy?.email ?? "Equipe"} · {formatShortDate(doc.createdAt)}
-
-
-
-              </small>
-
-
-
-              <small>
-
-
-
-                {formatFileSize(doc.fileSize)} · {doc.targetType === "WBS_NODE" ? "Vinculado à WBS" : "Projeto"}
-
-
-
-              </small>
-
-
-
-              <button
-
-
-
-                type="button"
-
-
-
-                className="ghost-button"
-
-
-
-                onClick={() => window.alert("Integração de download em breve.")}
-
-
-
-              >
-
-
-
-                Baixar
-
-
-
-              </button>
-
-
-
-            </article>
-
-          ))}
-
-        </div>
-
-      ) : (
-
-        <EmptyStateCard
-
-          icon={FileIcon}
-
-          title="Nenhum documento enviado"
-
-          description="Centralize atas, contratos e anexos importantes para facilitar o acompanhamento."
-
-          actionLabel="Adicionar documento"
-
-          onAction={handleAddDocument}
-
-        />
-
-      )}
-
-    </div>
-
-  );
-
-
-
-
-
-  const activityContent = (
-
-
-
-    <div className="tab-panel activity-panel">
-
-
-
-      <article className="card">
-
-
-
-        <div className="card-header">
-
-
-
-          <h3>Timeline de atividades</h3>
-
-
-
-        </div>
-
-
-
-        {commentsError && <p className="error-text">{commentsError}</p>}
-
-
-
-        {activityItems.length ? (
-
-          <ul className="activity-timeline">
-
-            {activityItems.map((activity) => (
-
-              <li key={activity.id}>
-
-                <div className="activity-avatar">{activity.author?.slice(0, 2).toUpperCase()}</div>
-
-                <div>
-
-                  <strong>{activity.author}</strong>
-
-
-
-                  <span>{activity.role}</span>
-
-
-
-                  <p>{activity.body}</p>
-
-
-
-                  <small>{formatShortDate(activity.createdAt)}</small>
-
-
-
-                </div>
-
-
-
-              </li>
-
-            ))}
-
-          </ul>
-
-        ) : (
-
-          <EmptyStateCard
-
-            icon={CommentIcon}
-
-            title="Nenhuma atividade registrada"
-
-            description="Compartilhe atualizações ou registre horas para construir o histórico colaborativo do projeto."
-
-            actionLabel="Registrar atualizAo"
-
-            onAction={focusCommentComposer}
-
-          />
-
-        )}
-
-      </article>
-
-
-
-
-
-      <div className="split-grid">
-
-
-
-        <article className="card">
-
-
-
-          <div className="card-header">
-
-
-
-            <h3>Novo comentário</h3>
-
-
-
-          </div>
-
-
-
-          <form onSubmit={onSubmitComment} className="feedback-form">
-
-
-
-            <p className="muted">Selecione um item na EDT para vincular o comentário.</p>
-
-
-
-            <textarea
-
-              ref={commentTextareaRef}
-
-              placeholder="Anote atualizações ou decisões..."
-
-              value={commentBody}
-
-              onChange={(event) => onCommentBodyChange(event.target.value)}
-
-            />
-
-            <button type="submit" className="primary-button" disabled={!selectedNodeId || !commentBody.trim()}>
-
-
-
-              Registrar comentário
-
-
-
-            </button>
-
-
-
-          </form>
-
-
-
-        </article>
-
-
-
-
-
-
-
-        <article className="card">
-
-
-
-          <div className="card-header">
-
-
-
-            <h3>Registro rápido de horas</h3>
-
-
-
-          </div>
-
-
-
-          <form onSubmit={onLogTime} className="time-form">
-
-
-
-            <p className="muted">Selecione uma tarefa na EDT antes de registrar.</p>
-
-
-
-            <label>
-
-
-
-              Data
-
-
-
-              <input type="date" value={timeEntryDate} onChange={(event) => onTimeEntryDateChange(event.target.value)} />
-
-
-
-            </label>
-
-
-
-            <label>
-
-
-
-              Horas
-
-
-
-              <input
-
-
-
-                type="number"
-
-
-
-                min="0.25"
-
-
-
-                step="0.25"
-
-
-
-                value={timeEntryHours}
-
-
-
-                onChange={(event) => onTimeEntryHoursChange(event.target.value)}
-
-
-
-              />
-
-
-
-            </label>
-
-
-
-            <label>
-
-
-
-              Descrição
-
-
-
-              <textarea value={timeEntryDescription} onChange={(event) => onTimeEntryDescriptionChange(event.target.value)} />
-
-
-
-            </label>
-
-
-
-            {timeEntryError && (
-
-
-
-              <p className="error-text" role="status">
-
-
-
-                {timeEntryError}
-
-
-
-              </p>
-
-
-
-            )}
-
-
-
-            <button type="submit" className="primary-button" disabled={!selectedNodeId}>
-
-
-
-              Registrar horas
-
-
-
-            </button>
-
-
-
-          </form>
-
-
-
-        </article>
-
-
-
-      </div>
-
-
-
-    </div>
-
-
-
-  );
-
-
-
-  const boardTabPlaceholder = (
-
-    <div className="tab-panel">
-
-      <p className="muted">O board deste projeto está em uma página dedicada.</p>
-
-    </div>
-
-  );
-
-
-
-  const ganttTabPlaceholder = (
-
-    <div className="tab-panel">
-
-      <p className="muted">O cronograma deste projeto está em uma página dedicada.</p>
-
-    </div>
-
-  );
-
-
-
-  const docsTabPlaceholder = (
-
-    <div className="tab-panel">
-
-      <p className="muted">Os documentos deste projeto estão em uma página dedicada.</p>
-
-    </div>
-
-  );
-
-
-
-
-
-
-
-  const tabContentMap: Record<string, JSX.Element> = {
-
-
-
-    overview: overviewContent,
-
-
-
-    board: boardTabPlaceholder,
-
-
-
-    gantt: ganttTabPlaceholder,
-
-
-
-    calendar: calendarContent,
-
-
-
-    docs: docsTabPlaceholder,
-
-
-
-    activity: activityContent
-
-
-
-  };
-
-
-
-
-
-
-
-  return (
-
-
-
-    <section className="project-details">
-
-
-
-      {overviewHeader}
-
-
-
-      {tabContentMap[activeTab]}
-
-
-
-    </section>
-
-
-
-  );
-
-
-
 };
-
-
-
-
-
-
-
-const TeamPanel = ({
-
-
-
-  members,
-
-
-
-  membersError,
-
-
-
-  projectName
-
-
-
-}: {
-
-
-
-  members: any[];
-
-
-
-  membersError: string | null;
-
-
-
-  projectName: string | null;
-
-
-
-}) => {
-
-
-
-  const [roleFilter, setRoleFilter] = useState("all");
-
-
-
-  const [statusFilter, setStatusFilter] = useState("all");
-
-
-
-  const [search, setSearch] = useState("");
-
-
-
-  const [selectedMember, setSelectedMember] = useState<any | null>(null);
-
-
-
-
-
-
-
-  const enrichedMembers = useMemo(() => {
-
-
-
-    return members.map((member) => {
-
-
-
-      const allocation = Math.min(100, Math.round(((member.capacityWeekly ?? 40) / 40) * 100));
-
-
-
-      const status =
-
-
-
-        allocation >= 90 ? "Alta carga" : allocation <= 40 ? "disponível" : "Balanceado";
-
-
-
-      const skills =
-
-
-
-        Array.isArray((member as any).skills) && (member as any).skills.length
-
-
-
-          ? (member as any).skills
-
-
-
-          : [member.role, `Carga ${allocation}%`];
-
-
-
-      return {
-
-
-
-        ...member,
-
-
-
-        allocation,
-
-
-
-        status,
-
-
-
-        skills,
-
-
-
-        avatar: member.name?.slice(0, 2).toUpperCase() ?? "EQ",
-
-
-
-        workload: allocation
-
-
-
-      };
-
-
-
-    });
-
-
-
-  }, [members]);
-
-
-
-
-
-
-
-  const filteredMembers = useMemo(() => {
-
-
-
-    return enrichedMembers.filter((member) => {
-
-
-
-      const matchesRole = roleFilter === "all" || member.role === roleFilter;
-
-
-
-      const matchesStatus = statusFilter === "all" || member.status === statusFilter;
-
-
-
-      const matchesSearch =
-
-
-
-        !search ||
-
-
-
-        member.name?.toLowerCase().includes(search.toLowerCase()) ||
-
-
-
-        member.email?.toLowerCase().includes(search.toLowerCase());
-
-
-
-      return matchesRole && matchesStatus && matchesSearch;
-
-
-
-    });
-
-
-
-  }, [enrichedMembers, roleFilter, statusFilter, search]);
-
-
-
-
-
-
-
-  const roleOptions = useMemo(
-
-
-
-    () => Array.from(new Set(members.map((member) => member.role))).filter(Boolean),
-
-
-
-    [members]
-
-
-
-  );
-
-
-
-
-
-
-
-  if (!members.length && !membersError) {
-
-
-
-    return null;
-
-
-
-  }
-
-
-
-
-
-
-
-  return (
-
-
-
-    <section className="team-section">
-
-
-
-      <div className="team-section__header">
-
-
-
-        <div>
-
-
-
-          <p className="eyebrow">Equipe</p>
-
-
-
-          <h2>Visão da Equipe do projeto</h2>
-
-
-
-          <p className="subtext">
-
-
-
-            Filtre por papel, status ou busque pessoas para abrir o painel detalhado.
-
-
-
-          </p>
-
-
-
-        </div>
-
-
-
-        <div className="team-summary">
-
-
-
-          <strong>{members.length}</strong>
-
-
-
-          <span>Colaboradores no projeto {projectName ?? "atual"}</span>
-
-
-
-        </div>
-
-
-
-      </div>
-
-
-
-
-
-
-
-      <div className="team-filters">
-
-
-
-        <label>
-
-
-
-          Papel
-
-
-
-          <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
-
-
-
-            <option value="all">Todos</option>
-
-
-
-            {roleOptions.map((role) => (
-
-
-
-              <option key={role} value={role}>
-
-
-
-                {role}
-
-
-
-              </option>
-
-
-
-            ))}
-
-
-
-          </select>
-
-
-
-        </label>
-
-
-
-        <label>
-
-
-
-          Status
-
-
-
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-
-
-
-            <option value="all">Todos</option>
-
-
-
-            <option value="disponível">disponível</option>
-
-
-
-            <option value="Alocado">Alocado</option>
-
-
-
-            <option value="Em férias / folga">Em férias / folga</option>
-
-
-
-          </select>
-
-
-
-        </label>
-
-
-
-        <label className="search-field">
-
-
-
-          Busca
-
-
-
-          <input
-
-
-
-            type="search"
-
-
-
-            placeholder="Nome ou e-mail..."
-
-
-
-            value={search}
-
-
-
-            onChange={(event) => setSearch(event.target.value)}
-
-
-
-          />
-
-
-
-        </label>
-
-
-
-      </div>
-
-
-
-
-
-
-
-      {membersError && <p className="error-text">{membersError}</p>}
-
-
-
-
-
-
-
-      {filteredMembers.length ? (
-
-
-
-        <div className="team-grid">
-
-
-
-          {filteredMembers.map((member) => (
-
-
-
-            <article
-
-
-
-              key={member.id}
-
-
-
-              className="team-card"
-
-
-
-              onClick={() => setSelectedMember(member)}
-
-
-
-            >
-
-
-
-              <div className="team-card__header">
-
-
-
-                <div className="avatar">{member.avatar}</div>
-
-
-
-                <div>
-
-
-
-                  <strong>{member.name}</strong>
-
-
-
-                  <span>{member.role}</span>
-
-
-
-                </div>
-
-
-
-                <span className="pill pill-neutral">{member.status}</span>
-
-
-
-              </div>
-
-
-
-              <div className="team-card__body">
-
-
-
-                <p>{member.email}</p>
-
-
-
-                <div className="progress-bar team-card__allocation">
-
-
-
-                  <span style={{ width: `${member.allocation}%` }} />
-
-
-
-                </div>
-
-
-
-                <small>AlocAo: {member.allocation}%</small>
-
-
-
-                <div className="team-card__skills">
-
-
-
-                  {member.skills.map((skill: string) => (
-
-
-
-                    <span key={`${member.id}-${skill}`}>{skill}</span>
-
-
-
-                  ))}
-
-
-
-                </div>
-
-
-
-              </div>
-
-
-
-              <button type="button" className="ghost-button">
-
-
-
-                Ver detalhes
-
-
-
-              </button>
-
-
-
-            </article>
-
-
-
-          ))}
-
-
-
-        </div>
-
-
-
-      ) : (
-
-
-
-        <p className="muted">Nenhum membro corresponde aos filtros selecionados.</p>
-
-
-
-      )}
-
-
-
-
-
-
-
-      {selectedMember && (
-
-
-
-        <div className="team-drawer" onClick={() => setSelectedMember(null)}>
-
-
-
-          <div className="team-drawer__content" onClick={(event) => event.stopPropagation()}>
-
-
-
-            <header>
-
-
-
-              <div className="avatar is-large">{selectedMember.avatar}</div>
-
-
-
-              <div>
-
-
-
-                <h3>{selectedMember.name}</h3>
-
-
-
-                <p>{selectedMember.email}</p>
-
-
-
-                <span className="pill pill-neutral">{selectedMember.status}</span>
-
-
-
-              </div>
-
-
-
-              <button type="button" className="ghost-button" onClick={() => setSelectedMember(null)}>
-
-
-
-                Fechar
-
-
-
-              </button>
-
-
-
-            </header>
-
-
-
-            <div className="team-drawer__details">
-
-
-
-              <div>
-
-
-
-                <strong>Papel</strong>
-
-
-
-                <p>{selectedMember.role}</p>
-
-
-
-              </div>
-
-
-
-              <div>
-
-
-
-                <strong>Capacidade semanal</strong>
-
-
-
-                <p>{selectedMember.capacityWeekly ?? 0}h</p>
-
-
-
-              </div>
-
-
-
-              <div>
-
-
-
-                <strong>AlocAo</strong>
-
-
-
-                <p>{selectedMember.allocation}%</p>
-
-
-
-              </div>
-
-
-
-            </div>
-
-
-
-            <div>
-
-
-
-              <strong>Skills</strong>
-
-
-
-              <div className="team-card__skills">
-
-
-
-                {selectedMember.skills.map((skill: string) => (
-
-
-
-                  <span key={`${selectedMember.id}-${skill}`}>{skill}</span>
-
-
-
-                ))}
-
-
-
-              </div>
-
-
-
-            </div>
-
-
-
-          </div>
-
-
-
-        </div>
-
-
-
-      )}
-
-
-
-    </section>
-
-
-
-  );
-
-
-
-};
-
-
-
-
-
-
-
-export const ReportsPanel = ({
-
-
-
-  metrics,
-
-
-
-  metricsError,
-
-
-
-  metricsLoading
-
-
-
-}: {
-
-
-
-  metrics: any | null;
-
-
-
-  metricsError: string | null;
-
-
-
-  metricsLoading: boolean;
-
-
-
-}) => {
-
-
-
-  const [activeTab, setActiveTab] = useState("status");
-
-
-
-
-
-
-
-  const statusData = useMemo<{ status: string; value: number }[]>(() => {
-
-
-
-    if (!metrics?.byStatus) return [];
-
-
-
-    return Object.entries(metrics.byStatus).map(([status, value]) => ({
-
-
-
-      status,
-
-
-
-      value: Number(value)
-
-
-
-    }));
-
-
-
-  }, [metrics]);
-
-
-
-
-
-
-
-  const riskData = metrics?.riskSummary ?? { open: 0, closed: 0 };
-
-
-
-  const hoursByProject =
-
-
-
-    ((metrics?.hoursByProject as { projectId: string; projectName: string; hours: number }[] | undefined) ?? []).slice(
-
-
-
-      0,
-
-
-
-      5
-
-
-
-    );
-
-
-
-  const progressSeries =
-
-
-
-    (metrics?.progressSeries as { date: string; progress: number }[] | undefined) ?? [];
-
-
-
-
-
-
-
-  if (!metrics && !metricsError && !metricsLoading) return null;
-
-
-
-
-
-
-
-  return (
-
-
-
-    <section className="reports-section">
-
-
-
-      <header className="reports-header">
-
-
-
-        <div>
-
-
-
-          <p className="eyebrow">Relatórios</p>
-
-
-
-          <h2>Visão analítica</h2>
-
-
-
-          <p className="subtext">Escolha o foco para comparar resultados do portfólio.</p>
-
-
-
-        </div>
-
-
-
-        <div className="reports-tabs">
-
-
-
-          {[
-
-
-
-            { id: "status", label: "Status" },
-
-
-
-            { id: "risks", label: "Riscos" },
-
-
-
-            { id: "hours", label: "Horas" },
-
-
-
-            { id: "progress", label: "Progresso" }
-
-
-
-          ].map((tab) => (
-
-
-
-            <button
-
-
-
-              key={tab.id}
-
-
-
-              type="button"
-
-
-
-              className={activeTab === tab.id ? "is-active" : ""}
-
-
-
-              onClick={() => setActiveTab(tab.id)}
-
-
-
-            >
-
-
-
-              {tab.label}
-
-
-
-            </button>
-
-
-
-          ))}
-
-
-
-        </div>
-
-
-
-      </header>
-
-
-
-
-
-
-
-      {metricsError && <p className="error-text">{metricsError}</p>}
-
-
-
-
-
-
-
-      {metricsLoading ? (
-
-
-
-        <p className="muted">Carregando Relatórios...</p>
-
-
-
-      ) : (
-
-
-
-        <div className="reports-grid">
-
-
-
-          {activeTab === "status" && (
-
-            <article className="reports-card">
-
-              <h3>Status dos projetos</h3>
-
-              {statusData.length ? (
-
-                <ul className="reports-list">
-
-                  {statusData.map((item) => (
-
-                    <li key={item.status}>
-
-                      <span>{item.status}</span>
-
-                      <strong>{item.value}</strong>
-
-                    </li>
-
-                  ))}
-
-                </ul>
-
-              ) : (
-
-                <EmptyStateCard
-
-                  icon={InsightIcon}
-
-                  title="Sem status consolidados"
-
-                  description="Assim que os projetos forem sincronizados, mostraremos o panorama por status aqui."
-
-                />
-
-              )}
-
-            </article>
-
-          )}
-
-
-
-          {activeTab === "risks" && (
-
-            <article className="reports-card">
-
-              <h3>Riscos</h3>
-
-              {riskData.open || riskData.closed ? (
-
-                <div className="reports-risk">
-
-                  <div>
-
-                    <span>Abertos</span>
-
-                    <strong>{riskData.open}</strong>
-
-                  </div>
-
-                  <div>
-
-                    <span>Fechados</span>
-
-                    <strong>{riskData.closed}</strong>
-
-                  </div>
-
-                </div>
-
-              ) : (
-
-                <EmptyStateCard
-
-                  icon={InsightIcon}
-
-                  title="Nenhum risco registrado"
-
-                  description="Cadastre riscos nos projetos para acompanhar o volume por status."
-
-                />
-
-              )}
-
-            </article>
-
-          )}
-
-
-
-          {activeTab === "hours" && (
-
-            <article className="reports-card">
-
-              <h3>Horas por projeto</h3>
-
-              {hoursByProject.length ? (
-
-                <ul className="reports-list">
-
-                  {hoursByProject.map((project: any) => (
-
-                    <li key={project.projectId}>
-
-                      <span>{project.projectName}</span>
-
-                      <strong>{project.hours?.toFixed ? project.hours.toFixed(1) : project.hours}h</strong>
-
-                    </li>
-
-                  ))}
-
-                </ul>
-
-              ) : (
-
-                <EmptyStateCard
-
-                  icon={InsightIcon}
-
-                  title="Sem apontamentos de horas"
-
-                  description="Registre horas nos projetos para comparar o esforço entre Equipes."
-
-                />
-
-              )}
-
-            </article>
-
-          )}
-
-
-
-          {activeTab === "progress" && (
-
-            <article className="reports-card">
-
-              <h3>Progresso médio</h3>
-
-              {progressSeries.length ? (
-
-                <div className="reports-sparkline">
-
-                  {progressSeries.map((point: any) => (
-
-                    <span
-
-                      key={point.date}
-
-                      style={{ height: `${Math.max(5, point.progress)}%` }}
-
-                      title={`${point.date} - ${point.progress}%`}
-
-                    />
-
-                  ))}
-
-                </div>
-
-              ) : (
-
-                <EmptyStateCard
-
-                  icon={InsightIcon}
-
-                  title="Progresso indisponível"
-
-                  description="Atualize o status das tarefas para gerar a linha de tendência do portfólio."
-
-                />
-
-              )}
-
-            </article>
-
-          )}
-
-        </div>
-
-      )}
-
-
-
-    </section>
-
-
-
-  );
-
-
-
-};
-
-
-
-
-
-
-
-const SettingsPanel = () => {
-
-
-
-  const [activeSection, setActiveSection] = useState("profile");
-
-
-
-
-
-
-
-  const sections = [
-
-
-
-    { id: "profile", label: "Perfil" },
-
-
-
-    { id: "notifications", label: "Notificações" },
-
-
-
-    { id: "organization", label: "Organização" },
-
-
-
-    { id: "permissions", label: "Permissões" },
-
-
-
-    { id: "integrations", label: "Integrações" },
-
-
-
-    { id: "billing", label: "Faturamento" }
-
-
-
-  ];
-
-
-
-
-
-
-
-  return (
-
-
-
-    <section className="settings-section">
-
-
-
-      <header>
-
-
-
-        <div>
-
-
-
-          <p className="eyebrow">Configurações</p>
-
-
-
-          <h2>Central de ajustes</h2>
-
-
-
-          <p className="subtext">Gerencie perfil, notificações, Organização e integrações.</p>
-
-
-
-        </div>
-
-
-
-      </header>
-
-
-
-
-
-
-
-      <div className="settings-layout">
-
-
-
-        <nav className="settings-menu">
-
-
-
-          {sections.map((section) => (
-
-
-
-            <button
-
-
-
-              key={section.id}
-
-
-
-              type="button"
-
-
-
-              className={activeSection === section.id ? "is-active" : ""}
-
-
-
-              onClick={() => setActiveSection(section.id)}
-
-
-
-            >
-
-
-
-              {section.label}
-
-
-
-            </button>
-
-
-
-          ))}
-
-
-
-        </nav>
-
-
-
-
-
-
-
-        <div className="settings-content">
-
-
-
-          {activeSection === "profile" && (
-
-
-
-            <form className="settings-form">
-
-
-
-              <h3>Perfil</h3>
-
-
-
-              <label>
-
-
-
-                Nome completo
-
-
-
-                <input type="text" placeholder="Seu nome" />
-
-
-
-              </label>
-
-
-
-              <label>
-
-
-
-                E-mail
-
-
-
-                <input type="email" placeholder="voce@empresa.com" />
-
-
-
-              </label>
-
-
-
-              <label>
-
-
-
-                Idioma
-
-
-
-                <select>
-
-
-
-                  <option>Português (Brasil)</option>
-
-
-
-                  <option>Inglês</option>
-
-
-
-                </select>
-
-
-
-              </label>
-
-
-
-              <button type="button" className="primary-button">
-
-
-
-                Atualizar perfil
-
-
-
-              </button>
-
-
-
-            </form>
-
-
-
-          )}
-
-
-
-
-
-
-
-          {activeSection === "notifications" && (
-
-
-
-            <div className="settings-form">
-
-
-
-              <h3>Notificações</h3>
-
-
-
-              <label className="settings-toggle">
-
-
-
-                <input type="checkbox" defaultChecked />
-
-
-
-                <span>E-mails sobre tarefas atribuídas</span>
-
-
-
-              </label>
-
-
-
-              <label className="settings-toggle">
-
-
-
-                <input type="checkbox" />
-
-
-
-                <span>Mensagens em canais do Slack</span>
-
-
-
-              </label>
-
-
-
-              <label className="settings-toggle">
-
-
-
-                <input type="checkbox" defaultChecked />
-
-
-
-                <span>Alertas de riscos</span>
-
-
-
-              </label>
-
-
-
-            </div>
-
-
-
-          )}
-
-
-
-
-
-
-
-          {activeSection === "organization" && (
-
-
-
-            <div className="settings-form">
-
-
-
-              <h3>Organização</h3>
-
-
-
-              <label>
-
-
-
-                Nome da Organização
-
-
-
-                <input type="text" placeholder="Organização Demo" />
-
-
-
-              </label>
-
-
-
-              <label>
-
-
-
-                Domínio
-
-
-
-                <input type="text" placeholder="demo.local" />
-
-
-
-              </label>
-
-
-
-              <button type="button" className="secondary-button">
-
-
-
-                Salvar
-
-
-
-              </button>
-
-
-
-            </div>
-
-
-
-          )}
-
-
-
-
-
-
-
-          {activeSection === "permissions" && (
-
-
-
-            <div className="settings-form">
-
-
-
-              <h3>Permissões e papéis</h3>
-
-
-
-              <p className="muted">Gerencie quem pode criar projetos, alterar WBS e exportar dados.</p>
-
-
-
-              <table className="settings-table">
-
-
-
-                <thead>
-
-
-
-                  <tr>
-
-
-
-                    <th>Papel</th>
-
-
-
-                    <th>Criar projeto</th>
-
-
-
-                    <th>Editar WBS</th>
-
-
-
-                    <th>Ver Relatórios</th>
-
-
-
-                  </tr>
-
-
-
-                </thead>
-
-
-
-                <tbody>
-
-
-
-                  {["OWNER", "ADMIN", "MEMBER", "VIEWER"].map((role) => (
-
-
-
-                    <tr key={role}>
-
-
-
-                      <td>{role}</td>
-
-
-
-                      <td>
-
-
-
-                        <input type="checkbox" defaultChecked={role !== "VIEWER"} />
-
-
-
-                      </td>
-
-
-
-                      <td>
-
-
-
-                        <input type="checkbox" defaultChecked={role === "OWNER" || role === "ADMIN"} />
-
-
-
-                      </td>
-
-
-
-                      <td>
-
-
-
-                        <input type="checkbox" defaultChecked={role !== "VIEWER"} />
-
-
-
-                      </td>
-
-
-
-                    </tr>
-
-
-
-                  ))}
-
-
-
-                </tbody>
-
-
-
-              </table>
-
-
-
-            </div>
-
-
-
-          )}
-
-
-
-
-
-
-
-          {activeSection === "integrations" && (
-
-
-
-            <div className="settings-form">
-
-
-
-              <h3>Integrações</h3>
-
-
-
-              <div className="integrations-grid">
-
-
-
-                {["GitHub", "Google Drive", "Slack", "Google Calendar"].map((integration) => (
-
-
-
-                  <article key={integration}>
-
-
-
-                    <strong>{integration}</strong>
-
-
-
-                    <p className="muted">Sincronize dados e automatize o fluxo.</p>
-
-
-
-                    <button type="button" className="secondary-button">
-
-
-
-                      Conectar
-
-
-
-                    </button>
-
-
-
-                  </article>
-
-
-
-                ))}
-
-
-
-              </div>
-
-
-
-            </div>
-
-
-
-          )}
-
-
-
-
-
-
-
-          {activeSection === "billing" && (
-
-
-
-            <div className="settings-form">
-
-
-
-              <h3>Faturamento / Plano</h3>
-
-
-
-              <p className="muted">Plano atual: <strong>Pro · 20/50 projetos</strong></p>
-
-
-
-              <button type="button" className="secondary-button">
-
-
-
-                Gerenciar plano
-
-
-
-              </button>
-
-
-
-            </div>
-
-
-
-          )}
-
-
-
-        </div>
-
-
-
-      </div>
-
-
-
-    </section>
-
-
-
-  );
-
-
-
-};
-
-
-
-
-
-
-
-
-
-
 
 export const DashboardLayout = ({
-
   userEmail,
-
-
-
   organizations,
-
-
-
   selectedOrganizationId,
-
-
-
   onOrganizationChange,
-
-
-
   currentOrgRole,
-
   currentOrgModulePermissions,
-
   orgError,
-
-
-
   onSignOut,
-
-
-
   projects,
-
-
-
   selectedProjectId,
-
-
-
   onProjectChange,
-
-
-
   onSelectProject,
-
-
-
   projectLimits,
-
-
-
   projectsError,
-
-
-
   filters,
-
-
-
   onRangeChange,
-
-
-
   summary,
-
-
-
   summaryError,
-
-
-
   members,
-
-
-
   membersError,
-
-
-
   attachments,
-
-
-
   attachmentsError,
-
-
-
   attachmentsLoading,
-
-
-
   reportMetrics,
-
   reportMetricsError,
-
   reportMetricsLoading,
-
   boardColumns,
-
   kanbanColumns,
-
   boardError,
-
   onCreateTask,
-
-
-
   onReloadBoard,
-
-
-
   onDragTask,
-
-
-
   newTaskTitle,
-
-
-
   onTaskTitleChange,
-
-
-
   newTaskColumn,
-
-
-
   onTaskColumnChange,
-
-
-
   newTaskStartDate,
-
-
-
   onTaskStartDateChange,
-
-
-
   newTaskEndDate,
-
-
-
   onTaskEndDateChange,
-
-
-
   newTaskAssignee,
-
-
-
   onTaskAssigneeChange,
-
-
-
   newTaskEstimateHours,
-
-
-
   onTaskEstimateHoursChange,
-
-
-
   wbsNodes,
-
-
-
   wbsError,
-
   serviceCatalog,
-
   serviceCatalogError,
-
   onImportServiceCatalog,
   onCreateServiceCatalog,
   onUpdateServiceCatalog,
   onDeleteServiceCatalog,
-
   onReloadWbs,
-
   onMoveNode,
-
-
-
   onUpdateWbsNode,
-
   onUpdateWbsResponsible,
-
-
-
   onCreateWbsItem,
-
-
-
   selectedNodeId,
-
-
-
   onSelectNode,
-
-
-
   comments,
-
-
-
   commentsError,
-
-
-
   onSubmitComment,
-
-
-
   commentBody,
-
-
-
   onCommentBodyChange,
-
-
-
   timeEntryDate,
-
-
-
   timeEntryHours,
-
-
-
   timeEntryDescription,
-
-
-
   timeEntryError,
-
-
-
   onTimeEntryDateChange,
-
-
-
   onTimeEntryHoursChange,
-
-
-
   onTimeEntryDescriptionChange,
-
-
-
   onLogTime,
-
-
-
   ganttTasks,
-
-
-
   ganttMilestones,
-
-
-
   ganttError,
-
-
-
   portfolio,
-
-
-
   portfolioError,
-
-
-
   portfolioLoading,
-
   onExportPortfolio,
   onReloadPortfolio,
-
   onCreateProject,
-
-  onUpdateProject,
-
+  onUpdateProject
 }: DashboardLayoutProps) => {
-
-  const flattenedTasks = kanbanColumns.flatMap((column) =>
-
-    column.tasks.map((task) => ({ ...task, column: column.title }))
-
-  );
-
-  const myTasks = flattenedTasks.slice(0, 6);
-
-  const projectMeta = (portfolio as PortfolioProject[]).find((project) => project.projectId === selectedProjectId) ?? null;
-
   const location = useLocation();
-  const lowerPath = location.pathname.toLowerCase();
-  const currentOrgModuleAccess = useMemo(
-    () => normalizeModulePermissionsForRole((currentOrgRole as any) ?? null, currentOrgModulePermissions),
-    [currentOrgRole, currentOrgModulePermissions]
-  );
-  const isEapRoute = lowerPath.includes("/eap") || lowerPath.includes("/edt");
-  const canUseAllProjects = ["/dashboard", "/kanban", "/cronograma", "/documentos", "/relatorios"].some(
-    (allowedPath) => lowerPath === allowedPath || lowerPath.startsWith(`${allowedPath}/`)
-  );
   const eapRouteProjectId = useMemo(() => {
     const match = location.pathname.match(/^\/EAP\/organizacao\/[^/]+\/projeto\/([^/?#]+)/i);
     if (!match?.[1]) return null;
@@ -11365,6 +8378,52 @@ export const DashboardLayout = ({
   const navigate = useNavigate();
 
   const { signOut } = useAuth();
+
+  const isEapRoute = useMemo(() => location.pathname.toLowerCase().startsWith("/eap"), [location.pathname]);
+
+  const canUseAllProjects = useMemo(() => {
+    const allowedPaths = ["/dashboard", "/kanban", "/cronograma", "/orcamento", "/documentos", "/relatorios"];
+    const currentPath = location.pathname.toLowerCase();
+    return allowedPaths.some((allowed) => currentPath === allowed || currentPath.startsWith(`${allowed}/`));
+  }, [location.pathname]);
+
+  const projectMeta = useMemo<PortfolioProject | null>(() => {
+    if (!selectedProjectId || selectedProjectId === "all") return null;
+    const selectedFromPortfolio = portfolio.find((project) => project.projectId === selectedProjectId) ?? null;
+    if (selectedFromPortfolio) return selectedFromPortfolio;
+    const selectedFromProjects = projects.find((project) => project.id === selectedProjectId) ?? null;
+    if (!selectedFromProjects) return null;
+    return {
+      projectId: selectedFromProjects.id,
+      projectName: selectedFromProjects.name
+    };
+  }, [portfolio, projects, selectedProjectId]);
+
+  const myTasks = useMemo(() => {
+    const source = summary as { myTasks?: unknown } | null;
+    return Array.isArray(source?.myTasks) ? source.myTasks : [];
+  }, [summary]);
+
+  const normalizedRole =
+    currentOrgRole === "OWNER" || currentOrgRole === "ADMIN" || currentOrgRole === "MEMBER" || currentOrgRole === "VIEWER"
+      ? currentOrgRole
+      : "MEMBER";
+  const currentOrgModuleAccess = useMemo(
+    () => normalizeModulePermissionsForRole(normalizedRole, currentOrgModulePermissions),
+    [normalizedRole, currentOrgModulePermissions]
+  );
+  const requiredModuleForPath = useMemo(() => resolveModuleFromPath(location.pathname), [location.pathname]);
+  const hasAccessToCurrentPath = !requiredModuleForPath || Boolean(currentOrgModuleAccess[requiredModuleForPath]?.view);
+  const firstAllowedPath = useMemo(() => {
+    for (const item of sidebarNavigation) {
+      const moduleKey = sidebarModuleById[item.id] ?? "dashboard";
+      if (currentOrgModuleAccess[moduleKey]?.view) {
+        return item.path;
+      }
+    }
+    return "/dashboard";
+  }, [currentOrgModuleAccess]);
+  const blockedModuleLabel = requiredModuleForPath ? moduleLabelByKey[requiredModuleForPath] : "esta área";
 
   const [isProjectModalOpen, setProjectModalOpen] = useState(false);
 
@@ -11472,18 +8531,6 @@ export const DashboardLayout = ({
     return () => clearTimeout(timeout);
 
   }, [projectToast]);
-
-
-
-  const currentView = (() => {
-
-    const segment = location.pathname.split("/")[1] || "dashboard";
-
-    return segment || "dashboard";
-
-  })();
-
-
 
 
 
@@ -11854,7 +8901,7 @@ export const DashboardLayout = ({
 
 
 
-      setProjectModalError(error instanceof Error ? error.message : "Erro ao salvar projeto");
+      setProjectModalError(getApiErrorMessage(error, "Erro ao salvar projeto"));
 
 
 
@@ -11933,38 +8980,6 @@ export const DashboardLayout = ({
     },
 
     [onProjectChange, selectedProjectId, navigate]
-
-  );
-
-
-
-
-
-
-
-  const renderTeamContent = () => (
-
-
-
-    <TeamPanel members={members} membersError={membersError} projectName={projectMeta?.projectName ?? null} />
-
-
-
-  );
-
-
-
-
-
-
-
-  const renderReportsContent = () => (
-
-
-
-    <ReportsPanel metrics={reportMetrics} metricsError={reportMetricsError} metricsLoading={reportMetricsLoading} />
-
-
 
   );
 
@@ -12465,7 +9480,19 @@ export const DashboardLayout = ({
 
           <div className="page-container">
 
-            <Outlet context={outletContext} />
+            {hasAccessToCurrentPath ? (
+              <Outlet context={outletContext} />
+            ) : (
+              <section className="module-access-block">
+                <EmptyStateCard
+                  icon={ReportIcon}
+                  title="Acesso restrito"
+                  description={`Seu perfil não possui permissão para visualizar ${blockedModuleLabel}.`}
+                  actionLabel="Ir para área permitida"
+                  onAction={() => navigate(firstAllowedPath)}
+                />
+              </section>
+            )}
 
           </div>
 
@@ -15059,7 +12086,7 @@ export const TemplatesPanel = ({
 
 
 
-      setTemplateModalError(error instanceof Error ? error.message : "Erro ao salvar template");
+      setTemplateModalError(getApiErrorMessage(error, "Erro ao salvar template"));
 
 
 
@@ -16020,6 +13047,10 @@ export const TemplatesPanel = ({
 
 
 };
+
+
+
+
 
 
 

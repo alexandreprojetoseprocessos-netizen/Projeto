@@ -62,7 +62,7 @@ export const createApp = () => {
   app.use(
     express.json({
       limit: "10mb",
-      verify: (req: any, _res, buf) => {
+      verify: (req: express.Request, _res, buf) => {
         req.rawBody = buf.toString();
       }
     })
@@ -88,10 +88,14 @@ export const createApp = () => {
   app.use("/service-catalog", serviceCatalogRouter);
 
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    void _next;
+    const candidateError = err as Error & { status?: number; statusCode?: number };
     const statusCode =
-      (err as any)?.status ??
-      (err as any)?.statusCode ??
-      500;
+      typeof candidateError.status === "number"
+        ? candidateError.status
+        : typeof candidateError.statusCode === "number"
+        ? candidateError.statusCode
+        : 500;
     logger.error({ err, status: statusCode, stack: err.stack }, "Unhandled error");
     return res.status(statusCode).json({ message: "Internal server error" });
   });

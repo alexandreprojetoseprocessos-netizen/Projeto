@@ -8,12 +8,17 @@ import { supabaseAdmin } from "../lib/supabase";
 import { uploadAvatar } from "../services/storage";
 import {
   getDefaultModulePermissions,
+  hasModulePermission,
   normalizeModulePermissionsForRole
 } from "../services/modulePermissions";
+import { normalizeUuid } from "../utils/uuid";
 
 const router = Router();
 
 router.use(authMiddleware);
+
+const parseOrganizationId = (value: unknown) => normalizeUuid(value);
+const parseMembershipId = (value: unknown) => normalizeUuid(value);
 
 const getMembership = async (organizationId: string, userId: string) => {
   return prisma.organizationMembership.findFirst({
@@ -40,11 +45,14 @@ const canManageMembershipTarget = (requesterRole: MembershipRole, targetRole: Me
 router.get("/:organizationId/members", async (req, res) => {
   if (!req.user) return res.status(401).json({ message: "Authentication required" });
 
-  const { organizationId } = req.params;
-  if (!organizationId) return res.status(400).json({ message: "organizationId is required" });
+  const organizationId = parseOrganizationId(req.params.organizationId);
+  if (!organizationId) return res.status(400).json({ message: "organizationId is invalid" });
 
   const membership = await getMembership(organizationId, req.user.id);
   if (!membership) return res.status(403).json({ message: "Access denied" });
+  if (!hasModulePermission(membership, "team", "view")) {
+    return res.status(403).json({ message: "Você não tem permissão para visualizar a equipe." });
+  }
 
   const members = await listMembersForOrganization(organizationId);
   return res.json({ members });
@@ -53,11 +61,15 @@ router.get("/:organizationId/members", async (req, res) => {
 router.post("/:organizationId/members", async (req, res) => {
   if (!req.user) return res.status(401).json({ message: "Authentication required" });
 
-  const { organizationId } = req.params;
+  const organizationId = parseOrganizationId(req.params.organizationId);
   const { email, role } = req.body ?? {};
 
-  if (!organizationId) return res.status(400).json({ message: "organizationId is required" });
+  if (!organizationId) return res.status(400).json({ message: "organizationId is invalid" });
   if (!email || typeof email !== "string") {
+    return res.status(400).json({ message: "Email é obrigatório" });
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) {
     return res.status(400).json({ message: "Email é obrigatório" });
   }
 
@@ -71,12 +83,15 @@ router.post("/:organizationId/members", async (req, res) => {
   if (!canManageTeam(membership.role as any)) {
     return res.status(403).json({ message: "Você não tem permissão para gerenciar a equipe." });
   }
+  if (!hasModulePermission(membership, "team", "create")) {
+    return res.status(403).json({ message: "Você não tem permissão para convidar membros." });
+  }
   if (!canAssignMembershipRole(membership.role as MembershipRole, normalizedRole)) {
     return res.status(403).json({ message: "Seu papel atual não permite convidar este nível de acesso." });
   }
 
   try {
-    const created = await addMemberToOrganization(organizationId, email, normalizedRole, req.user);
+    const created = await addMemberToOrganization(organizationId, normalizedEmail, normalizedRole, req.user);
     return res.status(201).json({ member: created });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Não foi possível adicionar membro";
@@ -87,9 +102,10 @@ router.post("/:organizationId/members", async (req, res) => {
 router.patch("/:organizationId/members/:memberId", async (req, res) => {
   if (!req.user) return res.status(401).json({ message: "Authentication required" });
 
-  const { organizationId, memberId } = req.params;
+  const organizationId = parseOrganizationId(req.params.organizationId);
+  const memberId = parseMembershipId(req.params.memberId);
   if (!organizationId || !memberId) {
-    return res.status(400).json({ message: "organizationId e memberId são obrigatórios" });
+    return res.status(400).json({ message: "organizationId ou memberId inválido" });
   }
 
   const requesterMembership = await getMembership(organizationId, req.user.id);
@@ -107,6 +123,9 @@ router.patch("/:organizationId/members/:memberId", async (req, res) => {
   const canEdit = isSelf || canManageTeam(requesterMembership.role as any);
   if (!canEdit) {
     return res.status(403).json({ message: "Você não tem permissão para editar este perfil." });
+  }
+  if (!isSelf && !hasModulePermission(requesterMembership, "team", "edit")) {
+    return res.status(403).json({ message: "Você não tem permissão para editar membros." });
   }
   if (
     !isSelf &&
@@ -316,14 +335,18 @@ router.patch("/:organizationId/members/:memberId", async (req, res) => {
 router.delete("/:organizationId/members/:memberId", async (req, res) => {
   if (!req.user) return res.status(401).json({ message: "Authentication required" });
 
-  const { organizationId, memberId } = req.params;
+  const organizationId = parseOrganizationId(req.params.organizationId);
+  const memberId = parseMembershipId(req.params.memberId);
   if (!organizationId || !memberId) {
-    return res.status(400).json({ message: "organizationId e memberId são obrigatórios" });
+    return res.status(400).json({ message: "organizationId ou memberId inválido" });
   }
 
   const requesterMembership = await getMembership(organizationId, req.user.id);
   if (!requesterMembership) return res.status(403).json({ message: "Access denied" });
   if (!canManageTeam(requesterMembership.role as any)) {
+    return res.status(403).json({ message: "Você não tem permissão para remover membros." });
+  }
+  if (!hasModulePermission(requesterMembership, "team", "delete")) {
     return res.status(403).json({ message: "Você não tem permissão para remover membros." });
   }
 
