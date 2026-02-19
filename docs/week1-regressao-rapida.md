@@ -1,4 +1,4 @@
-# Checklist rapido de regressao - Semana 1
+﻿# Checklist rapido de regressao - Semana 1
 
 Objetivo: validar em ~5 minutos os ajustes de hardening, encoding e fluxo critico (Equipes, EAP e Orcamento).
 
@@ -75,12 +75,15 @@ Resultado esperado:
    2. `npm --prefix apps/front run build`
 2. Validar lint:
    1. `npm --prefix apps/front run lint`
+3. Rodar regressao automatizada (API-only):
+   1. `npm --workspace apps/front run test:week1:api`
 
 Resultado esperado:
 - Build API/Front sem erro.
 - Lint pode ter warnings antigos, mas sem erro bloqueante.
+- Regressao API finaliza com `RESULT: SUCCESS`.
 
-## 8. Critério de aceite da Semana 1
+## 8. Criterio de aceite da Semana 1
 
 Marcar como concluido quando todos os itens abaixo forem verdadeiros:
 
