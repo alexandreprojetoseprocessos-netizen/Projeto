@@ -16,9 +16,16 @@ type RequestOptions = {
   body?: unknown;
 };
 
+const apiBaseUrl = process.env.E2E_API_BASE_URL || "http://localhost:4000";
+
 const randomInt = (max: number) => Math.floor(Math.random() * max);
 
 const randomId = () => `${Date.now()}${randomInt(1000)}`;
+
+const resolveApiPath = (path: string) => {
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${apiBaseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+};
 
 const generateCpf = () => {
   const nums: number[] = [];
@@ -65,7 +72,7 @@ export const apiRequest = async <T = unknown>(
   if (organizationId) headers["X-Organization-Id"] = organizationId;
   if (typeof body !== "undefined") headers["Content-Type"] = "application/json";
 
-  const response = await request.fetch(path, {
+  const response = await request.fetch(resolveApiPath(path), {
     method,
     headers,
     data: typeof body !== "undefined" ? body : undefined
@@ -97,9 +104,13 @@ export const ensureOk = async <T = unknown>(
 
 export type AuthFixture = {
   token: string;
+  refreshToken: string;
   organizationId: string;
   userId: string;
   projectId: string;
+  corporateEmail: string;
+  personalEmail: string;
+  password: string;
 };
 
 export const createAuthFixture = async (request: APIRequestContext): Promise<AuthFixture> => {
@@ -110,7 +121,7 @@ export const createAuthFixture = async (request: APIRequestContext): Promise<Aut
   const orgName = `Org Week1 E2E ${id}`;
 
   const register = await ensureOk<{
-    session?: { access_token?: string };
+    session?: { access_token?: string; refresh_token?: string };
   }>(
     request,
     "/auth/register",
@@ -131,8 +142,12 @@ export const createAuthFixture = async (request: APIRequestContext): Promise<Aut
   );
 
   const token = register.body?.session?.access_token ?? "";
+  const refreshToken = register.body?.session?.refresh_token ?? "";
   if (!token) {
     throw new Error("No access token returned by /auth/register");
+  }
+  if (!refreshToken) {
+    throw new Error("No refresh token returned by /auth/register");
   }
 
   const me = await ensureOk<{
@@ -150,6 +165,21 @@ export const createAuthFixture = async (request: APIRequestContext): Promise<Aut
   if (!organizationId || !userId) {
     throw new Error(`Invalid /me payload: ${JSON.stringify(me.body)}`);
   }
+
+  await ensureOk(
+    request,
+    "/subscriptions/checkout",
+    {
+      method: "POST",
+      token,
+      body: {
+        planCode: "ENTERPRISE",
+        paymentMethod: "card",
+        billingCycle: "MONTHLY"
+      }
+    },
+    "Activate subscription for E2E fixture"
+  );
 
   const project = await ensureOk<{
     project?: { id?: string };
@@ -173,7 +203,7 @@ export const createAuthFixture = async (request: APIRequestContext): Promise<Aut
     throw new Error(`Project not created: ${JSON.stringify(project.body)}`);
   }
 
-  return { token, organizationId, userId, projectId };
+  return { token, refreshToken, organizationId, userId, projectId, corporateEmail, personalEmail, password };
 };
 
 export const flattenNodes = (nodes: unknown[]): Array<Record<string, any>> => {

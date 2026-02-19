@@ -1,6 +1,6 @@
 import { defineConfig } from "@playwright/test";
 
-const baseURL = process.env.E2E_API_BASE_URL || "http://localhost:4000";
+const webBaseURL = process.env.E2E_WEB_BASE_URL || "http://localhost:5173";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -11,6 +11,6 @@ export default defineConfig({
   timeout: 90_000,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : [["list"]],
   use: {
-    baseURL
+    baseURL: webBaseURL
   }
 });
