@@ -16,7 +16,7 @@ type RequestOptions = {
   body?: unknown;
 };
 
-const apiBaseUrl = process.env.E2E_API_BASE_URL || "http://localhost:4000";
+const apiBaseUrl = process.env.E2E_API_BASE_URL || "http://127.0.0.1:4000";
 
 const randomInt = (max: number) => Math.floor(Math.random() * max);
 
@@ -113,12 +113,31 @@ export type AuthFixture = {
   password: string;
 };
 
-export const createAuthFixture = async (request: APIRequestContext): Promise<AuthFixture> => {
+export type CreateAuthFixtureOptions = {
+  orgNamePrefix?: string;
+  projectNamePrefix?: string;
+  projectClientName?: string;
+  teamMembers?: string[];
+};
+
+export const createAuthFixture = async (
+  request: APIRequestContext,
+  options: CreateAuthFixtureOptions = {}
+): Promise<AuthFixture> => {
+  const {
+    orgNamePrefix = "Org Week1 E2E",
+    projectNamePrefix = "Projeto Week1 E2E",
+    projectClientName = "Cliente Week1 E2E",
+    teamMembers = []
+  } = options;
   const id = randomId();
   const corporateEmail = `week1.e2e.${id}@example.com`;
   const personalEmail = `week1.e2e.personal.${id}@example.com`;
   const password = "Semana1Teste123";
-  const orgName = `Org Week1 E2E ${id}`;
+  const orgName = `${orgNamePrefix} ${id}`;
+  const normalizedTeamMembers = teamMembers
+    .map((email) => email.trim().toLowerCase())
+    .filter((email) => Boolean(email));
 
   const register = await ensureOk<{
     session?: { access_token?: string; refresh_token?: string };
@@ -191,8 +210,9 @@ export const createAuthFixture = async (request: APIRequestContext): Promise<Aut
       token,
       organizationId,
       body: {
-        name: `Projeto Week1 E2E ${id}`,
-        clientName: "Cliente Week1 E2E"
+        name: `${projectNamePrefix} ${id}`,
+        clientName: projectClientName,
+        ...(normalizedTeamMembers.length ? { teamMembers: normalizedTeamMembers } : {})
       }
     },
     "Create project"

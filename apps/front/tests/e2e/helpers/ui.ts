@@ -1,18 +1,34 @@
 import { expect, type Page } from "@playwright/test";
 import type { AuthFixture } from "./api";
 
-export const applyAuthBootstrapStorage = async (page: Page, fixture: AuthFixture) => {
+type AuthBootstrapOptions = {
+  organizationId?: string;
+  projectId?: string;
+};
+
+export const applyAuthBootstrapStorage = async (
+  page: Page,
+  fixture: AuthFixture,
+  options: AuthBootstrapOptions = {}
+) => {
+  const organizationId = options.organizationId ?? fixture.organizationId;
+  const projectId = options.projectId ?? fixture.projectId;
+
   await page.addInitScript(
     ({ organizationId, projectId }) => {
       window.localStorage.setItem("gp:selectedOrganizationId", organizationId);
       window.localStorage.setItem("gp:selectedProjectId", projectId);
     },
-    { organizationId: fixture.organizationId, projectId: fixture.projectId }
+    { organizationId, projectId }
   );
 };
 
-export const loginWithFixture = async (page: Page, fixture: AuthFixture) => {
-  await applyAuthBootstrapStorage(page, fixture);
+export const loginWithFixture = async (
+  page: Page,
+  fixture: AuthFixture,
+  options: AuthBootstrapOptions = {}
+) => {
+  await applyAuthBootstrapStorage(page, fixture, options);
   await page.goto("/dashboard");
 
   const setSessionResult = await page.evaluate(

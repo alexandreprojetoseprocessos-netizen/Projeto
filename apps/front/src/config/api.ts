@@ -7,7 +7,7 @@ const resolvedBaseUrl = (() => {
     return envBaseUrl.trim();
   }
   if (import.meta.env.DEV) {
-    return "http://localhost:4000";
+    return "http://127.0.0.1:4000";
   }
   throw new Error("VITE_API_BASE_URL is required in production.");
 })();
