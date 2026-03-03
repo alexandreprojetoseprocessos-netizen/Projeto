@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { apiUrl } from "../config/api";
-import { PauseCircle, Trash2, X } from "lucide-react";
+import { apiRequest, getApiErrorMessage } from "../config/api";
+import { X } from "lucide-react";
 
 type OrgStatus = "DEACTIVATED" | "SOFT_DELETED";
 
@@ -79,19 +79,14 @@ const OrgStatusModal = ({ type, open, onClose, onReload, limitMax }: OrgStatusMo
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(apiUrl(`/organizations?status=${type}`), {
+      const body = await apiRequest<{ organizations?: OrgItem[] }>(`/organizations?status=${type}`, {
         headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
+          Authorization: `Bearer ${token}`
         }
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(body?.message || "Erro ao carregar organizações");
-      }
-      setItems((body as any).organizations ?? []);
-    } catch (err: any) {
-      setError(err?.message || "Erro ao carregar organizações");
+      setItems(Array.isArray(body.organizations) ? body.organizations : []);
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Erro ao carregar organizações"));
     } finally {
       setLoading(false);
     }
@@ -108,26 +103,22 @@ const OrgStatusModal = ({ type, open, onClose, onReload, limitMax }: OrgStatusMo
     setActionLoadingId(id);
     setActionError(null);
     try {
-      const response = await fetch(apiUrl(`/organizations/${id}/restore`), {
+      await apiRequest(`/organizations/${id}/restore`, {
         method: "PATCH",
         headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
+          Authorization: `Bearer ${token}`
         }
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        if (response.status === 409 && body?.code === "ORG_LIMIT_REACHED") {
-          setActionError(null);
-          setLimitModalOpen(true);
-          return;
-        }
-        throw new Error(body?.message || "Erro ao restaurar organização");
-      }
       onReload?.();
       await fetchItems();
-    } catch (err: any) {
-      setActionError(err?.message || "Erro ao restaurar organização");
+    } catch (err) {
+      const apiError = err as Error & { status?: number; code?: string };
+      if (apiError.status === 409 && apiError.code === "ORG_LIMIT_REACHED") {
+        setActionError(null);
+        setLimitModalOpen(true);
+        return;
+      }
+      setActionError(getApiErrorMessage(apiError, "Erro ao restaurar organização"));
     } finally {
       setActionLoadingId(null);
     }
@@ -138,21 +129,16 @@ const OrgStatusModal = ({ type, open, onClose, onReload, limitMax }: OrgStatusMo
     setActionLoadingId(id);
     setActionError(null);
     try {
-      const response = await fetch(apiUrl(`/organizations/${id}/trash`), {
+      await apiRequest(`/organizations/${id}/trash`, {
         method: "PATCH",
         headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
+          Authorization: `Bearer ${token}`
         }
       });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body?.message || "Erro ao enviar para lixeira");
-      }
       onReload?.();
       await fetchItems();
-    } catch (err: any) {
-      setActionError(err?.message || "Erro ao enviar para lixeira");
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Erro ao enviar para lixeira"));
     } finally {
       setActionLoadingId(null);
     }
@@ -164,20 +150,16 @@ const OrgStatusModal = ({ type, open, onClose, onReload, limitMax }: OrgStatusMo
     setActionLoadingId(id);
     setActionError(null);
     try {
-      const response = await fetch(apiUrl(`/organizations/${id}`), {
+      await apiRequest(`/organizations/${id}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body?.message || "Erro ao excluir permanentemente");
-      }
       onReload?.();
       await fetchItems();
-    } catch (err: any) {
-      setActionError(err?.message || "Erro ao excluir permanentemente");
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Erro ao excluir permanentemente"));
     } finally {
       setActionLoadingId(null);
     }
@@ -262,3 +244,5 @@ const OrgStatusModal = ({ type, open, onClose, onReload, limitMax }: OrgStatusMo
 };
 
 export default OrgStatusModal;
+
+

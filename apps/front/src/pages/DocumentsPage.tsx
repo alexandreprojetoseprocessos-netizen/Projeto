@@ -13,7 +13,7 @@ import {
   Upload
 } from "lucide-react";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
-import { apiFetch, getNetworkErrorMessage, parseApiError } from "../config/api";
+import { apiRequest, getApiErrorMessage } from "../config/api";
 
 type DocumentRow = {
   id: string;
@@ -32,6 +32,66 @@ type FolderItem = {
   id: string;
   name: string;
   tone: "blue" | "green" | "orange" | "purple" | "teal" | "rose" | "indigo" | "amber";
+};
+
+type AttachmentLike = {
+  id?: string;
+  fileId?: string;
+  fileName?: string;
+  name?: string;
+  projectName?: string;
+  project?: string;
+  projectId?: string;
+  project_id?: string;
+  uploadedBy?: {
+    fullName?: string;
+    email?: string;
+  } | null;
+  authorName?: string;
+  createdBy?: string;
+  fileSize?: number;
+  size?: number;
+  updatedAt?: string;
+  createdAt?: string;
+  fileUrl?: string;
+  url?: string;
+  downloadUrl?: string;
+  category?: string | null;
+};
+
+const DOWNLOAD_TIMEOUT_MS = 20000;
+
+const resolveSafeDocumentUrl = (value?: string | null): string | null => {
+  if (!value || typeof value !== "string") return null;
+  try {
+    const parsed = new URL(value, window.location.origin);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+};
+
+const fetchDocumentBlob = async (url: string, timeoutMs = DOWNLOAD_TIMEOUT_MS) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { method: "GET", signal: controller.signal, credentials: "omit" });
+    if (!response.ok) {
+      throw new Error(`Falha ao baixar o arquivo (status ${response.status}).`);
+    }
+    return await response.blob();
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Download demorou para responder. Tente novamente.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 };
 
 const formatFileSize = (value?: number | null) => {
@@ -66,7 +126,7 @@ export const DocumentsPage = () => {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [localAttachments, setLocalAttachments] = useState<any[]>([]);
+  const [localAttachments, setLocalAttachments] = useState<AttachmentLike[]>([]);
   const defaultFolders: FolderItem[] = [
     {
       id: "folder-propostas",
@@ -118,7 +178,7 @@ export const DocumentsPage = () => {
   }, [attachments]);
 
   const rows = useMemo(() => {
-    const mappedAttachments = (localAttachments ?? []).map((doc: any) => ({
+    const mappedAttachments = (localAttachments ?? []).map((doc: AttachmentLike) => ({
       id: doc.id ?? doc.fileId ?? doc.fileName,
       name: doc.fileName ?? doc.name ?? "Documento",
       project: doc.projectName ?? doc.project ?? currentProjectName,
@@ -180,10 +240,9 @@ export const DocumentsPage = () => {
 
     try {
       const base64 = await fileToBase64(file);
-      const response = await apiFetch(`/projects/${selectedProjectId}/attachments`, {
+      const body = await apiRequest<{ attachment?: unknown }>(`/projects/${selectedProjectId}/attachments`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           ...(selectedOrganizationId ? { "X-Organization-Id": selectedOrganizationId } : {})
         },
         body: JSON.stringify({
@@ -193,19 +252,11 @@ export const DocumentsPage = () => {
           category: folderName
         })
       });
-
-      if (!response.ok) {
-        const apiError = await parseApiError(response, "/attachments");
-        throw new Error(apiError.message);
-      }
-
-      const body = await response.json();
       const attachment = body?.attachment ?? body;
       setLocalAttachments((prev) => [attachment, ...prev]);
       setShowImport(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : getNetworkErrorMessage(error);
-      setUploadError(message);
+      setUploadError(getApiErrorMessage(error, "Falha ao enviar arquivo."));
     } finally {
       setUploading(false);
     }
@@ -214,13 +265,14 @@ export const DocumentsPage = () => {
   };
 
   const handleDownload = async (row: DocumentRow) => {
-    if (!row.url) return;
+    const safeUrl = resolveSafeDocumentUrl(row.url);
+    if (!safeUrl) {
+      setUploadError("Link do documento invalido.");
+      return;
+    }
     try {
-      const response = await fetch(row.url);
-      if (!response.ok) {
-        throw new Error("Falha ao baixar o arquivo");
-      }
-      const blob = await response.blob();
+      setUploadError(null);
+      const blob = await fetchDocumentBlob(safeUrl);
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = objectUrl;
@@ -230,14 +282,17 @@ export const DocumentsPage = () => {
       document.body.removeChild(link);
       URL.revokeObjectURL(objectUrl);
     } catch (error) {
-      const message = error instanceof Error ? error.message : getNetworkErrorMessage(error);
-      setUploadError(message);
+      setUploadError(getApiErrorMessage(error, "Falha ao baixar arquivo."));
     }
   };
 
   const handlePreview = (row: DocumentRow) => {
-    if (!row.url) return;
-    window.open(row.url, "_blank", "noopener,noreferrer");
+    const safeUrl = resolveSafeDocumentUrl(row.url);
+    if (!safeUrl) {
+      setUploadError("Link do documento invalido.");
+      return;
+    }
+    window.open(safeUrl, "_blank", "noopener,noreferrer");
   };
 
   const handleDelete = async (row: DocumentRow) => {
@@ -245,20 +300,15 @@ export const DocumentsPage = () => {
     const targetProjectId = selectedProjectId === "all" ? row.projectId : selectedProjectId;
     if (!targetProjectId) return;
     try {
-      const response = await apiFetch(`/projects/${targetProjectId}/attachments/${row.id}`, {
+      await apiRequest(`/projects/${targetProjectId}/attachments/${row.id}`, {
         method: "DELETE",
         headers: {
           ...(selectedOrganizationId ? { "X-Organization-Id": selectedOrganizationId } : {})
         }
       });
-      if (!response.ok) {
-        const apiError = await parseApiError(response, "/attachments/delete");
-        throw new Error(apiError.message);
-      }
       setLocalAttachments((prev) => prev.filter((item) => item.id !== row.id));
     } catch (error) {
-      const message = error instanceof Error ? error.message : getNetworkErrorMessage(error);
-      setUploadError(message);
+      setUploadError(getApiErrorMessage(error, "Falha ao excluir arquivo."));
     }
   };
 

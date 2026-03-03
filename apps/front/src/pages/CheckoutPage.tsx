@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { apiUrl, getNetworkErrorMessage } from "../config/api";
+import { apiRequest, getApiErrorMessage } from "../config/api";
 import { AlertTriangle, CalendarClock, CheckCircle2, CreditCard, FileText, RefreshCw } from "lucide-react";
 import {
   ANNUAL_DISCOUNT_LABEL,
@@ -23,7 +23,18 @@ import {
 } from "../services/billingClient";
 
 type CheckoutPageProps = {
-  subscription?: any | null;
+  subscription?: {
+    status?: string | null;
+    paymentMethod?: string | null;
+    billingCycle?: string | null;
+    currentPeriodEnd?: string | null;
+    expiresAt?: string | null;
+    startedAt?: string | null;
+    product?: {
+      name?: string | null;
+      code?: string | null;
+    } | null;
+  } | null;
   subscriptionError?: string | null;
   onSubscriptionActivated?: () => Promise<void> | void;
 };
@@ -98,6 +109,25 @@ const paymentMethodLabels: Record<string, string> = {
   boleto: "Boleto"
 };
 
+type MercadoPagoCardTokenRequest = {
+  cardNumber: string;
+  cardholderName: string;
+  cardExpirationMonth: string;
+  cardExpirationYear: string;
+  securityCode: string;
+  identificationType: string;
+  identificationNumber: string;
+};
+
+type MercadoPagoCardTokenResponse = {
+  id?: string;
+  error?: { message?: string | null } | null;
+};
+
+type MercadoPagoClient = {
+  createCardToken: (payload: MercadoPagoCardTokenRequest) => Promise<MercadoPagoCardTokenResponse>;
+};
+
 export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionActivated }: CheckoutPageProps) => {
   const navigate = useNavigate();
   const { token, user, signOut } = useAuth();
@@ -137,7 +167,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
   const [installments, setInstallments] = useState(1);
   const [installmentOptions, setInstallmentOptions] = useState<{ value: number; label: string }[]>([]);
 
-  const mpRef = useRef<any | null>(null);
+  const mpRef = useRef<MercadoPagoClient | null>(null);
   const [mpReady, setMpReady] = useState(false);
   const [mpError, setMpError] = useState<string | null>(null);
   const [manageLoading, setManageLoading] = useState(false);
@@ -160,7 +190,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
       })
       .catch((err) => {
         if (!mounted) return;
-        setMpError(err instanceof Error ? err.message : "Falha ao carregar MercadoPago.js.");
+        setMpError(getApiErrorMessage(err, "Falha ao carregar MercadoPago.js."));
       });
 
     return () => {
@@ -216,13 +246,10 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
   const nextBillingDate = formatDatePtBr(subscription?.currentPeriodEnd ?? subscription?.expiresAt ?? null);
   const startedAtLabel = formatDatePtBr(subscription?.startedAt ?? null);
 
-  const resolveCheckoutErrorMessage = useCallback((error: unknown) => {
-    if (error instanceof DOMException || error instanceof TypeError) {
-      return getNetworkErrorMessage(error);
-    }
-    if (error instanceof Error) return error.message;
-    return "Falha ao iniciar pagamento.";
-  }, []);
+  const resolveCheckoutErrorMessage = useCallback(
+    (error: unknown) => getApiErrorMessage(error, "Falha ao iniciar pagamento."),
+    []
+  );
 
   const handleCancelAndReopenCheckout = async () => {
     if (!token) {
@@ -239,17 +266,12 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
     setManageError(null);
 
     try {
-      const response = await fetch(apiUrl("/subscriptions/cancel"), {
+      await apiRequest("/subscriptions/cancel", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         }
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(body?.message ?? "Nao foi possivel cancelar a assinatura atual.");
-      }
       if (typeof window !== "undefined") {
         window.sessionStorage.setItem("gp:checkout_reopen_after_cancel", "1");
       }
@@ -375,7 +397,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
 
     loadInstallments().catch((err) => {
       if (!active) return;
-      setCardError(err instanceof Error ? err.message : "Erro ao calcular parcelas.");
+      setCardError(getApiErrorMessage(err, "Erro ao calcular parcelas."));
     });
 
     return () => {

@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { Building2, Calendar, Check, Crown, FolderKanban, HardDrive, Sparkles, Users } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
 import { canManageBilling, type OrgRole } from "../components/permissions";
-import { apiUrl } from "../config/api";
+import { apiRequest, getApiErrorMessage } from "../config/api";
 import { PLAN_DEFINITIONS, formatBillingPrice, formatMonthlyPrice, getPlanDefinition } from "../config/plans";
 
 type Subscription = {
@@ -81,16 +81,12 @@ const PlanPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(apiUrl("/subscriptions/me"), {
+      const body = await apiRequest<{ subscription?: Subscription | null }>("/subscriptions/me", {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(body?.message ?? "Falha ao carregar assinatura");
-      }
       setSubscription(body.subscription ?? null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao carregar assinatura");
+      setError(getApiErrorMessage(err, "Falha ao carregar assinatura"));
       setSubscription(null);
     } finally {
       setLoading(false);
@@ -100,14 +96,15 @@ const PlanPage = () => {
   const loadLimits = async () => {
     if (!token) return;
     try {
-      const response = await fetch(apiUrl("/me"), {
+      const body = await apiRequest<{
+        organizationLimits?: LimitsInfo["organizationLimits"];
+        projectLimits?: LimitsInfo["projectLimits"];
+      }>("/me", {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) return;
       setLimits({
-        organizationLimits: body?.organizationLimits,
-        projectLimits: body?.projectLimits
+        organizationLimits: body.organizationLimits,
+        projectLimits: body.projectLimits
       });
     } catch {
       setLimits(null);
@@ -124,21 +121,16 @@ const PlanPage = () => {
     setActionError(null);
     setChangingPlan(true);
     try {
-      const response = await fetch(apiUrl("/subscriptions/change-plan"), {
+      const body = await apiRequest<{ subscription?: Subscription | null }>("/subscriptions/change-plan", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({ planCode })
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(body?.message ?? "Não foi possível alterar o plano");
-      }
       setSubscription(body.subscription ?? null);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Não foi possível alterar o plano");
+      setActionError(getApiErrorMessage(err, "Não foi possível alterar o plano"));
     } finally {
       setChangingPlan(false);
     }
@@ -149,17 +141,13 @@ const PlanPage = () => {
     setActionError(null);
     setCanceling(true);
     try {
-      const response = await fetch(apiUrl("/subscriptions/cancel"), {
+      const body = await apiRequest<{ subscription?: Subscription | null }>("/subscriptions/cancel", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(body?.message ?? "Não foi possível cancelar a assinatura");
-      }
       setSubscription(body.subscription ?? null);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Não foi possível cancelar a assinatura");
+      setActionError(getApiErrorMessage(err, "Não foi possível cancelar a assinatura"));
     } finally {
       setCanceling(false);
     }
@@ -393,3 +381,5 @@ const PlanPage = () => {
 };
 
 export default PlanPage;
+
+

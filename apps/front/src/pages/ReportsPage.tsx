@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
 import { normalizeStatus } from "../utils/status";
 import { useAuth } from "../contexts/AuthContext";
-import { apiUrl } from "../config/api";
+import { apiRequest, getApiErrorMessage } from "../config/api";
 
 type ProjectTone = "neutral" | "info" | "warning" | "danger" | "success";
 
@@ -48,6 +48,15 @@ type PanelState = {
   nodes: PanelNode[];
   loading: boolean;
   error: string | null;
+};
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const normalizeOrganizationId = (value?: string | null): string | null => {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized || normalized.toLowerCase() === "all") return null;
+  if (!UUID_REGEX.test(normalized)) return null;
+  return normalized;
 };
 
 const projectStatusMap: Record<string, { label: string; tone: ProjectTone }> = {
@@ -271,8 +280,8 @@ const ReportsPage = () => {
   const [scopeLevel, setScopeLevel] = useState<LevelFilter>("1-2");
   const [scopeSearch, setScopeSearch] = useState("");
   const [panelData, setPanelData] = useState<Record<string, PanelState>>({});
-
-  const selectedProjectName = "Todos os projetos";
+  const panelDataRef = useRef<Record<string, PanelState>>({});
+  const panelCacheKeyRef = useRef("");
 
   const groupedProjects = useMemo(() => {
     const normalized = portfolio as ProjectSummary[];
@@ -303,55 +312,74 @@ const ReportsPage = () => {
       ? `Vários projetos (${groupedProjects.inProgress.length})`
       : "Nenhum projeto";
 
+  const inProgressProjectIdsKey = useMemo(
+    () =>
+      groupedProjects.inProgress
+        .map((project) => project.projectId)
+        .filter((projectId): projectId is string => typeof projectId === "string" && UUID_REGEX.test(projectId.trim()))
+        .map((projectId) => projectId.trim())
+        .join(","),
+    [groupedProjects.inProgress]
+  );
+
+  useEffect(() => {
+    panelDataRef.current = panelData;
+  }, [panelData]);
+
+  useEffect(() => {
+    const nextCacheKey = `${selectedOrganizationId ?? "none"}::${inProgressProjectIdsKey}`;
+    if (panelCacheKeyRef.current !== nextCacheKey) {
+      panelCacheKeyRef.current = nextCacheKey;
+      setPanelData({});
+    }
+  }, [inProgressProjectIdsKey, selectedOrganizationId]);
 
   useEffect(() => {
     const loadPanels = async () => {
-      const targets = groupedProjects.inProgress.map((project) => project.projectId);
+      const targets = inProgressProjectIdsKey ? inProgressProjectIdsKey.split(",").filter(Boolean) : [];
       if (!targets.length) return;
-      await Promise.all(
+      if (!token) return;
+      const organizationId = normalizeOrganizationId(selectedOrganizationId);
+
+      await Promise.allSettled(
         targets.map(async (projectId) => {
-          const existing = panelData[projectId];
+          const existing = panelDataRef.current[projectId];
           if (existing && (existing.loading || existing.nodes.length)) return;
           setPanelData((prev) => ({
             ...prev,
             [projectId]: { nodes: prev[projectId]?.nodes ?? [], loading: true, error: null }
           }));
           try {
-            const headers: Record<string, string> = {};
-            if (token) headers.Authorization = `Bearer ${token}`;
-            if (selectedOrganizationId) headers["x-organization-id"] = selectedOrganizationId;
-            const response = await fetch(apiUrl(`/projects/${projectId}/wbs`), {
-              headers,
-              credentials: "include"
+            const headers: Record<string, string> = {
+              Authorization: `Bearer ${token}`
+            };
+            if (organizationId) headers["X-Organization-Id"] = organizationId;
+            const data = await apiRequest<{ nodes?: unknown[] }>(`/wbs?projectId=${encodeURIComponent(projectId)}`, {
+              headers
             });
-            if (!response.ok) {
-              const text = await response.text();
-              throw new Error(text || "Erro ao carregar EAP");
-            }
-            const data = await response.json();
             setPanelData((prev) => ({
               ...prev,
               [projectId]: {
-                nodes: Array.isArray(data?.nodes) ? data.nodes : [],
+                nodes: Array.isArray(data?.nodes) ? (data.nodes as PanelNode[]) : [],
                 loading: false,
                 error: null
               }
             }));
-          } catch (error: any) {
+          } catch (error) {
             setPanelData((prev) => ({
               ...prev,
               [projectId]: {
                 nodes: prev[projectId]?.nodes ?? [],
                 loading: false,
-                error: error?.message ?? "Erro ao carregar EAP"
+                error: getApiErrorMessage(error, "Erro ao carregar EAP")
               }
             }));
           }
         })
       );
     };
-    loadPanels();
-  }, [groupedProjects.inProgress, panelData, selectedOrganizationId, token]);
+    void loadPanels();
+  }, [inProgressProjectIdsKey, selectedOrganizationId, token]);
 
   const maxLevel = Math.max(2, ...groupedProjects.inProgress.map((project) => {
     const state = panelData[project.projectId];

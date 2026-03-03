@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
-import { apiUrl } from "../config/api";
+import { apiRequest, getApiErrorMessage } from "../config/api";
 
 export type ProjectTrashModalProps = {
   open: boolean;
@@ -14,6 +14,14 @@ type ProjectTrashItem = {
   id: string;
   name: string;
   archivedAt?: string | null;
+};
+
+type ProjectTrashListResponse = {
+  projects?: Array<{
+    id: string;
+    name: string;
+    archivedAt?: string | null;
+  }>;
 };
 
 const getDaysLeft = (archivedAt?: string | null) => {
@@ -37,27 +45,22 @@ const ProjectTrashModal = ({ open, onClose, onReload, organizationId }: ProjectT
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(apiUrl("/projects?status=ARCHIVED"), {
+      const body = await apiRequest<ProjectTrashListResponse>("/projects?status=ARCHIVED", {
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
           "X-Organization-Id": organizationId
         }
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(body?.message || "Erro ao carregar projetos arquivados");
-      }
-      const projects = (body as any).projects ?? [];
+      const projects = Array.isArray(body.projects) ? body.projects : [];
       setItems(
-        projects.map((project: any) => ({
+        projects.map((project) => ({
           id: project.id,
           name: project.name,
           archivedAt: project.archivedAt ?? null
         }))
       );
-    } catch (err: any) {
-      setError(err?.message || "Erro ao carregar projetos arquivados");
+    } catch (error) {
+      setError(getApiErrorMessage(error, "Erro ao carregar projetos arquivados"));
     } finally {
       setLoading(false);
     }
@@ -74,22 +77,17 @@ const ProjectTrashModal = ({ open, onClose, onReload, organizationId }: ProjectT
     setActionLoadingId(id);
     setActionError(null);
     try {
-      const response = await fetch(apiUrl(`/projects/${id}/restore`), {
+      await apiRequest(`/projects/${id}/restore`, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
           "X-Organization-Id": organizationId
         }
       });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(body?.message || "Erro ao restaurar projeto");
-      }
       onReload?.();
       await fetchItems();
-    } catch (err: any) {
-      setActionError(err?.message || "Erro ao restaurar projeto");
+    } catch (error) {
+      setActionError(getApiErrorMessage(error, "Erro ao restaurar projeto"));
     } finally {
       setActionLoadingId(null);
     }
@@ -101,22 +99,17 @@ const ProjectTrashModal = ({ open, onClose, onReload, organizationId }: ProjectT
     setActionLoadingId(id);
     setActionError(null);
     try {
-      const response = await fetch(apiUrl(`/projects/${id}`), {
+      await apiRequest(`/projects/${id}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
           "X-Organization-Id": organizationId
         }
       });
-      if (!response.ok && response.status !== 204) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body?.message || "Erro ao excluir permanentemente");
-      }
       onReload?.();
       await fetchItems();
-    } catch (err: any) {
-      setActionError(err?.message || "Erro ao excluir permanentemente");
+    } catch (error) {
+      setActionError(getApiErrorMessage(error, "Erro ao excluir permanentemente"));
     } finally {
       setActionLoadingId(null);
     }
