@@ -1,12 +1,13 @@
 ﻿import { Router } from "express";
 import crypto from "node:crypto";
 import { prisma } from "@gestao/database";
-import { InviteStatus, MembershipRole } from "@prisma/client";
+import { InviteStatus, MembershipRole, Prisma } from "@prisma/client";
 import { authMiddleware } from "../middleware/auth";
 import { attachOrgMembership, requireCanManageOrgSettings } from "../middleware/organization";
 import { getDefaultModulePermissions } from "../services/modulePermissions";
 
 export const invitesRouter = Router();
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 invitesRouter.use(authMiddleware);
 
@@ -21,10 +22,14 @@ invitesRouter.post(
 
     const { email, role } = req.body ?? {};
     if (!email || typeof email !== "string") {
-      return res.status(400).json({ message: "E-mail do convite Ã© obrigatÃ³rio." });
+      return res.status(400).json({ message: "E-mail do convite é obrigatório." });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      return res.status(400).json({ message: "E-mail do convite é inválido." });
+    }
+
     const inviteRole =
       typeof role === "string" && Object.values(MembershipRole).includes(role as MembershipRole)
         ? (role as MembershipRole)
@@ -34,7 +39,10 @@ invitesRouter.post(
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
-    const organizationId = (req as any).organizationId as string;
+    const organizationId = req.organizationId;
+    if (!organizationId) {
+      return res.status(400).json({ message: "Organização não informada." });
+    }
 
     const invite = await prisma.invite.create({
       data: {
@@ -66,12 +74,14 @@ invitesRouter.post("/invites/accept", async (req, res) => {
   }
 
   const { token } = req.body ?? {};
-  if (!token || typeof token !== "string") {
-    return res.status(400).json({ message: "Token do convite Ã© obrigatÃ³rio." });
+  if (!token || typeof token !== "string" || !token.trim()) {
+    return res.status(400).json({ message: "Token do convite é obrigatório." });
   }
 
+  const normalizedToken = token.trim();
+
   const invite = await prisma.invite.findUnique({
-    where: { token },
+    where: { token: normalizedToken },
     include: { organization: true }
   });
 
@@ -82,7 +92,12 @@ invitesRouter.post("/invites/accept", async (req, res) => {
         data: { status: InviteStatus.EXPIRED }
       });
     }
-    return res.status(400).json({ message: "Convite invÃ¡lido ou expirado." });
+    return res.status(400).json({ message: "Convite inválido ou expirado." });
+  }
+
+  const requesterEmail = req.user.email?.trim().toLowerCase();
+  if (requesterEmail && invite.email.trim().toLowerCase() !== requesterEmail) {
+    return res.status(403).json({ message: "Este convite foi enviado para outro e-mail." });
   }
 
   await prisma.organizationMembership.upsert({
@@ -95,13 +110,13 @@ invitesRouter.post("/invites/accept", async (req, res) => {
     update: {
       role: invite.role,
       modulePermissions: getDefaultModulePermissions(invite.role)
-    } as any,
+    } as Prisma.OrganizationMembershipUncheckedUpdateInput,
     create: {
       organizationId: invite.organizationId,
       userId: req.user.id,
       role: invite.role,
       modulePermissions: getDefaultModulePermissions(invite.role)
-    } as any
+    } as Prisma.OrganizationMembershipUncheckedCreateInput
   });
 
   await prisma.invite.update({
@@ -120,4 +135,3 @@ invitesRouter.post("/invites/accept", async (req, res) => {
     }
   });
 });
-

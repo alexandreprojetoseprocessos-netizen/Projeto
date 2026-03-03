@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import type { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -92,15 +92,15 @@ const resolveOrganizationName = (fullName: string, corporateEmail: string) => {
   const base = domainPart.split(".")[0] ?? "";
   const cleaned = base.replace(/[^a-zA-Z0-9]+/g, " ").trim();
   if (cleaned) {
-    return `OrganizaÃ§Ã£o ${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}`;
+    return `Organização ${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}`;
   }
 
   const firstName = fullName.trim().split(/\s+/)[0];
   if (firstName) {
-    return `OrganizaÃ§Ã£o ${firstName}`;
+    return `Organização ${firstName}`;
   }
 
-  return "Minha organizaÃ§Ã£o";
+  return "Minha organização";
 };
 
 const resolveOrganizationDomain = (corporateEmail: string) => {
@@ -478,5 +478,3 @@ authRouter.get("/login", (_req: Request, res: Response) => {
     requestId
   });
 });
-
-
