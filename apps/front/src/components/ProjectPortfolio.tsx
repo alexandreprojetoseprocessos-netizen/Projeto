@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   AlertTriangle,
@@ -600,14 +600,16 @@ export const ProjectPortfolio = ({
                             >
                               Entrar
                             </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="project-card-menu-item"
-                              onClick={() => handleEditProject(project)}
-                            >
-                              Editar
-                            </button>
+                            {onEditProject ? (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="project-card-menu-item"
+                                onClick={() => handleEditProject(project)}
+                              >
+                                Editar
+                              </button>
+                            ) : null}
                             {onTrashProject && (
                               <button
                                 type="button"

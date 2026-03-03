@@ -41,7 +41,7 @@ export const KANBAN_STATUS_ORDER: TaskStatus[] = [
   "DONE",
 ];
 
-type Priority = "LOW" | "MEDIUM" | "HIGH" | (string & {});
+type Priority = string;
 
 export type KanbanTask = {
   id: string;
@@ -97,9 +97,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onCreate,
   onTaskClick,
   onTaskTitleChange,
-  onTaskColumnChange,
-  newTaskTitle: _newTaskTitle,
-  newTaskColumn: _newTaskColumn,
+  onTaskColumnChange
 }) => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createStatus, setCreateStatus] = useState<TaskStatus | null>(null);

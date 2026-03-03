@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   /* Paleta oficial G&P (logo azul escuro) */
   --primary: #0B2F4A;
   --primary-dark: #082235;
@@ -12467,6 +12467,15 @@ button[type="submit"]:hover {
   align-items: flex-start;
 }
 
+.team-modal-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+
 .team-modal-avatar-wrap {
   display: flex;
   align-items: flex-start;
@@ -14203,6 +14212,18 @@ button[type="submit"]:hover {
   .diagram-tree {
     min-width: 560px;
   }
+}
+
+.module-access-block {
+  min-height: calc(100vh - 220px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.module-access-block .empty-state-card {
+  max-width: 560px;
+  width: 100%;
 }
 
 
