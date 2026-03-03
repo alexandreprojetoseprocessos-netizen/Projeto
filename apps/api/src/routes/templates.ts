@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@gestao/database";
 import { authMiddleware } from "../middleware/auth";
 import { organizationMiddleware } from "../middleware/organization";
+import { ensureModulePermission } from "../middleware/modulePermission";
 import { logger } from "../config/logger";
 import { writeAuditLog } from "../services/audit";
 
@@ -14,6 +15,9 @@ templatesRouter.use(organizationMiddleware);
 templatesRouter.get("/", async (req, res) => {
   if (!req.organization) {
     return res.status(401).json({ message: "Authentication required" });
+  }
+  if (!ensureModulePermission(req, res, "projects", "view", "Você não tem permissão para visualizar templates.")) {
+    return;
   }
 
   const templates = await prisma.projectTemplate.findMany({
@@ -27,6 +31,9 @@ templatesRouter.get("/", async (req, res) => {
 templatesRouter.get("/:templateId", async (req, res) => {
   if (!req.organization) {
     return res.status(401).json({ message: "Authentication required" });
+  }
+  if (!ensureModulePermission(req, res, "projects", "view", "Você não tem permissão para visualizar templates.")) {
+    return;
   }
 
   const template = await prisma.projectTemplate.findFirst({
@@ -43,6 +50,9 @@ templatesRouter.get("/:templateId", async (req, res) => {
 templatesRouter.put("/:templateId", async (req, res) => {
   if (!req.organization || !req.user) {
     return res.status(401).json({ message: "Authentication required" });
+  }
+  if (!ensureModulePermission(req, res, "projects", "edit", "Você não tem permissão para editar templates.")) {
+    return;
   }
 
   const { templateId } = req.params;

@@ -2,11 +2,15 @@ import { Router } from "express";
 import { prisma } from "@gestao/database";
 import { authMiddleware } from "../middleware/auth";
 import { organizationMiddleware } from "../middleware/organization";
+import { requireModulePermission } from "../middleware/modulePermission";
 
 export const reportsRouter = Router();
 
 reportsRouter.use(authMiddleware);
 reportsRouter.use(organizationMiddleware);
+reportsRouter.use(
+  requireModulePermission("reports", "view", "Você não tem permissão para visualizar relatórios desta organização.")
+);
 
 const sanitizeCsvValue = (value: string | number) => {
   const stringValue = String(value ?? "");

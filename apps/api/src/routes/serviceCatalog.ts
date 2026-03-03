@@ -3,6 +3,7 @@ import multer from "multer";
 import * as XLSX from "xlsx";
 import { prisma } from "@gestao/database";
 import { authMiddleware } from "../middleware/auth";
+import { ensureModulePermission } from "../middleware/modulePermission";
 import { organizationMiddleware } from "../middleware/organization";
 import { ensureProjectMembership } from "../services/rbac";
 
@@ -13,6 +14,10 @@ serviceCatalogRouter.use(authMiddleware);
 serviceCatalogRouter.use(organizationMiddleware);
 
 serviceCatalogRouter.get("/", async (req, res) => {
+  if (!ensureModulePermission(req, res, "budget", "view", "Você não tem permissão para visualizar o catálogo de serviços.")) {
+    return;
+  }
+
   const projectId = (req.query.projectId as string) ?? null;
   if (!projectId) {
     return res.status(400).json({ message: "projectId is required" });
@@ -30,6 +35,10 @@ serviceCatalogRouter.get("/", async (req, res) => {
 });
 
 serviceCatalogRouter.post("/import", upload.single("file"), async (req, res) => {
+  if (!ensureModulePermission(req, res, "budget", "create", "Você não tem permissão para importar serviços.")) {
+    return;
+  }
+
   const projectId = ((req.query.projectId as string) ?? (req.body?.projectId as string)) || null;
   const file = req.file;
 
@@ -170,6 +179,10 @@ serviceCatalogRouter.post("/import", upload.single("file"), async (req, res) => 
 });
 
 serviceCatalogRouter.post("/", async (req, res) => {
+  if (!ensureModulePermission(req, res, "budget", "create", "Você não tem permissão para criar serviços.")) {
+    return;
+  }
+
   const { projectId, name, description, hoursBase } = req.body as {
     projectId?: string;
     name?: string;
@@ -211,6 +224,10 @@ serviceCatalogRouter.post("/", async (req, res) => {
 });
 
 serviceCatalogRouter.patch("/:id", async (req, res) => {
+  if (!ensureModulePermission(req, res, "budget", "edit", "Você não tem permissão para editar serviços.")) {
+    return;
+  }
+
   const { id } = req.params;
   const { name, description, hoursBase } = req.body as {
     name?: string;
@@ -244,6 +261,10 @@ serviceCatalogRouter.patch("/:id", async (req, res) => {
 });
 
 serviceCatalogRouter.delete("/:id", async (req, res) => {
+  if (!ensureModulePermission(req, res, "budget", "delete", "Você não tem permissão para excluir serviços.")) {
+    return;
+  }
+
   const { id } = req.params;
 
   const service = await prisma.serviceCatalog.findUnique({
