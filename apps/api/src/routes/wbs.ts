@@ -10,6 +10,7 @@ import type { RequestWithUser } from "../types/http";
 import { recomputeProjectWbsCodes } from "../services/wbsCode";
 import { setNodeDependencies, enforceDependencyDates, DependencyValidationError } from "../services/wbsDependencies";
 import { normalizeUuid } from "../utils/uuid";
+import { writeAuditLog } from "../services/audit";
 
 export const wbsRouter = Router();
 
@@ -150,6 +151,94 @@ const assertNodeAccess = async (req: RequestWithUser, res: any, nodeId: string, 
   }
 
   return { node, membership };
+};
+
+const getWbsNodeAuditSnapshot = async (nodeId: string) => {
+  const node = await prisma.wbsNode.findUnique({
+    where: { id: nodeId },
+    select: {
+      id: true,
+      projectId: true,
+      parentId: true,
+      wbsCode: true,
+      title: true,
+      description: true,
+      type: true,
+      status: true,
+      priority: true,
+      order: true,
+      level: true,
+      startDate: true,
+      endDate: true,
+      deletedAt: true,
+      boardColumnId: true,
+      estimateHours: true,
+      progress: true,
+      serviceCatalogId: true,
+      serviceMultiplier: true,
+      serviceHours: true,
+      responsibleMembershipId: true,
+      dependenciesAsSuccessor: {
+        select: { predecessorId: true }
+      }
+    }
+  });
+
+  if (!node) return null;
+
+  return {
+    id: node.id,
+    projectId: node.projectId,
+    parentId: node.parentId,
+    wbsCode: node.wbsCode,
+    title: node.title,
+    description: node.description,
+    type: node.type,
+    status: node.status,
+    priority: node.priority,
+    order: node.order,
+    level: node.level,
+    startDate: node.startDate?.toISOString() ?? null,
+    endDate: node.endDate?.toISOString() ?? null,
+    deletedAt: node.deletedAt?.toISOString() ?? null,
+    boardColumnId: node.boardColumnId,
+    estimateHours: node.estimateHours?.toString() ?? null,
+    progress: node.progress,
+    serviceCatalogId: node.serviceCatalogId,
+    serviceMultiplier: node.serviceMultiplier,
+    serviceHours: node.serviceHours,
+    responsibleMembershipId: node.responsibleMembershipId,
+    dependencies: node.dependenciesAsSuccessor.map((dependency) => dependency.predecessorId)
+  };
+};
+
+const summarizeWbsNodesForAudit = async (nodeIds: string[]) => {
+  if (!nodeIds.length) return [];
+
+  const nodes = await prisma.wbsNode.findMany({
+    where: { id: { in: nodeIds } },
+    select: {
+      id: true,
+      projectId: true,
+      parentId: true,
+      wbsCode: true,
+      title: true,
+      status: true,
+      priority: true,
+      deletedAt: true
+    }
+  });
+
+  return nodes.map((node) => ({
+    id: node.id,
+    projectId: node.projectId,
+    parentId: node.parentId,
+    wbsCode: node.wbsCode,
+    title: node.title,
+    status: node.status,
+    priority: node.priority,
+    deletedAt: node.deletedAt?.toISOString() ?? null
+  }));
 };
 
 wbsRouter.use(authMiddleware);
@@ -421,6 +510,8 @@ wbsRouter.patch("/reorder", async (req: RequestWithUser, res) => {
     return res.status(400).json({ message: "No valid ids to reorder" });
   }
 
+  const beforeNodes = await summarizeWbsNodesForAudit(existingOrderedIds);
+
   await prisma.$transaction(
     existingOrderedIds.map((id, index) =>
       prisma.wbsNode.update({
@@ -434,6 +525,23 @@ wbsRouter.patch("/reorder", async (req: RequestWithUser, res) => {
   );
 
   await recomputeProjectWbsCodes(resolvedProjectId);
+
+  const afterNodes = await summarizeWbsNodesForAudit(existingOrderedIds);
+
+  await writeAuditLog({
+    organizationId: req.organization!.id,
+    actorId: req.user!.id,
+    projectId: resolvedProjectId,
+    action: "WBS_REORDERED",
+    entity: "WBS_NODE",
+    entityId: existingOrderedIds[0],
+    diff: {
+      parentId: normalizedParentId,
+      orderedIds: existingOrderedIds,
+      before: beforeNodes,
+      after: afterNodes
+    }
+  });
 
   return res.json({ success: true });
 });
@@ -472,9 +580,25 @@ wbsRouter.patch("/bulk-delete", async (req: RequestWithUser, res) => {
     return res.status(404).json({ message: "No nodes found for deletion" });
   }
 
+  const beforeNodes = await summarizeWbsNodesForAudit(allowedIds);
+
   const result = await prisma.wbsNode.updateMany({
     where: { id: { in: allowedIds } },
     data: { deletedAt: new Date() }
+  });
+
+  await writeAuditLog({
+    organizationId: req.organization!.id,
+    actorId: req.user!.id,
+    projectId: nodes[0]?.project.id ?? null,
+    action: "WBS_BULK_DELETED",
+    entity: "WBS_NODE",
+    entityId: allowedIds[0],
+    diff: {
+      count: result.count,
+      nodeIds: allowedIds,
+      before: beforeNodes
+    }
   });
 
   return res.json({ success: true, count: result.count });
@@ -508,6 +632,7 @@ wbsRouter.patch("/:id", async (req: RequestWithUser, res) => {
   const access = await assertNodeAccess(req, res, id, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
   if (!access) return;
   const resolvedNodeId = access.node.id;
+  const beforeNode = await getWbsNodeAuditSnapshot(resolvedNodeId);
 
   const data: Prisma.WbsNodeUncheckedUpdateInput = {};
   if (title !== undefined) data.title = title;
@@ -613,6 +738,34 @@ wbsRouter.patch("/:id", async (req: RequestWithUser, res) => {
   }
 
   const refreshed = await prisma.wbsNode.findUnique({ where: { id: resolvedNodeId } });
+  const afterNode = await getWbsNodeAuditSnapshot(resolvedNodeId);
+
+  await writeAuditLog({
+    organizationId: req.organization!.id,
+    actorId: req.user!.id,
+    projectId: access.node.projectId,
+    action: "WBS_NODE_UPDATED",
+    entity: "WBS_NODE",
+    entityId: resolvedNodeId,
+    diff: {
+      before: beforeNode,
+      after: afterNode,
+      changedFields: {
+        title: title !== undefined,
+        status: status !== undefined,
+        priority: priority !== undefined,
+        startDate: startDate !== undefined,
+        endDate: endDate !== undefined,
+        estimateHours: estimateHours !== undefined,
+        order: order !== undefined,
+        parentId: parentId !== undefined,
+        dependencies: dependencies !== undefined,
+        serviceCatalog: serviceCatalogId !== undefined || serviceMultiplier !== undefined,
+        description: descriptionValue !== undefined
+      }
+    }
+  });
+
   return res.json({ node: refreshed ?? node });
 });
 
@@ -628,6 +781,7 @@ wbsRouter.patch("/:id/responsible", async (req: RequestWithUser, res) => {
   const access = await assertNodeAccess(req, res, id, [ProjectRole.MANAGER, ProjectRole.CONTRIBUTOR]);
   if (!access) return;
   const resolvedNodeId = access.node.id;
+  const beforeNode = await getWbsNodeAuditSnapshot(resolvedNodeId);
   const resolvedMembershipId = membershipId ? normalizeUuid(membershipId) : null;
   if (membershipId && !resolvedMembershipId) {
     return res.status(400).json({ message: "membershipId is invalid" });
@@ -638,6 +792,22 @@ wbsRouter.patch("/:id/responsible", async (req: RequestWithUser, res) => {
     data: { responsibleMembershipId: resolvedMembershipId || null },
     include: {
       responsibleMembership: { include: { user: true } }
+    }
+  });
+
+  const afterNode = await getWbsNodeAuditSnapshot(resolvedNodeId);
+
+  await writeAuditLog({
+    organizationId: req.organization!.id,
+    actorId: req.user!.id,
+    projectId: access.node.projectId,
+    action: "WBS_RESPONSIBLE_UPDATED",
+    entity: "WBS_NODE",
+    entityId: resolvedNodeId,
+    diff: {
+      before: beforeNode,
+      after: afterNode,
+      responsibleMembershipId: resolvedMembershipId ?? null
     }
   });
 
@@ -1113,6 +1283,22 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
 
     await recomputeProjectWbsCodes(resolvedProjectId);
 
+    await writeAuditLog({
+      organizationId: req.organization!.id,
+      actorId: req.user!.id,
+      projectId: resolvedProjectId,
+      action: "WBS_IMPORTED",
+      entity: "WBS_IMPORT",
+      entityId: resolvedProjectId,
+      diff: {
+        created,
+        updated,
+        errors: errors.length,
+        warnings: warnings.length,
+        rowLogSample: rowLogs.slice(0, 25)
+      }
+    });
+
     return res.json({ success: true, created, updated, errors, warnings });
   } catch (error) {
     console.error(error);
@@ -1231,6 +1417,7 @@ wbsRouter.patch("/:id/restore", async (req: RequestWithUser, res) => {
   const access = await assertNodeAccess(req, res, id);
   if (!access) return;
   const resolvedNodeId = access.node.id;
+  const beforeNode = await getWbsNodeAuditSnapshot(resolvedNodeId);
 
   await prisma.wbsNode.update({
     where: { id: resolvedNodeId },
@@ -1238,6 +1425,21 @@ wbsRouter.patch("/:id/restore", async (req: RequestWithUser, res) => {
   });
 
   await recomputeProjectWbsCodes(access.node.projectId);
+
+  const afterNode = await getWbsNodeAuditSnapshot(resolvedNodeId);
+
+  await writeAuditLog({
+    organizationId: req.organization!.id,
+    actorId: req.user!.id,
+    projectId: access.node.projectId,
+    action: "WBS_NODE_RESTORED",
+    entity: "WBS_NODE",
+    entityId: resolvedNodeId,
+    diff: {
+      before: beforeNode,
+      after: afterNode
+    }
+  });
 
   return res.json({ success: true });
 });
