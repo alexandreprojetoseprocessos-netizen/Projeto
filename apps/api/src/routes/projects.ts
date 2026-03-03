@@ -167,6 +167,50 @@ const ensureBoardColumns = async (projectId: string) => {
   });
 };
 
+const toBoardTaskAuditSummary = (task: {
+  id: string;
+  title: string;
+  status: string;
+  priority: string | null;
+  boardColumnId: string | null;
+  order: number;
+  parentId: string | null;
+  ownerId: string | null;
+  startDate: Date | null;
+  endDate: Date | null;
+  estimateHours: Prisma.Decimal | null;
+}) => ({
+  id: task.id,
+  title: task.title,
+  status: task.status,
+  priority: task.priority,
+  boardColumnId: task.boardColumnId,
+  order: task.order,
+  parentId: task.parentId,
+  ownerId: task.ownerId,
+  startDate: task.startDate?.toISOString() ?? null,
+  endDate: task.endDate?.toISOString() ?? null,
+  estimateHours: task.estimateHours?.toString() ?? null
+});
+
+const toAttachmentAuditSummary = (attachment: {
+  id: string;
+  fileName: string;
+  fileKey: string;
+  fileSize: number;
+  targetType: AttachmentTargetType;
+  wbsNodeId: string | null;
+  category: string | null;
+}) => ({
+  id: attachment.id,
+  fileName: attachment.fileName,
+  fileKey: attachment.fileKey,
+  fileSize: attachment.fileSize,
+  targetType: attachment.targetType,
+  wbsNodeId: attachment.wbsNodeId,
+  category: attachment.category
+});
+
 const BUDGET_CONFIG_CATEGORY = "__BUDGET_CONFIG__";
 const BUDGET_ITEM_KIND = "BUDGET_ITEM";
 const BUDGET_CONFIG_KIND = "BUDGET_CONFIG";
@@ -1376,6 +1420,18 @@ projectsRouter.post("/:projectId/board/tasks", async (req, res) => {
       }
     });
 
+    await writeAuditLog({
+      organizationId: req.organization!.id,
+      actorId: membership.userId,
+      projectId,
+      action: "KANBAN_TASK_CREATED",
+      entity: "KANBAN_TASK",
+      entityId: task.id,
+      diff: {
+        after: toBoardTaskAuditSummary(task)
+      }
+    });
+
     return res.status(201).json({ task });
   } catch (error) {
     logger.error({ err: error }, "Failed to create board task");
@@ -1481,6 +1537,27 @@ projectsRouter.patch("/:projectId/board/tasks/:taskId", async (req, res) => {
 
       return tx.wbsNode.findUnique({ where: { id: taskId } });
     });
+
+    if (updated) {
+      await writeAuditLog({
+        organizationId: req.organization!.id,
+        actorId: membership.userId,
+        projectId,
+        action: "KANBAN_TASK_UPDATED",
+        entity: "KANBAN_TASK",
+        entityId: updated.id,
+        diff: {
+          before: toBoardTaskAuditSummary(existingTask),
+          after: toBoardTaskAuditSummary(updated),
+          changedFields: {
+            columnChanged: existingTask.boardColumnId !== updated.boardColumnId,
+            statusChanged: existingTask.status !== updated.status,
+            priorityChanged: existingTask.priority !== updated.priority,
+            orderChanged: existingTask.order !== updated.order
+          }
+        }
+      });
+    }
 
     return res.json({ task: updated });
   } catch (error) {
@@ -1938,6 +2015,18 @@ projectsRouter.post("/:projectId/attachments", async (req, res) => {
       }
     });
 
+    await writeAuditLog({
+      organizationId: req.organization!.id,
+      actorId: membership.userId,
+      projectId,
+      action: "PROJECT_ATTACHMENT_UPLOADED",
+      entity: "ATTACHMENT",
+      entityId: attachment.id,
+      diff: {
+        after: toAttachmentAuditSummary(attachment)
+      }
+    });
+
     return res.status(201).json({
       attachment: {
         ...attachment,
@@ -1981,6 +2070,18 @@ projectsRouter.delete("/:projectId/attachments/:attachmentId", async (req, res) 
     }
 
     await prisma.attachment.delete({ where: { id: attachmentId } });
+
+    await writeAuditLog({
+      organizationId: req.organization!.id,
+      actorId: membership.userId,
+      projectId,
+      action: "PROJECT_ATTACHMENT_DELETED",
+      entity: "ATTACHMENT",
+      entityId: attachment.id,
+      diff: {
+        before: toAttachmentAuditSummary(attachment)
+      }
+    });
 
     return res.json({ ok: true });
   } catch (error) {
