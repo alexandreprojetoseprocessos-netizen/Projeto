@@ -13,6 +13,7 @@ import { getActiveSubscriptionForUser } from "../services/subscriptions";
 import { countProjectsForLimit } from "../services/planLimitCounts";
 import { getProjectLimitForPlan } from "../services/subscriptionLimits";
 import { normalizeUuid } from "../utils/uuid";
+import { writeAuditLog } from "../services/audit";
 
 type FlatWbsNode = {
   id: string;
@@ -611,18 +612,16 @@ projectsRouter.post("/", async (req, res) => {
       }
     }
 
-    await prisma.auditLog.create({
-      data: {
-        organizationId: req.organization.id,
-        actorId: req.user.id,
-        action: "PROJECT_CREATED",
-        entity: "PROJECT",
-        entityId: project.id,
-        diff: {
-          clientName,
-          repositoryUrl: normalizedRepo || null,
-          invitedMembers: invitedEmails
-        }
+    await writeAuditLog({
+      organizationId: req.organization.id,
+      actorId: req.user.id,
+      action: "PROJECT_CREATED",
+      entity: "PROJECT",
+      entityId: project.id,
+      diff: {
+        clientName,
+        repositoryUrl: normalizedRepo || null,
+        invitedMembers: invitedEmails
       }
     });
 
@@ -817,21 +816,19 @@ projectsRouter.put("/:projectId", async (req, res) => {
       }
     });
 
-    await prisma.auditLog.create({
-      data: {
-        organizationId: req.organization!.id,
-        actorId: membership.userId,
-        projectId: project.id,
-        action: "PROJECT_UPDATED",
-        entity: "PROJECT",
-        entityId: project.id,
-        diff: {
-          name,
-          clientName,
-          repositoryUrl: normalizedRepo || null,
-          status: normalizedStatus ?? undefined,
-          priority: normalizedPriority ?? undefined
-        }
+    await writeAuditLog({
+      organizationId: req.organization!.id,
+      actorId: membership.userId,
+      projectId: project.id,
+      action: "PROJECT_UPDATED",
+      entity: "PROJECT",
+      entityId: project.id,
+      diff: {
+        name,
+        clientName,
+        repositoryUrl: normalizedRepo || null,
+        status: normalizedStatus ?? undefined,
+        priority: normalizedPriority ?? undefined
       }
     });
 
@@ -1093,19 +1090,17 @@ projectsRouter.put("/:projectId/budget", async (req, res) => {
       return buildBudgetResponse(updatedProject);
     });
 
-    await prisma.auditLog.create({
-      data: {
-        organizationId: req.organization!.id,
-        actorId: membership.userId,
-        projectId,
-        action: "PROJECT_BUDGET_UPDATED",
-        entity: "PROJECT_BUDGET",
-        entityId: projectId,
-        diff: {
-          items: items.length,
-          contingency,
-          projectValue
-        }
+    await writeAuditLog({
+      organizationId: req.organization!.id,
+      actorId: membership.userId,
+      projectId,
+      action: "PROJECT_BUDGET_UPDATED",
+      entity: "PROJECT_BUDGET",
+      entityId: projectId,
+      diff: {
+        items: items.length,
+        contingency,
+        projectValue
       }
     });
 

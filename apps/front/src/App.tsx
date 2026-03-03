@@ -4000,7 +4000,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
           element={
 
             <CheckoutPage
-
+              selectedOrganizationId={normalizedSelectedOrganizationId}
               subscription={subscription}
 
               subscriptionError={subscriptionError}

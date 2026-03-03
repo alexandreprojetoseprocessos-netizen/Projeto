@@ -12,6 +12,7 @@ import { countOrganizationsForLimit } from "../services/planLimitCounts";
 import { getOrgLimitForPlan } from "../services/subscriptionLimits";
 import { getDefaultModulePermissions, normalizeModulePermissionsForRole } from "../services/modulePermissions";
 import { normalizeUuid } from "../utils/uuid";
+import { writeAuditLog } from "../services/audit";
 
 export const organizationsRouter = Router();
 
@@ -43,6 +44,22 @@ const getScopedOrganizationId = (rawParam: unknown, scopedId?: string | null) =>
   if (typeof scopedId === "string" && scopedId.trim()) return scopedId;
   return normalizeUuid(rawParam);
 };
+
+const toOrganizationAuditSummary = (organization: {
+  id: string;
+  name: string;
+  domain: string | null;
+  status: OrganizationStatus;
+  isActive: boolean;
+  deletedAt: Date | null;
+}) => ({
+  id: organization.id,
+  name: organization.name,
+  domain: organization.domain,
+  status: organization.status,
+  isActive: organization.isActive,
+  deletedAt: organization.deletedAt?.toISOString() ?? null
+});
 
 organizationsRouter.post("/", async (req, res) => {
   if (!req.user) {
@@ -82,6 +99,17 @@ organizationsRouter.post("/", async (req, res) => {
           modulePermissions: getDefaultModulePermissions(MembershipRole.OWNER)
         } as Prisma.OrganizationMembershipUncheckedCreateWithoutOrganizationInput
       }
+    }
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    actorId: req.user.id,
+    action: "ORGANIZATION_CREATED",
+    entity: "ORGANIZATION",
+    entityId: organization.id,
+    diff: {
+      after: toOrganizationAuditSummary(organization)
     }
   });
 
@@ -125,6 +153,55 @@ organizationsRouter.get("/", async (req, res) => {
   return res.json({ organizations });
 });
 
+organizationsRouter.get(
+  "/:organizationId/audit-logs",
+  attachOrgMembership,
+  requireCanManageOrgSettings,
+  async (req, res) => {
+    const organizationId = getScopedOrganizationId(req.params.organizationId, req.organizationId);
+    if (!organizationId) {
+      return res.status(400).json({ message: "organizationId is invalid" });
+    }
+
+    const rawLimit = Number(req.query.limit ?? "50");
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 50;
+
+    const logs = await prisma.auditLog.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      include: {
+        actor: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true
+          }
+        },
+        project: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    });
+
+    return res.json({
+      logs: logs.map((log) => ({
+        id: log.id,
+        action: log.action,
+        entity: log.entity,
+        entityId: log.entityId,
+        diff: log.diff,
+        createdAt: log.createdAt,
+        actor: log.actor,
+        project: log.project
+      }))
+    });
+  }
+);
+
 organizationsRouter.patch(
   "/:organizationId",
   attachOrgMembership,
@@ -145,11 +222,30 @@ organizationsRouter.patch(
     }
 
     try {
+      const existing = await prisma.organization.findUnique({
+        where: { id: organizationId }
+      });
+      if (!existing) {
+        return res.status(404).json({ message: "Organização não encontrada." });
+      }
+
       const updated = await prisma.organization.update({
         where: { id: organizationId },
         data: {
           ...(typeof name === "string" && name.trim().length > 0 ? { name: name.trim() } : {}),
           ...(typeof domain !== "undefined" ? { domain: domain || null } : {})
+        }
+      });
+
+      await writeAuditLog({
+        organizationId,
+        actorId: req.user?.id ?? null,
+        action: "ORGANIZATION_UPDATED",
+        entity: "ORGANIZATION",
+        entityId: organizationId,
+        diff: {
+          before: toOrganizationAuditSummary(existing),
+          after: toOrganizationAuditSummary(updated)
         }
       });
 
@@ -172,9 +268,28 @@ organizationsRouter.patch(
     }
 
     try {
+      const existing = await prisma.organization.findUnique({
+        where: { id: organizationId }
+      });
+      if (!existing) {
+        return res.status(404).json({ message: "Organização não encontrada." });
+      }
+
       const updated = await prisma.organization.update({
         where: { id: organizationId },
         data: { status: OrganizationStatus.DEACTIVATED, deletedAt: null, isActive: false }
+      });
+
+      await writeAuditLog({
+        organizationId,
+        actorId: req.user?.id ?? null,
+        action: "ORGANIZATION_DEACTIVATED",
+        entity: "ORGANIZATION",
+        entityId: organizationId,
+        diff: {
+          before: toOrganizationAuditSummary(existing),
+          after: toOrganizationAuditSummary(updated)
+        }
       });
 
       return res.json({ organization: updated });
@@ -196,9 +311,28 @@ organizationsRouter.patch(
     }
 
     try {
+      const existing = await prisma.organization.findUnique({
+        where: { id: organizationId }
+      });
+      if (!existing) {
+        return res.status(404).json({ message: "Organização não encontrada." });
+      }
+
       const updated = await prisma.organization.update({
         where: { id: organizationId },
         data: { status: OrganizationStatus.SOFT_DELETED, deletedAt: new Date(), isActive: false }
+      });
+
+      await writeAuditLog({
+        organizationId,
+        actorId: req.user?.id ?? null,
+        action: "ORGANIZATION_TRASHED",
+        entity: "ORGANIZATION",
+        entityId: organizationId,
+        diff: {
+          before: toOrganizationAuditSummary(existing),
+          after: toOrganizationAuditSummary(updated)
+        }
       });
 
       return res.json({ organization: updated });
@@ -256,6 +390,18 @@ organizationsRouter.patch(
         data: { status: OrganizationStatus.ACTIVE, deletedAt: null, isActive: true }
       });
 
+      await writeAuditLog({
+        organizationId,
+        actorId: req.user.id,
+        action: "ORGANIZATION_RESTORED",
+        entity: "ORGANIZATION",
+        entityId: organizationId,
+        diff: {
+          before: toOrganizationAuditSummary(organization),
+          after: toOrganizationAuditSummary(updated)
+        }
+      });
+
       return res.json({ organization: updated });
     } catch (error) {
       console.error("Error restoring organization", error);
@@ -275,6 +421,24 @@ organizationsRouter.delete(
     }
 
     try {
+      const organization = await prisma.organization.findUnique({
+        where: { id: organizationId }
+      });
+      if (!organization) {
+        return res.status(404).json({ message: "Organização não encontrada." });
+      }
+
+      await writeAuditLog({
+        organizationId,
+        actorId: req.user?.id ?? null,
+        action: "ORGANIZATION_DELETED",
+        entity: "ORGANIZATION",
+        entityId: organizationId,
+        diff: {
+          before: toOrganizationAuditSummary(organization)
+        }
+      });
+
       await prisma.organization.delete({
         where: { id: organizationId }
       });

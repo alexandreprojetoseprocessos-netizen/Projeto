@@ -7,11 +7,13 @@ import { BillingCycle, getPlanDefinition, getPlanPriceCents, getPlanProduct } fr
 import { getActiveSubscriptionForUser } from "../services/subscriptions";
 import { logger } from "../config/logger";
 import { resolveWebhookUrl, syncSubscriptionFromPayment } from "../services/mercadopago";
+import { writeAuditLog } from "../services/audit";
 import {
   MercadoPagoClientError,
   mercadopagoGet,
   mercadopagoPost
 } from "../services/mercadopagoClient";
+import { normalizeUuid } from "../utils/uuid";
 
 type PlanContext = {
   planCode: string;
@@ -101,6 +103,23 @@ const ensureUserRecord = async (user: any) => {
       locale: "pt-BR",
       timezone: "America/Sao_Paulo"
     }
+  });
+};
+
+const resolveScopedMembership = async (userId: string, rawOrganizationId: unknown) => {
+  const organizationId = normalizeUuid(rawOrganizationId);
+  if (organizationId) {
+    return prisma.organizationMembership.findFirst({
+      where: {
+        userId,
+        organizationId
+      }
+    });
+  }
+
+  return prisma.organizationMembership.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "asc" }
   });
 };
 
@@ -279,6 +298,7 @@ paymentsRouter.post("/pix", async (req, res) => {
 
   let subscription = null;
   let externalReference = providedExternalReference;
+  let createdPendingSubscription = false;
   if (externalReference) {
     subscription = await prisma.subscription.findUnique({ where: { id: externalReference } });
     if (!subscription || subscription.userId !== req.user.id) {
@@ -298,6 +318,7 @@ paymentsRouter.post("/pix", async (req, res) => {
     try {
       subscription = await createPendingSubscription(req.user, planContext.planCode, planContext.billingCycle, "pix");
       externalReference = subscription.id;
+      createdPendingSubscription = true;
     } catch (error) {
       return res
         .status(400)
@@ -320,6 +341,24 @@ paymentsRouter.post("/pix", async (req, res) => {
     typeof body.description === "string" && body.description.trim()
       ? body.description.trim()
       : planContext?.planName ?? "Pagamento Pix";
+
+  if (subscription && createdPendingSubscription) {
+    const membership = await resolveScopedMembership(req.user.id, req.header("x-organization-id"));
+    await writeAuditLog({
+      organizationId: membership?.organizationId ?? null,
+      actorId: req.user.id,
+      action: "SUBSCRIPTION_CHECKOUT_STARTED",
+      entity: "SUBSCRIPTION",
+      entityId: subscription.id,
+      diff: {
+        planCode: planContext?.planCode ?? null,
+        paymentMethod: "pix",
+        billingCycle,
+        amount: resolvedAmount,
+        externalReference
+      }
+    });
+  }
 
   const notificationUrl = resolveWebhookUrl();
   const paymentPayload = {
@@ -471,6 +510,7 @@ paymentsRouter.post("/card", async (req, res) => {
 
   let subscription = null;
   let externalReference = providedExternalReference;
+  let createdPendingSubscription = false;
   if (externalReference) {
     subscription = await prisma.subscription.findUnique({ where: { id: externalReference } });
     if (!subscription || subscription.userId !== req.user.id) {
@@ -490,6 +530,7 @@ paymentsRouter.post("/card", async (req, res) => {
     try {
       subscription = await createPendingSubscription(req.user, planContext.planCode, planContext.billingCycle, "card");
       externalReference = subscription.id;
+      createdPendingSubscription = true;
     } catch (error) {
       return res
         .status(400)
@@ -512,6 +553,24 @@ paymentsRouter.post("/card", async (req, res) => {
     typeof body.description === "string" && body.description.trim()
       ? body.description.trim()
       : planContext?.planName ?? "Pagamento Cartao";
+
+  if (subscription && createdPendingSubscription) {
+    const membership = await resolveScopedMembership(req.user.id, req.header("x-organization-id"));
+    await writeAuditLog({
+      organizationId: membership?.organizationId ?? null,
+      actorId: req.user.id,
+      action: "SUBSCRIPTION_CHECKOUT_STARTED",
+      entity: "SUBSCRIPTION",
+      entityId: subscription.id,
+      diff: {
+        planCode: planContext?.planCode ?? null,
+        paymentMethod: "card",
+        billingCycle,
+        amount: resolvedAmount,
+        externalReference
+      }
+    });
+  }
 
   const notificationUrl = resolveWebhookUrl();
   const paymentPayload = {

@@ -64,7 +64,8 @@ const formatBytes = (value: number) => {
 const PlanPage = () => {
   const navigate = useNavigate();
   const { token } = useAuth();
-  const { currentOrgRole, members, attachments, selectedProject } = useOutletContext<DashboardOutletContext>();
+  const { currentOrgRole, members, attachments, selectedOrganizationId, selectedProject } =
+    useOutletContext<DashboardOutletContext>();
   const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
   const canEditBilling = canManageBilling(orgRole);
 
@@ -76,13 +77,21 @@ const PlanPage = () => {
   const [changingPlan, setChangingPlan] = useState(false);
   const [canceling, setCanceling] = useState(false);
 
+  const billingHeaders = useMemo(
+    () => ({
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(selectedOrganizationId ? { "X-Organization-Id": selectedOrganizationId } : {})
+    }),
+    [selectedOrganizationId, token]
+  );
+
   const loadSubscription = async () => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
       const body = await apiRequest<{ subscription?: Subscription | null }>("/subscriptions/me", {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: billingHeaders
       });
       setSubscription(body.subscription ?? null);
     } catch (err) {
@@ -114,7 +123,7 @@ const PlanPage = () => {
   useEffect(() => {
     loadSubscription();
     loadLimits();
-  }, [token]);
+  }, [billingHeaders, token]);
 
   const handleChangePlan = async (planCode: string) => {
     if (!token) return;
@@ -123,9 +132,7 @@ const PlanPage = () => {
     try {
       const body = await apiRequest<{ subscription?: Subscription | null }>("/subscriptions/change-plan", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`
-        },
+        headers: billingHeaders,
         body: JSON.stringify({ planCode })
       });
       setSubscription(body.subscription ?? null);
@@ -143,7 +150,7 @@ const PlanPage = () => {
     try {
       const body = await apiRequest<{ subscription?: Subscription | null }>("/subscriptions/cancel", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` }
+        headers: billingHeaders
       });
       setSubscription(body.subscription ?? null);
     } catch (err) {

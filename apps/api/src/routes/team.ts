@@ -12,6 +12,7 @@ import {
   normalizeModulePermissionsForRole
 } from "../services/modulePermissions";
 import { normalizeUuid } from "../utils/uuid";
+import { writeAuditLog } from "../services/audit";
 
 const router = Router();
 
@@ -41,6 +42,69 @@ const canManageMembershipTarget = (requesterRole: MembershipRole, targetRole: Me
   }
   return false;
 };
+
+const toUserAuditSummary = (user: {
+  id: string;
+  email: string;
+  corporateEmail: string | null;
+  personalEmail: string | null;
+  fullName: string;
+  phone: string | null;
+  address: string | null;
+  jobTitle: string | null;
+  locale: string;
+  timezone: string;
+  twoFactorEnabled: boolean;
+  avatarUrl: string | null;
+  active: boolean;
+  documentType: DocumentType | null;
+}) => ({
+  id: user.id,
+  email: user.email,
+  corporateEmail: user.corporateEmail,
+  personalEmail: user.personalEmail,
+  fullName: user.fullName,
+  phone: user.phone,
+  address: user.address,
+  jobTitle: user.jobTitle,
+  locale: user.locale,
+  timezone: user.timezone,
+  twoFactorEnabled: user.twoFactorEnabled,
+  avatarUrl: user.avatarUrl,
+  active: user.active,
+  documentType: user.documentType
+});
+
+const toMembershipAuditSummary = (
+  membership: {
+    id: string;
+    userId: string;
+    role: MembershipRole;
+    modulePermissions?: unknown;
+  },
+  user: {
+    id: string;
+    email: string;
+    corporateEmail: string | null;
+    personalEmail: string | null;
+    fullName: string;
+    phone: string | null;
+    address: string | null;
+    jobTitle: string | null;
+    locale: string;
+    timezone: string;
+    twoFactorEnabled: boolean;
+    avatarUrl: string | null;
+    active: boolean;
+    documentType: DocumentType | null;
+  }
+) => ({
+  membershipId: membership.id,
+  userId: membership.userId,
+  role: membership.role,
+  modulePermissions: normalizeModulePermissionsForRole(membership.role, membership.modulePermissions),
+  user: toUserAuditSummary(user)
+});
 
 router.get("/:organizationId/members", async (req, res) => {
   if (!req.user) return res.status(401).json({ message: "Authentication required" });
@@ -92,6 +156,19 @@ router.post("/:organizationId/members", async (req, res) => {
 
   try {
     const created = await addMemberToOrganization(organizationId, normalizedEmail, normalizedRole, req.user);
+    await writeAuditLog({
+      organizationId,
+      actorId: req.user.id,
+      action: "TEAM_MEMBER_ADDED",
+      entity: "ORGANIZATION_MEMBERSHIP",
+      entityId: created.id,
+      diff: {
+        email: normalizedEmail,
+        role: normalizedRole,
+        memberId: created.id,
+        userId: created.userId
+      }
+    });
     return res.status(201).json({ member: created });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Não foi possível adicionar membro";
@@ -118,6 +195,8 @@ router.patch("/:organizationId/members/:memberId", async (req, res) => {
   if (!targetMembership) {
     return res.status(404).json({ message: "Membro não encontrado" });
   }
+
+  const beforeMembershipSnapshot = toMembershipAuditSummary(targetMembership, targetMembership.user);
 
   const isSelf = targetMembership.userId === req.user.id;
   const canEdit = isSelf || canManageTeam(requesterMembership.role as any);
@@ -303,6 +382,31 @@ router.patch("/:organizationId/members/:memberId", async (req, res) => {
         })
       : targetMembership;
 
+  const afterMembershipSnapshot = toMembershipAuditSummary(
+    {
+      ...updatedMembership,
+      modulePermissions: (updatedMembership as any).modulePermissions
+    },
+    updatedUser
+  );
+
+  await writeAuditLog({
+    organizationId,
+    actorId: req.user.id,
+    action: isSelf ? "TEAM_MEMBER_SELF_UPDATED" : "TEAM_MEMBER_UPDATED",
+    entity: "ORGANIZATION_MEMBERSHIP",
+    entityId: targetMembership.id,
+    diff: {
+      before: beforeMembershipSnapshot,
+      after: afterMembershipSnapshot,
+      changedFields: {
+        user: Object.keys(userPatch),
+        roleChanged,
+        modulePermissionsChanged: Boolean(normalizedModulePermissions)
+      }
+    }
+  });
+
   return res.json({
     member: {
       ...targetMembership,
@@ -351,7 +455,8 @@ router.delete("/:organizationId/members/:memberId", async (req, res) => {
   }
 
   const targetMembership = await prisma.organizationMembership.findFirst({
-    where: { id: memberId, organizationId }
+    where: { id: memberId, organizationId },
+    include: { user: true }
   });
   if (!targetMembership) {
     return res.status(404).json({ message: "Membro não encontrado" });
@@ -370,7 +475,7 @@ router.delete("/:organizationId/members/:memberId", async (req, res) => {
     return res.status(400).json({ message: "Não é permitido remover o proprietário da organização." });
   }
 
-  await prisma.wbsNode.updateMany({
+  const clearedAssignments = await prisma.wbsNode.updateMany({
     where: {
       responsibleMembershipId: targetMembership.id,
       project: { organizationId }
@@ -382,6 +487,18 @@ router.delete("/:organizationId/members/:memberId", async (req, res) => {
 
   await prisma.organizationMembership.delete({
     where: { id: targetMembership.id }
+  });
+
+  await writeAuditLog({
+    organizationId,
+    actorId: req.user.id,
+    action: "TEAM_MEMBER_REMOVED",
+    entity: "ORGANIZATION_MEMBERSHIP",
+    entityId: targetMembership.id,
+    diff: {
+      removedMember: toMembershipAuditSummary(targetMembership, targetMembership.user),
+      clearedAssignments: clearedAssignments.count
+    }
   });
 
   return res.status(204).send();

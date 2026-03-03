@@ -23,6 +23,7 @@ import {
 } from "../services/billingClient";
 
 type CheckoutPageProps = {
+  selectedOrganizationId?: string | null;
   subscription?: {
     status?: string | null;
     paymentMethod?: string | null;
@@ -128,7 +129,12 @@ type MercadoPagoClient = {
   createCardToken: (payload: MercadoPagoCardTokenRequest) => Promise<MercadoPagoCardTokenResponse>;
 };
 
-export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionActivated }: CheckoutPageProps) => {
+export const CheckoutPage = ({
+  selectedOrganizationId,
+  subscription,
+  subscriptionError,
+  onSubscriptionActivated
+}: CheckoutPageProps) => {
   const navigate = useNavigate();
   const { token, user, signOut } = useAuth();
   const [error, setError] = useState<string | null>(subscriptionError ?? null);
@@ -269,7 +275,8 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
       await apiRequest("/subscriptions/cancel", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
+          ...(selectedOrganizationId ? { "X-Organization-Id": selectedOrganizationId } : {})
         }
       });
       if (typeof window !== "undefined") {
@@ -441,7 +448,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
         },
         planCode: plan.code,
         billingCycle
-      });
+      }, selectedOrganizationId);
 
       setPixData({
         paymentId: response.payment_id,
@@ -600,7 +607,7 @@ export const CheckoutPage = ({ subscription, subscriptionError, onSubscriptionAc
         },
         planCode: plan.code,
         billingCycle
-      });
+      }, selectedOrganizationId);
 
       setCardResult({
         id: response.id,

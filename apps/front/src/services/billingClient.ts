@@ -112,16 +112,17 @@ const handleApiResponse = async <T>(response: Response, fallbackMessage: string)
   return body as T;
 };
 
-const authHeaders = (token: string) => ({
-  Authorization: `Bearer ${token}`
+const authHeaders = (token: string, organizationId?: string | null) => ({
+  Authorization: `Bearer ${token}`,
+  ...(organizationId ? { "X-Organization-Id": organizationId } : {})
 });
 
-export const createPixPayment = async (token: string, payload: PixPaymentPayload) => {
+export const createPixPayment = async (token: string, payload: PixPaymentPayload, organizationId?: string | null) => {
   const response = await apiFetch("/payments/pix", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...authHeaders(token)
+      ...authHeaders(token, organizationId)
     },
     body: JSON.stringify(payload),
     retry: 0
@@ -129,12 +130,12 @@ export const createPixPayment = async (token: string, payload: PixPaymentPayload
   return handleApiResponse<PixPaymentResponse>(response, "Falha ao criar pagamento Pix.");
 };
 
-export const createCardPayment = async (token: string, payload: CardPaymentPayload) => {
+export const createCardPayment = async (token: string, payload: CardPaymentPayload, organizationId?: string | null) => {
   const response = await apiFetch("/payments/card", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...authHeaders(token)
+      ...authHeaders(token, organizationId)
     },
     body: JSON.stringify(payload),
     retry: 0

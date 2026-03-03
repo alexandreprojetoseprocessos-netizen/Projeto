@@ -4,6 +4,7 @@ import { prisma } from "@gestao/database";
 import { authMiddleware } from "../middleware/auth";
 import { organizationMiddleware } from "../middleware/organization";
 import { logger } from "../config/logger";
+import { writeAuditLog } from "../services/audit";
 
 export const templatesRouter = Router();
 
@@ -88,15 +89,13 @@ templatesRouter.put("/:templateId", async (req, res) => {
       }
     });
 
-    await prisma.auditLog.create({
-      data: {
-        organizationId: req.organization.id,
-        actorId: req.user.id,
-        action: "TEMPLATE_SAVED",
-        entity: "PROJECT_TEMPLATE",
-        entityId: template.id,
-        diff: payload
-      }
+    await writeAuditLog({
+      organizationId: req.organization.id,
+      actorId: req.user.id,
+      action: "TEMPLATE_SAVED",
+      entity: "PROJECT_TEMPLATE",
+      entityId: template.id,
+      diff: payload as Prisma.InputJsonValue
     });
 
     logger.info({ templateId, payload }, "Template payload persisted");
