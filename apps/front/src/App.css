@@ -12052,6 +12052,134 @@ button[type="submit"]:hover {
   font-size: 18px;
 }
 
+.team-audit {
+  display: grid;
+  gap: 12px;
+}
+
+.team-audit-title {
+  display: grid;
+  gap: 4px;
+}
+
+.team-audit-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid #d7e3f4;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #143b63;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.team-audit-refresh:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.team-audit-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.team-audit-card {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #dbe6f5;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.team-audit-card__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
+
+.team-audit-card__body {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.team-audit-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.team-audit-card__top strong {
+  color: #12385d;
+  font-size: 14px;
+}
+
+.team-audit-card__top span {
+  color: #64748b;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.team-audit-card__body p {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.team-audit-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.team-audit-card__meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #eef4fb;
+  color: #4f6580;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.team-audit-empty {
+  padding: 20px;
+  border: 1px dashed #d8e2f0;
+  border-radius: 16px;
+  background: #fbfdff;
+}
+
+.team-audit-empty h3 {
+  margin: 0 0 6px;
+  color: #12385d;
+  font-size: 15px;
+}
+
+.team-audit-empty p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .team-governance {
   display: grid;
   gap: 12px;

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useOutletContext } from "react-router-dom";
-import { CheckCircle2, Search, TrendingUp, UserPlus, Users, X, Pencil, ShieldCheck, Trash2 } from "lucide-react";
+import { CheckCircle2, History, Search, TrendingUp, UserPlus, Users, X, Pencil, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
 import {
   canAccessModule,
+  canManageOrganizationSettings,
   canManageTeam,
   getDefaultModulePermissions,
   MODULE_PERMISSION_ACTIONS,
@@ -49,6 +50,24 @@ type TaskNode = {
   responsible?: {
     membershipId?: string | null;
     userId?: string | null;
+  } | null;
+};
+
+type AuditLogEntry = {
+  id: string;
+  action: string;
+  entity: string;
+  entityId: string;
+  diff?: unknown;
+  createdAt: string;
+  actor?: {
+    id: string;
+    fullName?: string | null;
+    email?: string | null;
+  } | null;
+  project?: {
+    id: string;
+    name?: string | null;
   } | null;
 };
 
@@ -184,12 +203,114 @@ const areModulePermissionsEqual = (left: ModulePermissionMatrix, right: ModulePe
     )
   );
 
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  ORGANIZATION_CREATED: "Organizacao criada",
+  ORGANIZATION_UPDATED: "Organizacao atualizada",
+  ORGANIZATION_DEACTIVATED: "Organizacao desativada",
+  ORGANIZATION_TRASHED: "Organizacao enviada para lixeira",
+  ORGANIZATION_RESTORED: "Organizacao restaurada",
+  ORGANIZATION_DELETED: "Organizacao excluida",
+  TEAM_MEMBER_ADDED: "Membro adicionado",
+  TEAM_MEMBER_UPDATED: "Membro atualizado",
+  TEAM_MEMBER_SELF_UPDATED: "Perfil atualizado",
+  TEAM_MEMBER_REMOVED: "Membro removido",
+  SUBSCRIPTION_CHECKOUT_STARTED: "Checkout iniciado",
+  SUBSCRIPTION_PLAN_CHANGED: "Plano alterado",
+  SUBSCRIPTION_CANCELED: "Assinatura cancelada",
+  PROJECT_CREATED: "Projeto criado",
+  PROJECT_UPDATED: "Projeto atualizado",
+  PROJECT_BUDGET_UPDATED: "Orcamento atualizado",
+  TEMPLATE_SAVED: "Template salvo"
+};
+
+const AUDIT_ENTITY_LABELS: Record<string, string> = {
+  ORGANIZATION: "Organizacao",
+  ORGANIZATION_MEMBERSHIP: "Membro",
+  PROJECT: "Projeto",
+  PROJECT_TEMPLATE: "Template",
+  SUBSCRIPTION: "Assinatura"
+};
+
+const toAuditLabel = (value: string, dictionary: Record<string, string>) => {
+  if (dictionary[value]) return dictionary[value];
+  return value
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+
+const getAuditSummary = (entry: AuditLogEntry) => {
+  const diff = asRecord(entry.diff);
+  if (entry.action === "TEAM_MEMBER_ADDED") {
+    const email = typeof diff?.email === "string" ? diff.email : null;
+    return email ? `Convite enviado para ${email}.` : "Novo membro vinculado a organizacao.";
+  }
+  if (entry.action === "TEAM_MEMBER_REMOVED") {
+    const removedMember = asRecord(diff?.removedMember);
+    const removedUser = asRecord(removedMember?.user);
+    const email = typeof removedUser?.email === "string" ? removedUser.email : null;
+    return email ? `${email} foi removido da equipe.` : "Associacao removida da equipe.";
+  }
+  if (entry.action === "TEAM_MEMBER_UPDATED" || entry.action === "TEAM_MEMBER_SELF_UPDATED") {
+    const changedFields = asRecord(diff?.changedFields);
+    const userFields = Array.isArray(changedFields?.user) ? changedFields?.user : [];
+    const roleChanged = changedFields?.roleChanged === true;
+    const permissionsChanged = changedFields?.modulePermissionsChanged === true;
+    const changes = [
+      userFields.length ? `${userFields.length} campo(s) pessoais` : null,
+      roleChanged ? "papel de acesso" : null,
+      permissionsChanged ? "matriz de modulos" : null
+    ].filter(Boolean);
+    return changes.length ? `Ajustes em ${changes.join(", ")}.` : "Dados do membro atualizados.";
+  }
+  if (entry.action === "SUBSCRIPTION_PLAN_CHANGED") {
+    const before = asRecord(diff?.before);
+    const after = asRecord(diff?.after);
+    const beforeCode = typeof before?.productCode === "string" ? before.productCode : null;
+    const afterCode = typeof after?.productCode === "string" ? after.productCode : null;
+    if (beforeCode && afterCode) {
+      return `Plano alterado de ${beforeCode} para ${afterCode}.`;
+    }
+  }
+  if (entry.action === "SUBSCRIPTION_CHECKOUT_STARTED") {
+    const paymentMethod = typeof diff?.paymentMethod === "string" ? diff.paymentMethod : null;
+    return paymentMethod ? `Fluxo de pagamento iniciado via ${paymentMethod}.` : "Fluxo de pagamento iniciado.";
+  }
+  if (entry.action === "SUBSCRIPTION_CANCELED") {
+    return "Assinatura encerrada pelo painel.";
+  }
+  if (entry.action === "PROJECT_BUDGET_UPDATED") {
+    return entry.project?.name ? `Orcamento revisado em ${entry.project.name}.` : "Orcamento do projeto revisado.";
+  }
+  if (entry.project?.name) {
+    return `Relacionado ao projeto ${entry.project.name}.`;
+  }
+  const after = asRecord(diff?.after);
+  const name = typeof after?.name === "string" ? after.name : null;
+  if (name) {
+    return `Registro alvo: ${name}.`;
+  }
+  return `Registro ${entry.entityId.slice(0, 8)} monitorado pela trilha de auditoria.`;
+};
+
+const formatAuditTimestamp = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("pt-BR");
+};
+
 export const TeamPage = () => {
   const { token, user } = useAuth();
   const { selectedOrganizationId, currentOrgRole, currentOrgModulePermissions, projects, organizations } =
     useOutletContext<DashboardOutletContext>();
   const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
   const roleCanManageTeam = canManageTeam(orgRole);
+  const canViewAuditLogs = canManageOrganizationSettings(orgRole);
   const canCreateTeamMembers =
     roleCanManageTeam && canAccessModule(orgRole, currentOrgModulePermissions, "team", "create");
   const canEditTeamMembers = roleCanManageTeam && canAccessModule(orgRole, currentOrgModulePermissions, "team", "edit");
@@ -204,6 +325,9 @@ export const TeamPage = () => {
   const [taskNodes, setTaskNodes] = useState<TaskNode[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState<string | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteOrganizationId, setInviteOrganizationId] = useState(() => normalizeUuid(selectedOrganizationId));
@@ -249,6 +373,7 @@ export const TeamPage = () => {
   );
   const membersRequestRef = useRef(0);
   const tasksRequestRef = useRef(0);
+  const auditRequestRef = useRef(0);
   const validProjectIdsKey = useMemo(() => {
     const ids = Array.from(
       new Set(
@@ -321,6 +446,7 @@ export const TeamPage = () => {
       });
       setEditingMember(null);
       await fetchMembers();
+      await fetchAuditLogs();
     } catch (err) {
       setProfileError(getApiErrorMessage(err, "Falha ao salvar perfil"));
     } finally {
@@ -431,6 +557,42 @@ export const TeamPage = () => {
     }
   }, [normalizedSelectedOrganizationId, token, validProjectIdsKey]);
 
+  const fetchAuditLogs = useCallback(async () => {
+    const organizationId = normalizedSelectedOrganizationId;
+    if (!token || !organizationId || !canViewAuditLogs) {
+      setAuditLogs([]);
+      setAuditError(null);
+      setAuditLoading(false);
+      return;
+    }
+
+    const requestId = auditRequestRef.current + 1;
+    auditRequestRef.current = requestId;
+    setAuditLoading(true);
+    setAuditError(null);
+    try {
+      const body = await apiRequest<{ logs?: AuditLogEntry[] }>(
+        `/organizations/${organizationId}/audit-logs?limit=24`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "X-Organization-Id": organizationId
+          }
+        }
+      );
+      if (requestId !== auditRequestRef.current) return;
+      setAuditLogs(Array.isArray(body.logs) ? body.logs : []);
+    } catch (err) {
+      if (requestId !== auditRequestRef.current) return;
+      setAuditLogs([]);
+      setAuditError(getApiErrorMessage(err, "Nao foi possivel carregar o historico de auditoria."));
+    } finally {
+      if (requestId === auditRequestRef.current) {
+        setAuditLoading(false);
+      }
+    }
+  }, [canViewAuditLogs, normalizedSelectedOrganizationId, token]);
+
   useEffect(() => {
     void fetchMembers();
   }, [fetchMembers]);
@@ -438,6 +600,10 @@ export const TeamPage = () => {
   useEffect(() => {
     void fetchTasks();
   }, [fetchTasks]);
+
+  useEffect(() => {
+    void fetchAuditLogs();
+  }, [fetchAuditLogs]);
 
   const handleInvite = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -478,6 +644,7 @@ export const TeamPage = () => {
       setInviteRole(inviteRoleOptions[0] ?? "MEMBER");
       if (inviteOrganizationId === normalizedSelectedOrganizationId) {
         await fetchMembers();
+        await fetchAuditLogs();
       }
       setShowInvite(false);
     } catch (err) {
@@ -663,6 +830,7 @@ export const TeamPage = () => {
         setMembers((current) => current.map((item) => (item.id === member.id ? { ...item, role: nextRole } : item)));
       }
       setPendingRoles((current) => ({ ...current, [member.id]: nextRole }));
+      await fetchAuditLogs();
     } catch (err) {
       setMemberActionError(getApiErrorMessage(err, "Não foi possível atualizar o papel do membro."));
     } finally {
@@ -688,6 +856,7 @@ export const TeamPage = () => {
       });
       await fetchMembers();
       await fetchTasks();
+      await fetchAuditLogs();
     } catch (err) {
       setMemberActionError(getApiErrorMessage(err, "Não foi possível remover o membro."));
     } finally {
@@ -730,6 +899,8 @@ export const TeamPage = () => {
       .map((role) => ({ role, count: counts[role], label: roleLabels[role] }))
       .filter((group) => group.count > 0);
   }, [members]);
+
+  const recentAuditLogs = useMemo(() => auditLogs.slice(0, 8), [auditLogs]);
 
   const filteredMembers = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -915,6 +1086,54 @@ export const TeamPage = () => {
               {!departmentGroups.length ? <p className="muted">Sem membros cadastrados.</p> : null}
             </div>
           </section>
+
+          {canViewAuditLogs ? (
+            <section className="team-audit">
+              <div className="team-section-header">
+                <div className="team-audit-title">
+                  <h2>Historico de auditoria</h2>
+                  <span className="muted">Ultimos eventos administrativos e operacionais da organizacao</span>
+                </div>
+                <button
+                  type="button"
+                  className="team-audit-refresh"
+                  onClick={() => void fetchAuditLogs()}
+                  disabled={auditLoading}
+                >
+                  <RefreshCw size={15} />
+                  {auditLoading ? "Atualizando..." : "Atualizar"}
+                </button>
+              </div>
+              {auditError ? <p className="error-text">{auditError}</p> : null}
+              <div className="team-audit-list">
+                {recentAuditLogs.map((entry) => (
+                  <article key={entry.id} className="team-audit-card">
+                    <div className="team-audit-card__icon">
+                      <History size={16} />
+                    </div>
+                    <div className="team-audit-card__body">
+                      <div className="team-audit-card__top">
+                        <strong>{toAuditLabel(entry.action, AUDIT_ACTION_LABELS)}</strong>
+                        <span>{formatAuditTimestamp(entry.createdAt)}</span>
+                      </div>
+                      <p>{getAuditSummary(entry)}</p>
+                      <div className="team-audit-card__meta">
+                        <span>{toAuditLabel(entry.entity, AUDIT_ENTITY_LABELS)}</span>
+                        <span>{entry.actor?.fullName || entry.actor?.email || "Sistema"}</span>
+                        {entry.project?.name ? <span>{entry.project.name}</span> : null}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+                {!recentAuditLogs.length && !auditLoading ? (
+                  <div className="team-audit-empty">
+                    <h3>Nenhum evento registrado</h3>
+                    <p>A trilha de auditoria sera preenchida conforme alteracoes administrativas forem realizadas.</p>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
 
           <section className="team-governance">
             <div className="team-section-header">
