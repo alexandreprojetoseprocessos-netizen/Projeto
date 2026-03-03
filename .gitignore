@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.npm-cache/
 
 # Build outputs
 build/
@@ -17,7 +18,7 @@ yarn-debug.log*
 yarn-error.log*
 playwright-report/
 test-results/
-apps/front/.playwright-results/
+apps/front/.playwright-results*/
 apps/front/.e2e-logs/
 
 # Editor

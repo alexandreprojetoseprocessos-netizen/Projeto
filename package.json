@@ -11,7 +11,11 @@
     "build:database": "npm --workspace apps/database run build",
     "build:api": "npm --workspace apps/api run build",
     "deploy:api": "npm run prisma:generate && npm run build:database && npm run build:api",
-    "lint": "npm --workspaces run lint"
+    "lint": "npm --workspaces run lint",
+    "test:e2e": "npm --workspace apps/front run test:e2e",
+    "test:week1:api": "npm --workspace apps/front run test:week1:api",
+    "worktree:status": "git status --short",
+    "worktree:clean": "node scripts/worktree-clean.mjs"
   },
   "devDependencies": {
     "dotenv-cli": "^7.3.0",
