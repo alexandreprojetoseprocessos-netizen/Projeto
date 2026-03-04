@@ -12,6 +12,7 @@ import {
   revokeApiToken,
   summarizeApiToken
 } from "../services/integrationTokens";
+import { listImportJobsByOrganization, summarizeImportJob } from "../services/importJobs";
 import {
   WEBHOOK_EVENT_CATALOG,
   createWebhookSubscription,
@@ -195,6 +196,21 @@ integrationsRouter.get("/tokens", async (req, res) => {
 
   const tokens = await findActiveApiTokensByOrganization(req.organizationId!);
   return res.json({ tokens: tokens.map(summarizeApiToken) });
+});
+
+integrationsRouter.get("/import-jobs", async (req, res) => {
+  if (!ensureOrgAdmin(req, res)) return;
+
+  const rawLimit = Number(req.query.limit ?? "15");
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 15;
+  const jobs = await listImportJobsByOrganization({
+    organizationId: req.organizationId!,
+    limit
+  });
+
+  return res.json({
+    jobs: jobs.map(summarizeImportJob)
+  });
 });
 
 integrationsRouter.post("/tokens", async (req, res) => {

@@ -91,6 +91,22 @@ type SlackConnectionSummary = {
   webhookPreview?: string | null;
 };
 
+type ImportJobSummary = {
+  id: string;
+  source: string;
+  entity: string;
+  status: string;
+  fileName?: string | null;
+  summary?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: {
+    id: string;
+    fullName?: string | null;
+    email?: string | null;
+  } | null;
+};
+
 const PROVIDER_LABELS: Record<string, string> = {
   CUSTOM: "Custom",
   SLACK: "Slack",
@@ -168,6 +184,7 @@ export const IntegrationsPage = () => {
   const [slackLoading, setSlackLoading] = useState(false);
   const [slackTesting, setSlackTesting] = useState(false);
   const [slackFeedback, setSlackFeedback] = useState<string | null>(null);
+  const [importJobs, setImportJobs] = useState<ImportJobSummary[]>([]);
   const [importFeedback, setImportFeedback] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [wbsImporting, setWbsImporting] = useState(false);
@@ -197,22 +214,25 @@ export const IntegrationsPage = () => {
     setPageLoading(true);
     setPageError(null);
     try {
-      const [catalogBody, tokenBody, webhookBody, slackBody] = await Promise.all([
+      const [catalogBody, tokenBody, webhookBody, slackBody, jobsBody] = await Promise.all([
         apiRequest<{ events?: CatalogEvent[] }>("/integrations/catalog/events", { headers }),
         apiRequest<{ tokens?: ApiTokenSummary[] }>("/integrations/tokens", { headers }),
         apiRequest<{ webhooks?: WebhookSummary[] }>("/integrations/webhooks", { headers }),
-        apiRequest<{ slack?: SlackConnectionSummary | null }>("/integrations/slack", { headers })
+        apiRequest<{ slack?: SlackConnectionSummary | null }>("/integrations/slack", { headers }),
+        apiRequest<{ jobs?: ImportJobSummary[] }>("/integrations/import-jobs?limit=12", { headers })
       ]);
 
       const nextCatalog = Array.isArray(catalogBody.events) ? catalogBody.events : [];
       const nextTokens = Array.isArray(tokenBody.tokens) ? tokenBody.tokens : [];
       const nextWebhooks = Array.isArray(webhookBody.webhooks) ? webhookBody.webhooks : [];
       const nextSlack = slackBody.slack ?? null;
+      const nextJobs = Array.isArray(jobsBody.jobs) ? jobsBody.jobs : [];
 
       setCatalogEvents(nextCatalog);
       setTokens(nextTokens);
       setWebhooks(nextWebhooks);
       setSlackConnection(nextSlack);
+      setImportJobs(nextJobs);
       setTokenScopes((current) => current.filter((scope) => nextCatalog.some((eventItem) => eventItem.eventName === scope)));
       setWebhookEvents((current) =>
         current.filter((scope) => nextCatalog.some((eventItem) => eventItem.eventName === scope))
@@ -236,6 +256,7 @@ export const IntegrationsPage = () => {
       setTokens([]);
       setWebhooks([]);
       setSlackConnection(null);
+      setImportJobs([]);
     } finally {
       setPageLoading(false);
     }
@@ -806,6 +827,59 @@ export const IntegrationsPage = () => {
             {importFeedback ? <p className="integration-feedback">{importFeedback}</p> : null}
             {importError ? <p className="integration-feedback integration-feedback--error">{importError}</p> : null}
           </>
+        )}
+      </article>
+
+      <article className="integration-card">
+        <div className="integration-card__header">
+          <div>
+            <p className="integration-card__kicker">Histórico</p>
+            <h2>Jobs de importação</h2>
+          </div>
+          <RefreshCw size={18} />
+        </div>
+
+        {!importJobs.length ? (
+          <p className="integration-muted">Nenhuma importação registrada ainda nesta organização.</p>
+        ) : (
+          <div className="integration-delivery-list">
+            {importJobs.map((job) => {
+              const summary = job.summary ?? {};
+              const created =
+                typeof summary.created === "number"
+                  ? summary.created
+                  : typeof summary.imported === "number"
+                  ? summary.imported
+                  : 0;
+              const updated = typeof summary.updated === "number" ? summary.updated : 0;
+              const warningCount = typeof summary.warningCount === "number" ? summary.warningCount : 0;
+              const errorCount = typeof summary.errorCount === "number" ? summary.errorCount : 0;
+
+              return (
+                <article key={job.id} className="integration-delivery-item">
+                  <div className="integration-delivery-item__main">
+                    <strong>{job.entity === "WBS" ? "Importação de EAP" : "Importação de catálogo"}</strong>
+                    <small>{job.fileName ?? "Arquivo sem nome"}</small>
+                    <small>
+                      Criado em {formatDateTime(job.createdAt)} · por{" "}
+                      {job.createdBy?.fullName ?? job.createdBy?.email ?? "usuário"}
+                    </small>
+                  </div>
+                  <div className="integration-delivery-item__status">
+                    <span className={`integration-status-badge is-${job.status === "SUCCESS" ? "success" : job.status === "FAILED" ? "failed" : "pending"}`}>
+                      {job.status === "SUCCESS" ? <CheckCircle2 size={14} /> : null}
+                      {job.status === "FAILED" ? <XCircle size={14} /> : null}
+                      {job.status === "PROCESSING" ? <Clock3 size={14} /> : null}
+                      {job.status === "SUCCESS" ? "Sucesso" : job.status === "FAILED" ? "Falha" : "Processando"}
+                    </span>
+                    <code>
+                      {created} criados · {updated} atualizados · {warningCount} avisos · {errorCount} erros
+                    </code>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         )}
       </article>
 

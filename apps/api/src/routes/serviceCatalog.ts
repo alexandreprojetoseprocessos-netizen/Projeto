@@ -6,6 +6,8 @@ import { authMiddleware } from "../middleware/auth";
 import { ensureModulePermission } from "../middleware/modulePermission";
 import { organizationMiddleware } from "../middleware/organization";
 import { ensureProjectMembership } from "../services/rbac";
+import { writeAuditLog } from "../services/audit";
+import { completeImportJob, createImportJob, failImportJob } from "../services/importJobs";
 
 const upload = multer();
 export const serviceCatalogRouter = Router();
@@ -52,6 +54,17 @@ serviceCatalogRouter.post("/import", upload.single("file"), async (req, res) => 
 
   const membership = await ensureProjectMembership(req, res, projectId);
   if (!membership) return;
+
+  const importJob = await createImportJob({
+    organizationId: req.organizationId!,
+    createdById: req.user!.id,
+    source: "MANUAL_UPLOAD",
+    entity: "SERVICE_CATALOG",
+    fileName: file.originalname ?? null,
+    summary: {
+      projectId
+    }
+  });
 
   try {
     const normalizeKey = (key: string) =>
@@ -171,8 +184,40 @@ serviceCatalogRouter.post("/import", upload.single("file"), async (req, res) => 
       }
     });
 
+    await writeAuditLog({
+      organizationId: req.organizationId!,
+      actorId: req.user!.id,
+      projectId,
+      action: "SERVICE_CATALOG_IMPORTED",
+      entity: "SERVICE_CATALOG_IMPORT",
+      entityId: projectId,
+      diff: {
+        imported: created,
+        updated,
+        fileName: file.originalname ?? null
+      }
+    });
+
+    await completeImportJob({
+      jobId: importJob.id,
+      summary: {
+        projectId,
+        imported: created,
+        updated,
+        fileName: file.originalname ?? null
+      }
+    });
+
     return res.json({ success: true, imported: created, updated });
   } catch (error) {
+    await failImportJob({
+      jobId: importJob.id,
+      summary: {
+        projectId,
+        fileName: file.originalname ?? null,
+        errorMessage: error instanceof Error ? error.message : "Failed to import service catalog"
+      }
+    });
     console.error(error);
     return res.status(500).json({ message: "Failed to import service catalog" });
   }

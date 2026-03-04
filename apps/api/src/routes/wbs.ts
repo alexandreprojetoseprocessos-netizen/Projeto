@@ -11,6 +11,7 @@ import { recomputeProjectWbsCodes } from "../services/wbsCode";
 import { setNodeDependencies, enforceDependencyDates, DependencyValidationError } from "../services/wbsDependencies";
 import { normalizeUuid } from "../utils/uuid";
 import { writeAuditLog } from "../services/audit";
+import { completeImportJob, createImportJob, failImportJob } from "../services/importJobs";
 
 export const wbsRouter = Router();
 
@@ -847,6 +848,17 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
     return res.status(400).json({ message: "File not provided. Use multipart/form-data with field 'file'." });
   }
 
+  const importJob = await createImportJob({
+    organizationId: req.organization!.id,
+    createdById: req.user!.id,
+    source: "MANUAL_UPLOAD",
+    entity: "WBS",
+    fileName: req.file.originalname ?? null,
+    summary: {
+      projectId: resolvedProjectId
+    }
+  });
+
   try {
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
@@ -1305,8 +1317,28 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
       }
     });
 
+    await completeImportJob({
+      jobId: importJob.id,
+      summary: {
+        projectId: resolvedProjectId,
+        created,
+        updated,
+        errorCount: errors.length,
+        warningCount: warnings.length,
+        errors: errors.slice(0, 20),
+        warnings: warnings.slice(0, 20)
+      }
+    });
+
     return res.json({ success: true, created, updated, errors, warnings });
   } catch (error) {
+    await failImportJob({
+      jobId: importJob.id,
+      summary: {
+        projectId: resolvedProjectId,
+        errorMessage: error instanceof Error ? error.message : "Error importing WBS"
+      }
+    });
     console.error(error);
     return res.status(500).json({ message: "Error importing WBS" });
   }
