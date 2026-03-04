@@ -144,7 +144,7 @@ const KanbanPage: React.FC = () => {
       const assignee = assigneeSource
         ? {
             id: String(assigneeSource.id ?? assigneeSource.userId ?? assigneeSource.membershipId ?? ""),
-            name: assigneeSource.name ?? assigneeSource.email ?? "Responsavel",
+            name: assigneeSource.name ?? assigneeSource.email ?? "Responsável",
             avatar: assigneeSource.avatar
           }
         : undefined;
@@ -184,7 +184,7 @@ const KanbanPage: React.FC = () => {
   const selectedProjectLabel =
     selectedProjectId && selectedProjectId !== "all"
       ? projectNameMap.get(selectedProjectId) ?? "Projeto atual"
-      : "Todos os projetos visiveis";
+      : "Todos os projetos visíveis";
   const shouldShowOperationalGuide = Boolean(selectedProjectId && selectedProjectId !== "all") && sourceTasksCount <= 3;
 
   const handleDragEnd = async (result: any) => {
@@ -236,24 +236,24 @@ const KanbanPage: React.FC = () => {
     <section className="kanbanPage">
       <AppPageHero
         className="kanbanPageHero"
-        kicker="Execucao visual"
+        kicker="Execução visual"
         title="Kanban"
         subtitle={`Quadro operacional por status para ${selectedProjectLabel.toLowerCase()}.`}
         stats={[
           {
-            label: "Tarefas visiveis",
+            label: "Tarefas visíveis",
             value: totalTasks,
             helper:
               sourceTasksCount !== totalTasks
                 ? `${sourceTasksCount} tarefas antes dos filtros`
-                : "Tudo o que esta visivel no quadro",
+                : "Tudo o que está visível no quadro",
             icon: <ClipboardList size={18} />,
             tone: "default"
           },
           {
             label: "Em andamento",
             value: inProgressCount,
-            helper: "Itens em execucao agora",
+            helper: "Itens em execução agora",
             icon: <Clock3 size={18} />,
             tone: "warning"
           },
@@ -267,7 +267,7 @@ const KanbanPage: React.FC = () => {
           {
             label: "Finalizadas",
             value: doneCount,
-            helper: "Tarefas concluidas no quadro",
+            helper: "Tarefas concluídas no quadro",
             icon: <CheckCircle2 size={18} />,
             tone: "success"
           }
@@ -334,7 +334,7 @@ const KanbanPage: React.FC = () => {
         <div className="app-toolbar-card__header">
           <div>
             <strong>Filtros do quadro</strong>
-            <p>Refine a visualizacao por tarefa, responsavel, prioridade e prazo.</p>
+            <p>Refine a visualização por tarefa, responsável, prioridade e prazo.</p>
           </div>
         </div>
         <div className="kanbanFilters">
@@ -346,7 +346,7 @@ const KanbanPage: React.FC = () => {
           />
 
           <select className="gp-input" value={filterOwner} onChange={(event) => setFilterOwner(event.target.value)}>
-            <option value="ALL">Responsavel</option>
+            <option value="ALL">Responsável</option>
             {members?.map((member) => (
               <option key={member.id} value={member.id}>
                 {member.name ?? member.email ?? "Membro"}
@@ -381,8 +381,8 @@ const KanbanPage: React.FC = () => {
           title={sourceTasksCount === 0 ? "Quadro pronto para receber tarefas" : "Nenhuma tarefa encontrada"}
           description={
             sourceTasksCount === 0
-              ? "Crie a primeira tarefa em qualquer coluna para iniciar a operacao do quadro."
-              : "Os filtros atuais removeram todas as tarefas da visualizacao. Ajuste os filtros para voltar a ver o quadro."
+              ? "Crie a primeira tarefa em qualquer coluna para iniciar a operação do quadro."
+              : "Os filtros atuais removeram todas as tarefas da visualização. Ajuste os filtros para voltar a ver o quadro."
           }
         />
       ) : null}

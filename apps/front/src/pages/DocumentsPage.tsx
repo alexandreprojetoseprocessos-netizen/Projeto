@@ -226,7 +226,7 @@ export const DocumentsPage = () => {
   const currentScopeLabel =
     selectedProjectId && selectedProjectId !== "all"
       ? currentProjectName || "projeto atual"
-      : "todos os projetos visiveis";
+      : "todos os projetos visíveis";
   const shouldShowOperationalGuide = Boolean(selectedProjectId && selectedProjectId !== "all") && rows.length === 0;
 
   const folderCounts = useMemo(() => {
@@ -364,7 +364,7 @@ export const DocumentsPage = () => {
               disabled={!selectedProjectId || selectedProjectId === "all"}
               title={
                 !selectedProjectId || selectedProjectId === "all"
-                  ? "Selecione um projeto especifico para importar."
+                  ? "Selecione um projeto específico para importar."
                   : undefined
               }
             >
@@ -376,7 +376,7 @@ export const DocumentsPage = () => {
           {
             label: "Arquivos totais",
             value: rows.length,
-            helper: "Documentos disponiveis no escopo atual",
+            helper: "Documentos disponíveis no escopo atual",
             icon: <FileText size={18} />,
             tone: "default"
           },
@@ -395,11 +395,11 @@ export const DocumentsPage = () => {
             tone: "warning"
           },
           {
-            label: "Importacao",
+            label: "Importação",
             value: selectedProjectId && selectedProjectId !== "all" ? "Liberada" : "Bloqueada",
             helper:
               selectedProjectId && selectedProjectId !== "all"
-                ? "Projeto especifico selecionado"
+                ? "Projeto específico selecionado"
                 : 'Escolha um projeto para habilitar o envio',
             icon: <ShieldCheck size={18} />,
             tone: selectedProjectId && selectedProjectId !== "all" ? "success" : "danger"
@@ -512,7 +512,7 @@ export const DocumentsPage = () => {
       ) : null}
 
       <div className="documents-section">
-        <div className="documents-section-title">Acesso rapido</div>
+        <div className="documents-section-title">Acesso rápido</div>
         <div className="documents-quick-grid">
           {folders.map((item) => (
             <button
@@ -576,8 +576,8 @@ export const DocumentsPage = () => {
         ) : !rows.length ? (
           <AppStateCard
             tone="default"
-            title="Nenhum documento disponivel"
-            description="Assim que anexos e arquivos forem enviados, eles aparecerao aqui com pasta, autor e data de atualizacao."
+            title="Nenhum documento disponível"
+            description="Assim que anexos e arquivos forem enviados, eles aparecerão aqui com pasta, autor e data de atualização."
           />
         ) : (
           <div className="documents-table">
@@ -619,7 +619,7 @@ export const DocumentsPage = () => {
               <AppStateCard
                 tone="warning"
                 title="Nenhum arquivo encontrado"
-                description="Os filtros atuais nao retornaram resultados. Ajuste a busca ou troque a pasta selecionada."
+                description="Os filtros atuais não retornaram resultados. Ajuste a busca ou troque a pasta selecionada."
               />
             )}
           </div>

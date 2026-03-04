@@ -412,12 +412,12 @@ const EDTPage: React.FC = () => {
       }
 
       if (updates.length > 0) {
-        setImportFeedback(`${updates.length} tarefa(s) atualizada(s) com base em dependencias.`);
+        setImportFeedback(`${updates.length} tarefa(s) atualizada(s) com base em dependências.`);
       } else {
-        setImportFeedback("Nenhuma divergencia encontrada entre dependencias e datas.");
+        setImportFeedback("Nenhuma divergência encontrada entre dependências e datas.");
       }
     } catch (error: any) {
-      setImportError(error?.message ?? "Erro ao atualizar datas por dependencias.");
+      setImportError(error?.message ?? "Erro ao atualizar datas por dependências.");
     } finally {
       await Promise.resolve(onReloadWbs?.());
       setReloadingDependencies(false);
@@ -856,7 +856,7 @@ const EDTPage: React.FC = () => {
       .filter(Boolean);
 
     if (selectedCodes.length === 0) {
-      return "Sem dependencias";
+      return "Sem dependências";
     }
     if (selectedCodes.length === 1) {
       return `Dep: ${selectedCodes[0]}`;
