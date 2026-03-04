@@ -1,16 +1,14 @@
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import type { DropResult } from "@hello-pangea/dnd";
 
-import { DashboardLayout, type CreateProjectPayload } from "./components/DashboardLayout";
+import type { CreateProjectPayload } from "./components/DashboardLayout";
 
 import "./App.css";
-
-import { OrganizationSelector } from "./components/OrganizationOnboarding";
 
 import type { PortfolioProject } from "./components/ProjectPortfolio";
 
@@ -30,57 +28,51 @@ import {
 
 } from "./components/KanbanBoard";
 
-import { DashboardPage } from "./pages/DashboardPage";
-
-import { ProjectsPage } from "./pages/ProjectsPage";
-
-import { ProjectDetailsPage } from "./pages/ProjectDetailsPage";
-
-import EDTPage from "./pages/EDTPage";
-
-
-import KanbanPage from "./pages/KanbanPage";
-
 import { toBackendStatus } from "./utils/status";
-
-import { ProjectEDTPage } from "./pages/ProjectEDTPage";
-
-import { ProjectBoardPage } from "./pages/ProjectBoardPage";
-
-import { ProjectTimelinePage } from "./pages/ProjectTimelinePage";
-
-import { ProjectDocumentsPage } from "./pages/ProjectDocumentsPage";
-
-import { ProjectActivitiesPage } from "./pages/ProjectActivitiesPage";
-
-import DiagramPage from "./pages/DiagramPage";
-
-import BoardPage from "./pages/BoardPage";
-
-import TimelinePage from "./pages/TimelinePage";
-
-import ReportsPage from "./pages/ReportsPage";
-
-import DocumentsPage from "./pages/DocumentsPage";
-
-import ActivitiesPage from "./pages/ActivitiesPage";
-
-import PlanPage from "./pages/PlanPage";
-
-import { TeamPage } from "./pages/TeamPage";
-
-import NotFoundPage from "./pages/NotFoundPage";
-
-import Landing from "./pages/Landing";
-
-import Auth from "./pages/Auth";
-
-import { CheckoutPage } from "./pages/CheckoutPage";
 
 import { apiFetch, apiUrl, getApiErrorMessage, getNetworkErrorMessage, parseApiError, type ApiFetchOptions } from "./config/api";
 
 import { getPlanDefinition } from "./config/plans";
 import { canAccessModule } from "./components/permissions";
+
+const DashboardLayout = lazy(() =>
+  import("./components/DashboardLayout").then((module) => ({ default: module.DashboardLayout }))
+);
+const OrganizationSelector = lazy(() =>
+  import("./components/OrganizationOnboarding").then((module) => ({ default: module.OrganizationSelector }))
+);
+const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })));
+const ProjectsPage = lazy(() => import("./pages/ProjectsPage").then((module) => ({ default: module.ProjectsPage })));
+const ProjectDetailsPage = lazy(() =>
+  import("./pages/ProjectDetailsPage").then((module) => ({ default: module.ProjectDetailsPage }))
+);
+const EDTPage = lazy(() => import("./pages/EDTPage"));
+const KanbanPage = lazy(() => import("./pages/KanbanPage"));
+const ProjectEDTPage = lazy(() => import("./pages/ProjectEDTPage").then((module) => ({ default: module.ProjectEDTPage })));
+const ProjectBoardPage = lazy(() =>
+  import("./pages/ProjectBoardPage").then((module) => ({ default: module.ProjectBoardPage }))
+);
+const ProjectTimelinePage = lazy(() =>
+  import("./pages/ProjectTimelinePage").then((module) => ({ default: module.ProjectTimelinePage }))
+);
+const ProjectDocumentsPage = lazy(() =>
+  import("./pages/ProjectDocumentsPage").then((module) => ({ default: module.ProjectDocumentsPage }))
+);
+const ProjectActivitiesPage = lazy(() =>
+  import("./pages/ProjectActivitiesPage").then((module) => ({ default: module.ProjectActivitiesPage }))
+);
+const DiagramPage = lazy(() => import("./pages/DiagramPage"));
+const BoardPage = lazy(() => import("./pages/BoardPage"));
+const TimelinePage = lazy(() => import("./pages/TimelinePage"));
+const ReportsPage = lazy(() => import("./pages/ReportsPage"));
+const DocumentsPage = lazy(() => import("./pages/DocumentsPage"));
+const ActivitiesPage = lazy(() => import("./pages/ActivitiesPage"));
+const PlanPage = lazy(() => import("./pages/PlanPage"));
+const TeamPage = lazy(() => import("./pages/TeamPage").then((module) => ({ default: module.TeamPage })));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
+const Landing = lazy(() => import("./pages/Landing"));
+const Auth = lazy(() => import("./pages/Auth"));
+const CheckoutPage = lazy(() => import("./pages/CheckoutPage").then((module) => ({ default: module.CheckoutPage })));
 
 
 
@@ -341,6 +333,20 @@ const extractNodeIdFromResponse = (response: unknown): string | null => {
   const node = asRecord(root?.node);
   return typeof node?.id === "string" ? node.id : null;
 };
+
+const RouteLoadingState = () => (
+  <section className="route-loading-state">
+    <div className="route-loading-card">
+      <span className="route-loading-card__pulse" />
+      <div className="route-loading-card__content">
+        <strong>Carregando area</strong>
+        <p>Preparando a proxima tela.</p>
+      </div>
+    </div>
+  </section>
+);
+
+const renderLazyPage = (element: ReactNode) => <Suspense fallback={<RouteLoadingState />}>{element}</Suspense>;
 
 
 async function fetchJson<TResponse = unknown>(
@@ -3740,7 +3746,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
   if (status === "loading") {
 
-    return <p style={{ padding: "2rem" }}>Carregando autenticacao...</p>;
+    return <RouteLoadingState />;
 
   }
 
@@ -3750,11 +3756,11 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     if (location.pathname === "/") {
 
-      return <Landing />;
+      return renderLazyPage(<Landing />);
 
     }
 
-    return <Auth />;
+    return renderLazyPage(<Auth />);
 
   }
 
@@ -3880,14 +3886,13 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     <Routes>
 
-      <Route path="/" element={<Landing />} />
+      <Route path="/" element={renderLazyPage(<Landing />)} />
 
       <Route
 
         path="/*"
 
-        element={
-
+        element={renderLazyPage(
           <DashboardLayout
 
             userEmail={user?.email ?? null}
@@ -4053,8 +4058,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
             onReloadWbs={() => setWbsRefresh((value) => value + 1)}
 
           />
-
-        }
+        )}
 
       >
 
@@ -4064,7 +4068,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
           path="checkout"
 
-          element={
+          element={renderLazyPage(
 
             <CheckoutPage
               selectedOrganizationId={normalizedSelectedOrganizationId}
@@ -4078,7 +4082,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
             />
 
-          }
+          )}
 
         />
 
@@ -4086,7 +4090,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
           path="organizacao"
 
-          element={
+          element={renderLazyPage(
 
             <OrganizationSelector
 
@@ -4122,31 +4126,31 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
             />
 
-          }
+          )}
 
         />
 
-        <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="dashboard" element={renderLazyPage(<DashboardPage />)} />
 
-        <Route path="projects" element={<ProjectsPage />} />
+        <Route path="projects" element={renderLazyPage(<ProjectsPage />)} />
 
-        <Route path="projects/:id" element={<ProjectDetailsPage />} />
+        <Route path="projects/:id" element={renderLazyPage(<ProjectDetailsPage />)} />
 
-        <Route path="projects/:id/edt" element={<ProjectEDTPage />} />
+        <Route path="projects/:id/edt" element={renderLazyPage(<ProjectEDTPage />)} />
 
-        <Route path="projects/:id/board" element={<ProjectBoardPage />} />
+        <Route path="projects/:id/board" element={renderLazyPage(<ProjectBoardPage />)} />
 
-        <Route path="projects/:id/cronograma" element={<ProjectTimelinePage />} />
+        <Route path="projects/:id/cronograma" element={renderLazyPage(<ProjectTimelinePage />)} />
 
-        <Route path="projects/:id/documentos" element={<ProjectDocumentsPage />} />
+        <Route path="projects/:id/documentos" element={renderLazyPage(<ProjectDocumentsPage />)} />
 
-        <Route path="projects/:id/atividades" element={<ProjectActivitiesPage />} />
+        <Route path="projects/:id/atividades" element={renderLazyPage(<ProjectActivitiesPage />)} />
 
         <Route
 
           path="EAP/organizacao/:organizationId/projeto/:projectId"
 
-          element={<EDTPage />}
+          element={renderLazyPage(<EDTPage />)}
 
         />
 
@@ -4178,27 +4182,27 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
         <Route path="edt" element={<Navigate to="/EAP" replace />} />
 
-        <Route path="board" element={<BoardPage />} />
+        <Route path="board" element={renderLazyPage(<BoardPage />)} />
 
-        <Route path="kanban" element={<KanbanPage />} />
+        <Route path="kanban" element={renderLazyPage(<KanbanPage />)} />
 
-        <Route path="cronograma" element={<TimelinePage />} />
+        <Route path="cronograma" element={renderLazyPage(<TimelinePage />)} />
 
-        <Route path="diagrama" element={<DiagramPage />} />
+        <Route path="diagrama" element={renderLazyPage(<DiagramPage />)} />
 
-        <Route path="relatorios" element={<ReportsPage />} />
+        <Route path="relatorios" element={renderLazyPage(<ReportsPage />)} />
 
-        <Route path="documentos" element={<DocumentsPage />} />
+        <Route path="documentos" element={renderLazyPage(<DocumentsPage />)} />
 
-        <Route path="atividades" element={<ActivitiesPage />} />
+        <Route path="atividades" element={renderLazyPage(<ActivitiesPage />)} />
 
-        <Route path="plano" element={<PlanPage />} />
+        <Route path="plano" element={renderLazyPage(<PlanPage />)} />
 
-        <Route path="equipe" element={<TeamPage />} />
+        <Route path="equipe" element={renderLazyPage(<TeamPage />)} />
 
       </Route>
 
-      <Route path="*" element={<NotFoundPage />} />
+      <Route path="*" element={renderLazyPage(<NotFoundPage />)} />
 
     </Routes>
 
