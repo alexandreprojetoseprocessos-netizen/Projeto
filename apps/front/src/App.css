@@ -8446,6 +8446,142 @@ button[type="submit"]:hover {
   color: #64748b;
 }
 
+.plan-audit {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  padding: 20px 24px;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.06);
+}
+
+.plan-audit-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.plan-audit-header h3 {
+  margin: 0;
+}
+
+.plan-audit-header p {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.plan-audit-refresh {
+  border: 1px solid #d7e0ec;
+  background: #f8fbff;
+  color: #16324f;
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.plan-audit-refresh:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.plan-audit-list {
+  display: grid;
+  gap: 12px;
+}
+
+.plan-audit-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.plan-audit-card__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.plan-audit-card__body {
+  min-width: 0;
+}
+
+.plan-audit-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.plan-audit-card__top strong {
+  color: #0f172a;
+}
+
+.plan-audit-card__top span {
+  color: #64748b;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.plan-audit-card__body p {
+  margin: 0;
+  color: #334155;
+}
+
+.plan-audit-card__meta {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.plan-audit-card__meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4338ca;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.plan-audit-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.plan-audit-empty strong {
+  display: block;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.plan-audit-empty p {
+  margin: 0;
+}
+
 .plan-footer-actions {
   display: flex;
   justify-content: flex-end;
@@ -8475,6 +8611,12 @@ button[type="submit"]:hover {
   .plan-hero-actions {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .plan-audit-header,
+  .plan-audit-card__top {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 

@@ -165,9 +165,43 @@ organizationsRouter.get(
 
     const rawLimit = Number(req.query.limit ?? "50");
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 50;
+    const normalizeQueryValue = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+    const splitCsv = (value: unknown) =>
+      normalizeQueryValue(value)
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    const entity = normalizeQueryValue(req.query.entity);
+    const action = normalizeQueryValue(req.query.action);
+    const entityPrefix = normalizeQueryValue(req.query.entityPrefix);
+    const actionPrefix = normalizeQueryValue(req.query.actionPrefix);
+    const entities = splitCsv(req.query.entities);
+    const actions = splitCsv(req.query.actions);
+    const projectId = normalizeUuid(req.query.projectId);
+
+    const where: Prisma.AuditLogWhereInput = { organizationId };
+    if (entity) {
+      where.entity = entity;
+    } else if (entities.length) {
+      where.entity = { in: entities };
+    } else if (entityPrefix) {
+      where.entity = { startsWith: entityPrefix };
+    }
+
+    if (action) {
+      where.action = action;
+    } else if (actions.length) {
+      where.action = { in: actions };
+    } else if (actionPrefix) {
+      where.action = { startsWith: actionPrefix };
+    }
+
+    if (projectId) {
+      where.projectId = projectId;
+    }
 
     const logs = await prisma.auditLog.findMany({
-      where: { organizationId },
+      where,
       orderBy: { createdAt: "desc" },
       take: limit,
       include: {

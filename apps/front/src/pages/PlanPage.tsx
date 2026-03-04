@@ -1,9 +1,9 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
-import { Building2, Calendar, Check, Crown, FolderKanban, HardDrive, Sparkles, Users } from "lucide-react";
+import { Building2, Calendar, Check, Crown, FolderKanban, HardDrive, History, RefreshCw, Sparkles, Users } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
-import { canManageBilling, type OrgRole } from "../components/permissions";
+import { canManageBilling, canManageOrganizationSettings, type OrgRole } from "../components/permissions";
 import { apiRequest, getApiErrorMessage } from "../config/api";
 import { PLAN_DEFINITIONS, formatBillingPrice, formatMonthlyPrice, getPlanDefinition } from "../config/plans";
 
@@ -40,6 +40,20 @@ type LimitsInfo = {
   };
 };
 
+type AuditLogEntry = {
+  id: string;
+  action: string;
+  entity: string;
+  entityId: string;
+  diff?: unknown;
+  createdAt: string;
+  actor?: {
+    id: string;
+    fullName?: string | null;
+    email?: string | null;
+  } | null;
+};
+
 const statusLabel: Record<string, string> = {
   ACTIVE: "Ativo",
   PAST_DUE: "Em atraso",
@@ -61,6 +75,57 @@ const formatBytes = (value: number) => {
   return `${mb.toFixed(1).replace(".", ",")} MB`;
 };
 
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  SUBSCRIPTION_CHECKOUT_STARTED: "Checkout iniciado",
+  SUBSCRIPTION_PLAN_CHANGED: "Plano alterado",
+  SUBSCRIPTION_CANCELED: "Assinatura cancelada"
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+
+const toAuditLabel = (value: string, dictionary: Record<string, string>) => {
+  if (dictionary[value]) return dictionary[value];
+  return value
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
+const formatAuditTimestamp = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("pt-BR");
+};
+
+const getAuditSummary = (entry: AuditLogEntry) => {
+  const diff = asRecord(entry.diff);
+  if (entry.action === "SUBSCRIPTION_CHECKOUT_STARTED") {
+    const planCode = typeof diff?.planCode === "string" ? diff.planCode : null;
+    const paymentMethod = typeof diff?.paymentMethod === "string" ? diff.paymentMethod : null;
+    if (planCode && paymentMethod) {
+      return `Fluxo iniciado para ${planCode} via ${paymentMethod}.`;
+    }
+    return "Fluxo de pagamento iniciado.";
+  }
+  if (entry.action === "SUBSCRIPTION_PLAN_CHANGED") {
+    const before = asRecord(diff?.before);
+    const after = asRecord(diff?.after);
+    const beforeCode = typeof before?.productCode === "string" ? before.productCode : null;
+    const afterCode = typeof after?.productCode === "string" ? after.productCode : null;
+    if (beforeCode && afterCode) {
+      return `Plano alterado de ${beforeCode} para ${afterCode}.`;
+    }
+    return "Plano atualizado pela administração.";
+  }
+  if (entry.action === "SUBSCRIPTION_CANCELED") {
+    return "Assinatura cancelada pelo painel.";
+  }
+  return `Evento ${entry.entityId.slice(0, 8)} registrado na trilha administrativa.`;
+};
+
 const PlanPage = () => {
   const navigate = useNavigate();
   const { token } = useAuth();
@@ -68,6 +133,7 @@ const PlanPage = () => {
     useOutletContext<DashboardOutletContext>();
   const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
   const canEditBilling = canManageBilling(orgRole);
+  const canViewAuditLogs = canManageOrganizationSettings(orgRole);
 
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [limits, setLimits] = useState<LimitsInfo | null>(null);
@@ -76,6 +142,9 @@ const PlanPage = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [changingPlan, setChangingPlan] = useState(false);
   const [canceling, setCanceling] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
 
   const billingHeaders = useMemo(
     () => ({
@@ -120,10 +189,40 @@ const PlanPage = () => {
     }
   };
 
+  const loadAuditLogs = async () => {
+    if (!token || !selectedOrganizationId || !canViewAuditLogs) {
+      setAuditLogs([]);
+      setAuditError(null);
+      setAuditLoading(false);
+      return;
+    }
+
+    setAuditLoading(true);
+    setAuditError(null);
+    try {
+      const body = await apiRequest<{ logs?: AuditLogEntry[] }>(
+        `/organizations/${selectedOrganizationId}/audit-logs?limit=8&entity=SUBSCRIPTION`,
+        {
+          headers: billingHeaders
+        }
+      );
+      setAuditLogs(Array.isArray(body.logs) ? body.logs : []);
+    } catch (err) {
+      setAuditLogs([]);
+      setAuditError(getApiErrorMessage(err, "Falha ao carregar o historico administrativo."));
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSubscription();
     loadLimits();
   }, [billingHeaders, token]);
+
+  useEffect(() => {
+    loadAuditLogs();
+  }, [billingHeaders, token, selectedOrganizationId, canViewAuditLogs]);
 
   const handleChangePlan = async (planCode: string) => {
     if (!token) return;
@@ -358,6 +457,56 @@ const PlanPage = () => {
           </div>
         </div>
       </section>
+
+      {canViewAuditLogs ? (
+        <section className="plan-audit">
+          <header className="plan-audit-header">
+            <div>
+              <h3>Histórico administrativo</h3>
+              <p>Movimentações de assinatura e cobrança da organização ativa.</p>
+            </div>
+            <button
+              type="button"
+              className="plan-audit-refresh"
+              onClick={() => void loadAuditLogs()}
+              disabled={auditLoading}
+            >
+              <RefreshCw size={15} />
+              {auditLoading ? "Atualizando..." : "Atualizar"}
+            </button>
+          </header>
+          {auditError ? <p className="error-text">{auditError}</p> : null}
+          <div className="plan-audit-list">
+            {auditLogs.map((entry) => (
+              <article key={entry.id} className="plan-audit-card">
+                <span className="plan-audit-card__icon">
+                  <History size={16} />
+                </span>
+                <div className="plan-audit-card__body">
+                  <div className="plan-audit-card__top">
+                    <strong>{toAuditLabel(entry.action, AUDIT_ACTION_LABELS)}</strong>
+                    <span>{formatAuditTimestamp(entry.createdAt)}</span>
+                  </div>
+                  <p>{getAuditSummary(entry)}</p>
+                  <div className="plan-audit-card__meta">
+                    <span>{entry.actor?.fullName || entry.actor?.email || "Sistema"}</span>
+                    <span>{entry.entityId.slice(0, 8)}</span>
+                  </div>
+                </div>
+              </article>
+            ))}
+            {!auditLogs.length && !auditLoading ? (
+              <div className="plan-audit-empty">
+                <History size={18} />
+                <div>
+                  <strong>Nenhum evento de assinatura registrado</strong>
+                  <p>Assim que houver alteração de plano, checkout ou cancelamento, ela aparecerá aqui.</p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {loading && <p className="muted">Carregando informações do plano...</p>}
       {error && <p className="error-text">{error}</p>}
