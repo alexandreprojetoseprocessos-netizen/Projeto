@@ -174,6 +174,7 @@ export const IntegrationsPage = () => {
   const canManage = canManageOrganizationSettings(orgRole);
   const canImportWbs = canAccessModule(orgRole, currentOrgModulePermissions, "eap", "create");
   const canImportCatalog = canAccessModule(orgRole, currentOrgModulePermissions, "budget", "create");
+  const canImportTrello = canAccessModule(orgRole, currentOrgModulePermissions, "kanban", "create");
 
   const [catalogEvents, setCatalogEvents] = useState<CatalogEvent[]>([]);
   const [tokens, setTokens] = useState<ApiTokenSummary[]>([]);
@@ -221,9 +222,11 @@ export const IntegrationsPage = () => {
   const [importError, setImportError] = useState<string | null>(null);
   const [wbsImporting, setWbsImporting] = useState(false);
   const [catalogImporting, setCatalogImporting] = useState(false);
+  const [trelloImporting, setTrelloImporting] = useState(false);
 
   const wbsInputRef = useRef<HTMLInputElement | null>(null);
   const catalogInputRef = useRef<HTMLInputElement | null>(null);
+  const trelloInputRef = useRef<HTMLInputElement | null>(null);
 
   const headers = useMemo(
     () => ({
@@ -571,7 +574,7 @@ export const IntegrationsPage = () => {
     }
   };
 
-  const runImport = async (kind: "wbs" | "catalog", file: File | null) => {
+  const runImport = async (kind: "wbs" | "catalog" | "trello", file: File | null) => {
     if (!token || !selectedOrganizationId || !hasProjectContext || !selectedProjectId || !file) return;
 
     setImportError(null);
@@ -583,13 +586,19 @@ export const IntegrationsPage = () => {
 
     if (kind === "wbs") {
       setWbsImporting(true);
-    } else {
+    } else if (kind === "catalog") {
       setCatalogImporting(true);
+    } else {
+      setTrelloImporting(true);
     }
 
     try {
       const endpoint =
-        kind === "wbs" ? `/wbs/import?projectId=${selectedProjectId}` : `/service-catalog/import?projectId=${selectedProjectId}`;
+        kind === "wbs"
+          ? `/wbs/import?projectId=${selectedProjectId}`
+          : kind === "catalog"
+          ? `/service-catalog/import?projectId=${selectedProjectId}`
+          : `/integrations/imports/trello?projectId=${selectedProjectId}`;
       const body = await apiRequest<Record<string, unknown>>(endpoint, {
         method: "POST",
         headers,
@@ -599,7 +608,7 @@ export const IntegrationsPage = () => {
       const imported = typeof body.imported === "number" ? body.imported : typeof body.created === "number" ? body.created : null;
       const updated = typeof body.updated === "number" ? body.updated : 0;
       const warnings = Array.isArray(body.warnings) ? body.warnings.length : 0;
-      const kindLabel = kind === "wbs" ? "EAP" : "catálogo";
+      const kindLabel = kind === "wbs" ? "EAP" : kind === "catalog" ? "catálogo" : "Trello";
 
       setImportFeedback(
         imported !== null
@@ -607,14 +616,19 @@ export const IntegrationsPage = () => {
           : `Importação de ${kindLabel} concluída com sucesso.`
       );
     } catch (error) {
-      setImportError(getApiErrorMessage(error, `Falha ao importar ${kind === "wbs" ? "EAP" : "catálogo"}.`));
+      setImportError(
+        getApiErrorMessage(error, `Falha ao importar ${kind === "wbs" ? "EAP" : kind === "catalog" ? "catálogo" : "Trello"}.`)
+      );
     } finally {
       if (kind === "wbs") {
         setWbsImporting(false);
         if (wbsInputRef.current) wbsInputRef.current.value = "";
-      } else {
+      } else if (kind === "catalog") {
         setCatalogImporting(false);
         if (catalogInputRef.current) catalogInputRef.current.value = "";
+      } else {
+        setTrelloImporting(false);
+        if (trelloInputRef.current) trelloInputRef.current.value = "";
       }
     }
   };
@@ -1004,6 +1018,31 @@ export const IntegrationsPage = () => {
                   </button>
                 </div>
               </article>
+
+              <article className="integration-row-card">
+                <div className="integration-row-card__main">
+                  <strong>Importar board do Trello</strong>
+                  <p>Arquivo `.json` exportado do board para criar cards diretamente no Kanban do projeto ativo.</p>
+                  <small>Mapeia listas para colunas e preserva descrição, prazo e prioridade sugerida.</small>
+                </div>
+                <div className="integration-row-card__side integration-row-card__side--stack">
+                  <input
+                    ref={trelloInputRef}
+                    type="file"
+                    accept=".json,application/json"
+                    hidden
+                    onChange={(event) => void runImport("trello", event.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => trelloInputRef.current?.click()}
+                    disabled={!canImportTrello || trelloImporting}
+                  >
+                    {trelloImporting ? "Importando..." : "Escolher JSON"}
+                  </button>
+                </div>
+              </article>
             </div>
 
             {importFeedback ? <p className="integration-feedback">{importFeedback}</p> : null}
@@ -1036,11 +1075,19 @@ export const IntegrationsPage = () => {
               const updated = typeof summary.updated === "number" ? summary.updated : 0;
               const warningCount = typeof summary.warningCount === "number" ? summary.warningCount : 0;
               const errorCount = typeof summary.errorCount === "number" ? summary.errorCount : 0;
+              const jobLabel =
+                job.entity === "WBS"
+                  ? "Importação de EAP"
+                  : job.entity === "SERVICE_CATALOG"
+                  ? "Importação de catálogo"
+                  : job.entity === "TRELLO_BOARD"
+                  ? "Importação do Trello"
+                  : job.entity;
 
               return (
                 <article key={job.id} className="integration-delivery-item">
                   <div className="integration-delivery-item__main">
-                    <strong>{job.entity === "WBS" ? "Importação de EAP" : "Importação de catálogo"}</strong>
+                    <strong>{jobLabel}</strong>
                     <small>{job.fileName ?? "Arquivo sem nome"}</small>
                     <small>
                       Criado em {formatDateTime(job.createdAt)} · por{" "}

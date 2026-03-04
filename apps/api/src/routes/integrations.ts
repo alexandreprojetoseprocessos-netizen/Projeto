@@ -1,7 +1,9 @@
 import { Router } from "express";
-import { IntegrationProvider, Prisma } from "@prisma/client";
+import { IntegrationProvider, Prisma, TaskPriority, TaskStatus } from "@prisma/client";
+import multer from "multer";
 import { prisma } from "@gestao/database";
 import { authMiddleware } from "../middleware/auth";
+import { ensureModulePermission } from "../middleware/modulePermission";
 import { organizationMiddleware } from "../middleware/organization";
 import type { RequestWithUser } from "../types/http";
 import { logger } from "../config/logger";
@@ -13,7 +15,7 @@ import {
   revokeApiToken,
   summarizeApiToken
 } from "../services/integrationTokens";
-import { listImportJobsByOrganization, summarizeImportJob } from "../services/importJobs";
+import { completeImportJob, createImportJob, failImportJob, listImportJobsByOrganization, summarizeImportJob } from "../services/importJobs";
 import {
   WEBHOOK_EVENT_CATALOG,
   createWebhookSubscription,
@@ -39,9 +41,11 @@ import {
 } from "../services/integrationConnections";
 import { writeAuditLog } from "../services/audit";
 import { canManageOrganizationSettings } from "../services/permissions";
+import { ensureProjectMembership } from "../services/rbac";
 import { normalizeUuid } from "../utils/uuid";
 
 export const integrationsRouter = Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 const ensureOrgAdmin = (req: RequestWithUser, res: any) => {
   const role = req.organizationRole;
@@ -62,6 +66,98 @@ const normalizeEvents = (value: unknown) => {
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter(Boolean);
+};
+
+const DEFAULT_BOARD_COLUMNS: Array<{ label: string; status: TaskStatus; wipLimit?: number | null }> = [
+  { label: "Backlog", status: TaskStatus.BACKLOG },
+  { label: "Planejamento", status: TaskStatus.TODO },
+  { label: "Em andamento", status: TaskStatus.IN_PROGRESS, wipLimit: 6 },
+  { label: "Revisao", status: TaskStatus.REVIEW, wipLimit: 4 },
+  { label: "Concluido", status: TaskStatus.DONE }
+];
+
+const ensureBoardColumns = async (projectId: string) => {
+  const count = await prisma.boardColumn.count({ where: { projectId } });
+  if (count > 0) return;
+  await prisma.boardColumn.createMany({
+    data: DEFAULT_BOARD_COLUMNS.map((column, index) => ({
+      projectId,
+      label: column.label,
+      order: index,
+      status: column.status,
+      wipLimit: column.wipLimit ?? null
+    }))
+  });
+};
+
+const normalizeBoardStatusKey = (value?: string | null) =>
+  (value ?? "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[_\s]+/g, " ");
+
+const resolveBoardStatus = (value?: string | null): TaskStatus => {
+  const key = normalizeBoardStatusKey(value);
+  if (!key) return TaskStatus.BACKLOG;
+  if (["done", "finalizado", "finalizada", "concluido", "concluida", "completed", "finished"].includes(key)) {
+    return TaskStatus.DONE;
+  }
+  if (["in progress", "em andamento", "andamento", "doing", "progresso", "em progresso"].includes(key)) {
+    return TaskStatus.IN_PROGRESS;
+  }
+  if (["review", "revisao", "homologacao", "qa", "teste", "testes"].includes(key)) {
+    return TaskStatus.REVIEW;
+  }
+  if (["delayed", "em atraso", "atrasado", "atrasada", "late", "overdue"].includes(key)) {
+    return TaskStatus.DELAYED;
+  }
+  if (["risk", "em risco", "risco"].includes(key)) {
+    return TaskStatus.RISK;
+  }
+  if (["blocked", "bloqueado", "bloqueada", "impedido", "impedida"].includes(key)) {
+    return TaskStatus.BLOCKED;
+  }
+  if (["todo", "a fazer", "planejado", "planejamento"].includes(key)) {
+    return TaskStatus.TODO;
+  }
+  return TaskStatus.BACKLOG;
+};
+
+const resolveTrelloPriority = (card: Record<string, unknown>): TaskPriority => {
+  const labels = Array.isArray(card.labels) ? card.labels : [];
+  const tokens = labels
+    .flatMap((label) => {
+      if (!label || typeof label !== "object") return [];
+      const record = label as Record<string, unknown>;
+      return [record.name, record.color]
+        .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        .map((value) => normalizeBoardStatusKey(value));
+    })
+    .filter(Boolean);
+
+  if (tokens.some((token) => ["urgente", "critical", "critico", "critica", "red"].includes(token))) {
+    return TaskPriority.CRITICAL;
+  }
+  if (tokens.some((token) => ["alta", "high", "orange"].includes(token))) {
+    return TaskPriority.HIGH;
+  }
+  if (tokens.some((token) => ["baixa", "low", "green", "blue"].includes(token))) {
+    return TaskPriority.LOW;
+  }
+  return TaskPriority.MEDIUM;
+};
+
+const buildTrelloDescription = (card: Record<string, unknown>, listName: string) => {
+  const parts: string[] = [];
+  const description = typeof card.desc === "string" ? card.desc.trim() : "";
+  const shortUrl = typeof card.shortUrl === "string" ? card.shortUrl.trim() : "";
+  if (description) parts.push(description);
+  parts.push(`Importado do Trello · Lista original: ${listName}`);
+  if (shortUrl) parts.push(`Origem: ${shortUrl}`);
+  return parts.join("\n\n");
 };
 
 integrationsRouter.post("/github/webhook", async (req, res) => {
@@ -325,6 +421,190 @@ integrationsRouter.get("/import-jobs", async (req, res) => {
   return res.json({
     jobs: jobs.map(summarizeImportJob)
   });
+});
+
+integrationsRouter.post("/imports/trello", upload.single("file"), async (req, res) => {
+  if (!ensureOrgAdmin(req, res)) return;
+  if (!ensureModulePermission(req, res, "kanban", "create", "Voce nao tem permissao para importar cards para o Kanban.")) {
+    return;
+  }
+
+  const projectId = normalizeUuid((req.query.projectId as string) ?? (req.body?.projectId as string) ?? "");
+  const file = req.file;
+
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is required" });
+  }
+  if (!file) {
+    return res.status(400).json({ message: "file is required" });
+  }
+
+  const membership = await ensureProjectMembership(req, res, projectId);
+  if (!membership) return;
+
+  const importJob = await createImportJob({
+    organizationId: req.organizationId!,
+    createdById: req.user!.id,
+    source: "TRELLO_JSON",
+    entity: "TRELLO_BOARD",
+    fileName: file.originalname ?? null,
+    summary: { projectId }
+  });
+
+  try {
+    const parsed = JSON.parse(file.buffer.toString("utf-8")) as Record<string, unknown>;
+    const lists = Array.isArray(parsed.lists) ? parsed.lists : [];
+    const cards = Array.isArray(parsed.cards) ? parsed.cards : [];
+
+    if (!lists.length || !cards.length) {
+      await failImportJob({
+        jobId: importJob.id,
+        summary: { projectId, errorCount: 1, message: "Arquivo do Trello sem listas ou cards validos." }
+      });
+      return res.status(400).json({ message: "Arquivo do Trello invalido. Exporte o board em JSON completo." });
+    }
+
+    await ensureBoardColumns(projectId);
+    const [columns, existingTasks] = await Promise.all([
+      prisma.boardColumn.findMany({
+        where: { projectId },
+        orderBy: [{ order: "asc" }]
+      }),
+      prisma.wbsNode.findMany({
+        where: { projectId, boardColumnId: { not: null } },
+        select: { id: true, boardColumnId: true, order: true }
+      })
+    ]);
+
+    const columnByStatus = new Map<TaskStatus, { id: string; status: TaskStatus | null }>();
+    for (const column of columns) {
+      if (column.status) columnByStatus.set(column.status, { id: column.id, status: column.status });
+    }
+    const fallbackColumn = columns[0] ?? null;
+    if (!fallbackColumn) {
+      throw new Error("BOARD_COLUMNS_NOT_AVAILABLE");
+    }
+
+    const nextOrderByColumn = new Map<string, number>();
+    for (const task of existingTasks) {
+      if (!task.boardColumnId) continue;
+      const current = nextOrderByColumn.get(task.boardColumnId) ?? 0;
+      nextOrderByColumn.set(task.boardColumnId, Math.max(current, task.order + 1));
+    }
+
+    const activeLists = new Map(
+      lists
+        .filter((list): list is Record<string, unknown> => Boolean(list) && typeof list === "object")
+        .filter((list) => list.closed !== true && typeof list.id === "string")
+        .map((list) => [String(list.id), list])
+    );
+
+    const sortedCards = cards
+      .filter((card): card is Record<string, unknown> => Boolean(card) && typeof card === "object")
+      .filter((card) => card.closed !== true && typeof card.idList === "string" && activeLists.has(String(card.idList)))
+      .sort((left, right) => {
+        const leftList = String(left.idList);
+        const rightList = String(right.idList);
+        if (leftList !== rightList) return leftList.localeCompare(rightList);
+        const leftPos = typeof left.pos === "number" ? left.pos : Number(left.pos ?? 0);
+        const rightPos = typeof right.pos === "number" ? right.pos : Number(right.pos ?? 0);
+        return leftPos - rightPos;
+      });
+
+    let created = 0;
+    let skipped = 0;
+    const warnings: string[] = [];
+
+    await prisma.$transaction(async (tx) => {
+      for (const card of sortedCards) {
+        const title = typeof card.name === "string" ? card.name.trim() : "";
+        if (!title) {
+          skipped += 1;
+          continue;
+        }
+
+        const list = activeLists.get(String(card.idList));
+        const listName = typeof list?.name === "string" ? list.name : "Lista Trello";
+        const status = resolveBoardStatus(listName);
+        const targetColumn = columnByStatus.get(status) ?? { id: fallbackColumn.id, status: fallbackColumn.status };
+
+        if (!columnByStatus.has(status)) {
+          warnings.push(`Lista "${listName}" mapeada para a coluna "${fallbackColumn.label}".`);
+        }
+
+        const nextOrder = nextOrderByColumn.get(targetColumn.id) ?? 0;
+        nextOrderByColumn.set(targetColumn.id, nextOrder + 1);
+
+        const dueRaw = typeof card.due === "string" && card.due.trim() ? new Date(card.due) : null;
+        const dueDate = dueRaw && !Number.isNaN(dueRaw.getTime()) ? dueRaw : null;
+        const dueComplete = card.dueComplete === true;
+        const finalStatus = dueComplete ? TaskStatus.DONE : targetColumn.status ?? status;
+
+        await tx.wbsNode.create({
+          data: {
+            projectId,
+            parentId: null,
+            level: 0,
+            order: nextOrder,
+            title,
+            description: buildTrelloDescription(card, listName),
+            type: "TASK",
+            status: finalStatus,
+            priority: resolveTrelloPriority(card),
+            boardColumnId: targetColumn.id,
+            endDate: dueDate,
+            progress: dueComplete ? 100 : 0
+          }
+        });
+
+        created += 1;
+      }
+    });
+
+    const summary = {
+      projectId,
+      imported: created,
+      created,
+      updated: 0,
+      warningCount: warnings.length,
+      errorCount: 0,
+      skipped
+    };
+
+    await completeImportJob({
+      jobId: importJob.id,
+      summary
+    });
+
+    await writeAuditLog({
+      organizationId: req.organizationId!,
+      actorId: req.user!.id,
+      projectId,
+      action: "TRELLO_BOARD_IMPORTED",
+      entity: "INTEGRATION_IMPORT",
+      entityId: importJob.id,
+      diff: summary
+    });
+
+    return res.json({
+      message: "Importacao do Trello concluida.",
+      ...summary,
+      warnings
+    });
+  } catch (error) {
+    logger.error({ err: error, projectId }, "Failed to import Trello board");
+    await failImportJob({
+      jobId: importJob.id,
+      summary: {
+        projectId,
+        errorCount: 1,
+        message: error instanceof Error ? error.message : "Falha ao importar board do Trello."
+      }
+    });
+    return res
+      .status(error instanceof SyntaxError ? 400 : 500)
+      .json({ message: error instanceof SyntaxError ? "Arquivo JSON do Trello invalido." : "Falha ao importar board do Trello." });
+  }
 });
 
 integrationsRouter.post("/tokens", async (req, res) => {
