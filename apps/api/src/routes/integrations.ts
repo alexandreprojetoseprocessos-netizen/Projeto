@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { IntegrationProvider, Prisma, TaskPriority, TaskStatus } from "@prisma/client";
 import multer from "multer";
+import * as XLSX from "xlsx";
 import { prisma } from "@gestao/database";
 import { authMiddleware } from "../middleware/auth";
 import { ensureModulePermission } from "../middleware/modulePermission";
@@ -157,6 +158,68 @@ const buildTrelloDescription = (card: Record<string, unknown>, listName: string)
   if (description) parts.push(description);
   parts.push(`Importado do Trello · Lista original: ${listName}`);
   if (shortUrl) parts.push(`Origem: ${shortUrl}`);
+  return parts.join("\n\n");
+};
+
+const normalizeImportKey = (value?: string | null) =>
+  (value ?? "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "");
+
+const parseSpreadsheetDateValue = (value: unknown): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === "number") {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed) {
+      return new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
+    }
+  }
+  const text = String(value).trim();
+  if (!text) return null;
+  const brMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s|T|$)/);
+  if (brMatch) {
+    const day = Number(brMatch[1]);
+    const month = Number(brMatch[2]);
+    let year = Number(brMatch[3]);
+    if (year < 100) year += 2000;
+    return new Date(Date.UTC(year, month - 1, day));
+  }
+  const isoMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s|T|$)/);
+  if (isoMatch) {
+    return new Date(Date.UTC(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3])));
+  }
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const resolveJiraPriority = (value?: string | null): TaskPriority => {
+  const key = normalizeBoardStatusKey(value);
+  if (["highest", "urgent", "urgente", "critical", "critico", "critica", "blocker"].includes(key)) {
+    return TaskPriority.CRITICAL;
+  }
+  if (["high", "alta", "major"].includes(key)) {
+    return TaskPriority.HIGH;
+  }
+  if (["low", "baixa", "lowest", "minor"].includes(key)) {
+    return TaskPriority.LOW;
+  }
+  return TaskPriority.MEDIUM;
+};
+
+const buildJiraDescription = (row: Record<string, unknown>) => {
+  const parts: string[] = [];
+  const description = typeof row.description === "string" ? row.description.trim() : "";
+  const issueKey = typeof row.issuekey === "string" ? row.issuekey.trim() : "";
+  const issueType = typeof row.issuetype === "string" ? row.issuetype.trim() : "";
+  if (description) parts.push(description);
+  parts.push("Importado do Jira");
+  if (issueKey) parts.push(`Issue: ${issueKey}`);
+  if (issueType) parts.push(`Tipo: ${issueType}`);
   return parts.join("\n\n");
 };
 
@@ -604,6 +667,221 @@ integrationsRouter.post("/imports/trello", upload.single("file"), async (req, re
     return res
       .status(error instanceof SyntaxError ? 400 : 500)
       .json({ message: error instanceof SyntaxError ? "Arquivo JSON do Trello invalido." : "Falha ao importar board do Trello." });
+  }
+});
+
+integrationsRouter.post("/imports/jira", upload.single("file"), async (req, res) => {
+  if (!ensureOrgAdmin(req, res)) return;
+  if (!ensureModulePermission(req, res, "kanban", "create", "Voce nao tem permissao para importar cards para o Kanban.")) {
+    return;
+  }
+
+  const projectId = normalizeUuid((req.query.projectId as string) ?? (req.body?.projectId as string) ?? "");
+  const file = req.file;
+
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is required" });
+  }
+  if (!file) {
+    return res.status(400).json({ message: "file is required" });
+  }
+
+  const membership = await ensureProjectMembership(req, res, projectId);
+  if (!membership) return;
+
+  const importJob = await createImportJob({
+    organizationId: req.organizationId!,
+    createdById: req.user!.id,
+    source: "JIRA_EXPORT",
+    entity: "JIRA_ISSUES",
+    fileName: file.originalname ?? null,
+    summary: { projectId }
+  });
+
+  try {
+    const workbook = XLSX.read(file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+
+    const parsedRows = rawRows
+      .map((row) =>
+        Object.entries(row).reduce<Record<string, unknown>>((acc, [key, value]) => {
+          acc[normalizeImportKey(key)] = value;
+          return acc;
+        }, {})
+      )
+      .map((row) => ({
+        summary:
+          typeof row.summary === "string" && row.summary.trim()
+            ? row.summary.trim()
+            : typeof row.titulo === "string" && row.titulo.trim()
+            ? row.titulo.trim()
+            : typeof row.nome === "string" && row.nome.trim()
+            ? row.nome.trim()
+            : "",
+        status:
+          typeof row.status === "string" && row.status.trim()
+            ? row.status.trim()
+            : typeof row.statuscategory === "string" && row.statuscategory.trim()
+            ? row.statuscategory.trim()
+            : "Backlog",
+        priority:
+          typeof row.priority === "string" && row.priority.trim()
+            ? row.priority.trim()
+            : typeof row.prioridade === "string" && row.prioridade.trim()
+            ? row.prioridade.trim()
+            : "Medium",
+        dueDate:
+          parseSpreadsheetDateValue(
+            row.duedate ?? row.dataentrega ?? row.vencimento ?? row.prazo ?? row.resolutiondate ?? null
+          ),
+        description:
+          typeof row.description === "string" && row.description.trim()
+            ? row.description.trim()
+            : typeof row.descricao === "string" && row.descricao.trim()
+            ? row.descricao.trim()
+            : "",
+        issueKey:
+          typeof row.issuekey === "string" && row.issuekey.trim()
+            ? row.issuekey.trim()
+            : typeof row.key === "string" && row.key.trim()
+            ? row.key.trim()
+            : typeof row.chave === "string" && row.chave.trim()
+            ? row.chave.trim()
+            : "",
+        issueType:
+          typeof row.issuetype === "string" && row.issuetype.trim()
+            ? row.issuetype.trim()
+            : typeof row.tipo === "string" && row.tipo.trim()
+            ? row.tipo.trim()
+            : ""
+      }))
+      .filter((row) => row.summary.length > 0);
+
+    if (!parsedRows.length) {
+      await failImportJob({
+        jobId: importJob.id,
+        summary: { projectId, errorCount: 1, message: "Arquivo do Jira sem linhas validas." }
+      });
+      return res.status(400).json({ message: "Arquivo do Jira invalido. Confirme colunas como Summary, Status e Priority." });
+    }
+
+    await ensureBoardColumns(projectId);
+    const [columns, existingTasks] = await Promise.all([
+      prisma.boardColumn.findMany({
+        where: { projectId },
+        orderBy: [{ order: "asc" }]
+      }),
+      prisma.wbsNode.findMany({
+        where: { projectId, boardColumnId: { not: null } },
+        select: { id: true, boardColumnId: true, order: true }
+      })
+    ]);
+
+    const columnByStatus = new Map<TaskStatus, { id: string; status: TaskStatus | null; label: string }>();
+    for (const column of columns) {
+      if (column.status) {
+        columnByStatus.set(column.status, { id: column.id, status: column.status, label: column.label });
+      }
+    }
+    const fallbackColumn = columns[0] ?? null;
+    if (!fallbackColumn) {
+      throw new Error("BOARD_COLUMNS_NOT_AVAILABLE");
+    }
+
+    const nextOrderByColumn = new Map<string, number>();
+    for (const task of existingTasks) {
+      if (!task.boardColumnId) continue;
+      const current = nextOrderByColumn.get(task.boardColumnId) ?? 0;
+      nextOrderByColumn.set(task.boardColumnId, Math.max(current, task.order + 1));
+    }
+
+    let created = 0;
+    const warnings: string[] = [];
+
+    await prisma.$transaction(async (tx) => {
+      for (const row of parsedRows) {
+        const status = resolveBoardStatus(row.status);
+        const targetColumn = columnByStatus.get(status) ?? {
+          id: fallbackColumn.id,
+          status: fallbackColumn.status,
+          label: fallbackColumn.label
+        };
+        if (!columnByStatus.has(status)) {
+          warnings.push(`Status "${row.status}" mapeado para a coluna "${fallbackColumn.label}".`);
+        }
+
+        const nextOrder = nextOrderByColumn.get(targetColumn.id) ?? 0;
+        nextOrderByColumn.set(targetColumn.id, nextOrder + 1);
+
+        const finalDescription = buildJiraDescription({
+          description: row.description,
+          issuekey: row.issueKey,
+          issuetype: row.issueType
+        });
+
+        await tx.wbsNode.create({
+          data: {
+            projectId,
+            parentId: null,
+            level: 0,
+            order: nextOrder,
+            title: row.summary,
+            description: finalDescription,
+            type: "TASK",
+            status: targetColumn.status ?? status,
+            priority: resolveJiraPriority(row.priority),
+            boardColumnId: targetColumn.id,
+            endDate: row.dueDate,
+            progress: targetColumn.status === TaskStatus.DONE ? 100 : 0
+          }
+        });
+
+        created += 1;
+      }
+    });
+
+    const summary = {
+      projectId,
+      imported: created,
+      created,
+      updated: 0,
+      warningCount: warnings.length,
+      errorCount: 0
+    };
+
+    await completeImportJob({
+      jobId: importJob.id,
+      summary
+    });
+
+    await writeAuditLog({
+      organizationId: req.organizationId!,
+      actorId: req.user!.id,
+      projectId,
+      action: "JIRA_ISSUES_IMPORTED",
+      entity: "INTEGRATION_IMPORT",
+      entityId: importJob.id,
+      diff: summary
+    });
+
+    return res.json({
+      message: "Importacao do Jira concluida.",
+      ...summary,
+      warnings
+    });
+  } catch (error) {
+    logger.error({ err: error, projectId }, "Failed to import Jira export");
+    await failImportJob({
+      jobId: importJob.id,
+      summary: {
+        projectId,
+        errorCount: 1,
+        message: error instanceof Error ? error.message : "Falha ao importar export do Jira."
+      }
+    });
+    return res.status(500).json({ message: "Falha ao importar export do Jira." });
   }
 });
 

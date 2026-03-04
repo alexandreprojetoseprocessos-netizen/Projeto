@@ -174,7 +174,7 @@ export const IntegrationsPage = () => {
   const canManage = canManageOrganizationSettings(orgRole);
   const canImportWbs = canAccessModule(orgRole, currentOrgModulePermissions, "eap", "create");
   const canImportCatalog = canAccessModule(orgRole, currentOrgModulePermissions, "budget", "create");
-  const canImportTrello = canAccessModule(orgRole, currentOrgModulePermissions, "kanban", "create");
+  const canImportKanban = canAccessModule(orgRole, currentOrgModulePermissions, "kanban", "create");
 
   const [catalogEvents, setCatalogEvents] = useState<CatalogEvent[]>([]);
   const [tokens, setTokens] = useState<ApiTokenSummary[]>([]);
@@ -223,10 +223,12 @@ export const IntegrationsPage = () => {
   const [wbsImporting, setWbsImporting] = useState(false);
   const [catalogImporting, setCatalogImporting] = useState(false);
   const [trelloImporting, setTrelloImporting] = useState(false);
+  const [jiraImporting, setJiraImporting] = useState(false);
 
   const wbsInputRef = useRef<HTMLInputElement | null>(null);
   const catalogInputRef = useRef<HTMLInputElement | null>(null);
   const trelloInputRef = useRef<HTMLInputElement | null>(null);
+  const jiraInputRef = useRef<HTMLInputElement | null>(null);
 
   const headers = useMemo(
     () => ({
@@ -574,7 +576,7 @@ export const IntegrationsPage = () => {
     }
   };
 
-  const runImport = async (kind: "wbs" | "catalog" | "trello", file: File | null) => {
+  const runImport = async (kind: "wbs" | "catalog" | "trello" | "jira", file: File | null) => {
     if (!token || !selectedOrganizationId || !hasProjectContext || !selectedProjectId || !file) return;
 
     setImportError(null);
@@ -588,8 +590,10 @@ export const IntegrationsPage = () => {
       setWbsImporting(true);
     } else if (kind === "catalog") {
       setCatalogImporting(true);
-    } else {
+    } else if (kind === "trello") {
       setTrelloImporting(true);
+    } else {
+      setJiraImporting(true);
     }
 
     try {
@@ -598,7 +602,9 @@ export const IntegrationsPage = () => {
           ? `/wbs/import?projectId=${selectedProjectId}`
           : kind === "catalog"
           ? `/service-catalog/import?projectId=${selectedProjectId}`
-          : `/integrations/imports/trello?projectId=${selectedProjectId}`;
+          : kind === "trello"
+          ? `/integrations/imports/trello?projectId=${selectedProjectId}`
+          : `/integrations/imports/jira?projectId=${selectedProjectId}`;
       const body = await apiRequest<Record<string, unknown>>(endpoint, {
         method: "POST",
         headers,
@@ -608,7 +614,8 @@ export const IntegrationsPage = () => {
       const imported = typeof body.imported === "number" ? body.imported : typeof body.created === "number" ? body.created : null;
       const updated = typeof body.updated === "number" ? body.updated : 0;
       const warnings = Array.isArray(body.warnings) ? body.warnings.length : 0;
-      const kindLabel = kind === "wbs" ? "EAP" : kind === "catalog" ? "catálogo" : "Trello";
+      const kindLabel =
+        kind === "wbs" ? "EAP" : kind === "catalog" ? "catálogo" : kind === "trello" ? "Trello" : "Jira";
 
       setImportFeedback(
         imported !== null
@@ -617,7 +624,10 @@ export const IntegrationsPage = () => {
       );
     } catch (error) {
       setImportError(
-        getApiErrorMessage(error, `Falha ao importar ${kind === "wbs" ? "EAP" : kind === "catalog" ? "catálogo" : "Trello"}.`)
+        getApiErrorMessage(
+          error,
+          `Falha ao importar ${kind === "wbs" ? "EAP" : kind === "catalog" ? "catálogo" : kind === "trello" ? "Trello" : "Jira"}.`
+        )
       );
     } finally {
       if (kind === "wbs") {
@@ -626,9 +636,12 @@ export const IntegrationsPage = () => {
       } else if (kind === "catalog") {
         setCatalogImporting(false);
         if (catalogInputRef.current) catalogInputRef.current.value = "";
-      } else {
+      } else if (kind === "trello") {
         setTrelloImporting(false);
         if (trelloInputRef.current) trelloInputRef.current.value = "";
+      } else {
+        setJiraImporting(false);
+        if (jiraInputRef.current) jiraInputRef.current.value = "";
       }
     }
   };
@@ -1037,9 +1050,34 @@ export const IntegrationsPage = () => {
                     type="button"
                     className="btn-primary"
                     onClick={() => trelloInputRef.current?.click()}
-                    disabled={!canImportTrello || trelloImporting}
+                    disabled={!canImportKanban || trelloImporting}
                   >
                     {trelloImporting ? "Importando..." : "Escolher JSON"}
+                  </button>
+                </div>
+              </article>
+
+              <article className="integration-row-card">
+                <div className="integration-row-card__main">
+                  <strong>Importar issues do Jira</strong>
+                  <p>Arquivo `.csv` ou `.xlsx` exportado do Jira para criar cards diretamente no Kanban do projeto ativo.</p>
+                  <small>Usa colunas como Summary, Status, Priority, Description, Due Date e Issue Key.</small>
+                </div>
+                <div className="integration-row-card__side integration-row-card__side--stack">
+                  <input
+                    ref={jiraInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                    hidden
+                    onChange={(event) => void runImport("jira", event.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => jiraInputRef.current?.click()}
+                    disabled={!canImportKanban || jiraImporting}
+                  >
+                    {jiraImporting ? "Importando..." : "Escolher arquivo"}
                   </button>
                 </div>
               </article>
@@ -1082,6 +1120,8 @@ export const IntegrationsPage = () => {
                   ? "Importação de catálogo"
                   : job.entity === "TRELLO_BOARD"
                   ? "Importação do Trello"
+                  : job.entity === "JIRA_ISSUES"
+                  ? "Importação do Jira"
                   : job.entity;
 
               return (
