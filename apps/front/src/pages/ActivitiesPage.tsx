@@ -4,6 +4,7 @@ import { Calculator, CheckCircle2, Coins, Layers, Loader2, Package, Plus, Save, 
 import { apiRequest, getApiErrorMessage } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
+import { AppPageHero, AppStateCard } from "../components/AppPageHero";
 
 type BudgetCategory = "Mao de Obra" | "Material" | "Equipamento" | "Custos Indiretos" | "Outros";
 
@@ -365,12 +366,16 @@ export const ActivitiesPage = () => {
   if (!normalizedSelectedProjectId) {
     return (
       <section className="budget-page">
-        <header className="budget-header">
-          <div>
-            <h1>Orcamento</h1>
-            <p>Selecione um projeto especifico. Esta pagina nao permite "Todos".</p>
-          </div>
-        </header>
+        <AppPageHero
+          kicker="Gestao financeira"
+          title="Orcamento"
+          subtitle="Controle custos, margem e composicao financeira por projeto."
+        />
+        <AppStateCard
+          tone="warning"
+          title="Selecione um projeto especifico"
+          description='Esta pagina nao trabalha com a opcao "Todos". Escolha um projeto no cabecalho para carregar os dados de orcamento.'
+        />
       </section>
     );
   }
@@ -408,59 +413,62 @@ export const ActivitiesPage = () => {
 
   return (
     <section className="budget-page">
-      <header className="budget-header budget-header--actions">
-        <div>
-          <h1>Orcamento</h1>
-          <p>Gestao de custos e orcamento do projeto</p>
-        </div>
-        <div className="budget-save-controls">
-          <span className={`budget-save-status is-${saveStatus}`}>{saveStatusText}</span>
-          <button className="budget-primary-button" type="button" onClick={handleSaveNow} disabled={loadingBudget || saveStatus === "saving"}>
-            {saveStatus === "saving" ? <Loader2 size={16} className="spin" /> : <Save size={16} />} Salvar agora
-          </button>
-        </div>
-      </header>
+      <AppPageHero
+        className="budgetPageHero"
+        kicker="Gestao financeira"
+        title="Orcamento"
+        subtitle={`Custos, margem e estrutura financeira do projeto ${projectName || "selecionado"}.`}
+        actions={
+          <div className="budget-save-controls">
+            <span className={`budget-save-status is-${saveStatus}`}>{saveStatusText}</span>
+            <button
+              className="budget-primary-button"
+              type="button"
+              onClick={handleSaveNow}
+              disabled={loadingBudget || saveStatus === "saving"}
+            >
+              {saveStatus === "saving" ? <Loader2 size={16} className="spin" /> : <Save size={16} />} Salvar agora
+            </button>
+          </div>
+        }
+        stats={[
+          {
+            label: "Valor do projeto",
+            value: currency(projectValue),
+            helper: "Valor contratado",
+            icon: <Calculator size={18} />,
+            tone: "default"
+          },
+          {
+            label: "Custo total",
+            value: currency(totals.costTotal),
+            helper: `Inclui ${contingency}% de contingencia`,
+            icon: <Layers size={18} />,
+            tone: "info"
+          },
+          {
+            label: "Lucro",
+            value: currency(totals.profit),
+            helper: `Margem de ${totals.profitMargin.toFixed(1)}%`,
+            icon: <TrendingUp size={18} />,
+            tone: totals.profit < 0 ? "danger" : "success"
+          },
+          {
+            label: "Mao de obra",
+            value: currency(totals.laborTotal),
+            helper:
+              totals.costTotal > 0
+                ? `${((totals.laborTotal / totals.costTotal) * 100).toFixed(1)}% do custo total`
+                : "0% do custo total",
+            icon: <Users size={18} />,
+            tone: "warning"
+          }
+        ]}
+      />
 
       {loadingBudget ? <p className="muted">Carregando orcamento...</p> : null}
       {budgetError ? <p className="error-text">{budgetError}</p> : null}
       {saveError ? <p className="error-text">{saveError}</p> : null}
-
-      <div className="budget-kpis">
-        <article className="budget-kpi-card">
-          <div className="budget-kpi-top">
-            <span>Valor do Projeto</span>
-            <Calculator size={18} />
-          </div>
-          <strong>{currency(projectValue)}</strong>
-          <small>Valor contratado</small>
-        </article>
-        <article className="budget-kpi-card">
-          <div className="budget-kpi-top">
-            <span>Custo Total</span>
-            <Layers size={18} />
-          </div>
-          <strong>{currency(totals.costTotal)}</strong>
-          <small>Inclui {contingency}% de contingencia</small>
-        </article>
-        <article className={`budget-kpi-card ${totals.profit < 0 ? "is-negative" : "is-positive"}`}>
-          <div className="budget-kpi-top">
-            <span>Lucro</span>
-            <TrendingUp size={18} />
-          </div>
-          <strong>{currency(totals.profit)}</strong>
-          <small>Margem de {totals.profitMargin.toFixed(1)}%</small>
-        </article>
-        <article className="budget-kpi-card">
-          <div className="budget-kpi-top">
-            <span>Mao de Obra</span>
-            <Users size={18} />
-          </div>
-          <strong>{currency(totals.laborTotal)}</strong>
-          <small>
-            {totals.costTotal > 0 ? `${((totals.laborTotal / totals.costTotal) * 100).toFixed(1)}% do custo total` : "0% do custo total"}
-          </small>
-        </article>
-      </div>
 
       <div className="budget-grid">
         <article className="budget-card">

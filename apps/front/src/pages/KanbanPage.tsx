@@ -1,14 +1,16 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
+import { AlertTriangle, CheckCircle2, ClipboardList, Clock3 } from "lucide-react";
 
 import type { DashboardOutletContext } from "../components/DashboardLayout";
+import { AppPageHero, AppStateCard } from "../components/AppPageHero";
 import {
   KanbanBoard,
   KANBAN_STATUS_ORDER,
   STATUS_MAP,
   type KanbanColumn,
   type KanbanTask,
-  type TaskStatus,
+  type TaskStatus
 } from "../components/KanbanBoard";
 import KanbanTaskModal from "../components/KanbanTaskModal";
 import { normalizeStatus } from "../utils/status";
@@ -38,7 +40,7 @@ const KanbanPage: React.FC = () => {
     onTimeEntryDateChange,
     onTimeEntryHoursChange,
     onTimeEntryDescriptionChange,
-    onLogTime,
+    onLogTime
   } = useOutletContext<DashboardOutletContext>();
 
   const [filterText, setFilterText] = useState("");
@@ -49,9 +51,9 @@ const KanbanPage: React.FC = () => {
 
   const flattenNodes = (nodes: any[]): any[] => {
     const result: any[] = [];
-    nodes.forEach((n) => {
-      result.push(n);
-      if (n.children?.length) result.push(...flattenNodes(n.children));
+    nodes.forEach((node) => {
+      result.push(node);
+      if (node.children?.length) result.push(...flattenNodes(node.children));
     });
     return result;
   };
@@ -63,7 +65,7 @@ const KanbanPage: React.FC = () => {
   );
 
   const filtered = useMemo(() => {
-    const q = filterText.trim().toLowerCase();
+    const query = filterText.trim().toLowerCase();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const soonLimit = new Date(today);
@@ -73,38 +75,34 @@ const KanbanPage: React.FC = () => {
       if (node.deletedAt) return false;
 
       if (filterOwner !== "ALL") {
-        const ownerId =
-          node.ownerId ??
-          node.responsible?.membershipId ??
-          node.responsibleMembershipId;
+        const ownerId = node.ownerId ?? node.responsible?.membershipId ?? node.responsibleMembershipId;
         if (String(ownerId ?? "") !== filterOwner) return false;
       }
 
       if (filterPriority !== "ALL") {
-        const pri = (node.priority ?? "").toString().toUpperCase();
-        if (pri !== filterPriority) return false;
+        const priority = (node.priority ?? "").toString().toUpperCase();
+        if (priority !== filterPriority) return false;
       }
 
       if (filterDue !== "ALL") {
-        const rawDate =
-          node.endDate ?? node.dueDate ?? node.endAt ?? node.end ?? null;
-        const date = rawDate ? new Date(rawDate) : null;
-        const valid = date && !Number.isNaN(date.getTime()) ? date : null;
-        if (!valid) return false;
-        const dateOnly = new Date(valid);
+        const rawDate = node.endDate ?? node.dueDate ?? node.endAt ?? node.end ?? null;
+        const parsedDate = rawDate ? new Date(rawDate) : null;
+        const validDate = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : null;
+        if (!validDate) return false;
+        const dateOnly = new Date(validDate);
         dateOnly.setHours(0, 0, 0, 0);
         if (filterDue === "OVERDUE" && dateOnly >= today) return false;
         if (filterDue === "UPCOMING" && (dateOnly < today || dateOnly > soonLimit)) return false;
       }
 
-      if (!q) return true;
+      if (!query) return true;
 
       const code = String(node.wbsCode ?? node.code ?? node.displayId ?? "").toLowerCase();
       const title = String(node.title ?? "").toLowerCase();
 
-      return code.includes(q) || title.includes(q);
+      return code.includes(query) || title.includes(query);
     });
-  }, [allNodes, filterOwner, filterPriority, filterDue, filterText]);
+  }, [allNodes, filterDue, filterOwner, filterPriority, filterText]);
 
   const mapToTaskStatus = useCallback((raw?: string | null): TaskStatus => {
     const normalized = normalizeStatus(raw);
@@ -137,14 +135,9 @@ const KanbanPage: React.FC = () => {
       const assigneeSource = node.owner ?? node.responsible ?? null;
       const assignee = assigneeSource
         ? {
-            id: String(
-              assigneeSource.id ??
-                assigneeSource.userId ??
-                assigneeSource.membershipId ??
-                ""
-            ),
+            id: String(assigneeSource.id ?? assigneeSource.userId ?? assigneeSource.membershipId ?? ""),
             name: assigneeSource.name ?? assigneeSource.email ?? "Responsavel",
-            avatar: assigneeSource.avatar,
+            avatar: assigneeSource.avatar
           }
         : undefined;
       grouped[status].push({
@@ -155,9 +148,7 @@ const KanbanPage: React.FC = () => {
         projectName:
           node.projectName ??
           (node.projectId ? projectNameMap.get(node.projectId) : null) ??
-          (selectedProjectId && selectedProjectId !== "all"
-            ? projectNameMap.get(selectedProjectId)
-            : null) ??
+          (selectedProjectId && selectedProjectId !== "all" ? projectNameMap.get(selectedProjectId) : null) ??
           undefined,
         dueDate: node.endDate ?? node.dueDate ?? node.endAt ?? node.end ?? undefined,
         startDate: node.startDate ?? node.startAt ?? node.start ?? undefined,
@@ -165,7 +156,7 @@ const KanbanPage: React.FC = () => {
         assignee,
         tags: node.wbsCode ? [node.wbsCode] : undefined,
         description: node.description ?? undefined,
-        priority: node.priority ?? undefined,
+        priority: node.priority ?? undefined
       });
     });
 
@@ -173,14 +164,19 @@ const KanbanPage: React.FC = () => {
       id: status,
       title: STATUS_MAP[status],
       tasks: grouped[status],
-      wipLimit: undefined,
+      wipLimit: undefined
     }));
   }, [filtered, mapToTaskStatus, projectNameMap, selectedProjectId]);
 
   const totalTasks = filtered.length;
+  const sourceTasksCount = allNodes.filter((node) => !node.deletedAt).length;
   const inProgressCount = kanbanColumns.find((column) => column.id === "IN_PROGRESS")?.tasks.length ?? 0;
   const delayedCount = kanbanColumns.find((column) => column.id === "DELAYED")?.tasks.length ?? 0;
   const doneCount = kanbanColumns.find((column) => column.id === "DONE")?.tasks.length ?? 0;
+  const selectedProjectLabel =
+    selectedProjectId && selectedProjectId !== "all"
+      ? projectNameMap.get(selectedProjectId) ?? "Projeto atual"
+      : "Todos os projetos visiveis";
 
   const handleDragEnd = async (result: any) => {
     const { destination, source, draggableId } = result;
@@ -191,8 +187,8 @@ const KanbanPage: React.FC = () => {
     try {
       await onUpdateWbsNode?.(draggableId, { status: newStatus });
       onReloadWbs?.();
-    } catch (err) {
-      console.error("Falha ao mover tarefa", err);
+    } catch (error) {
+      console.error("Falha ao mover tarefa", error);
     }
   };
 
@@ -213,7 +209,7 @@ const KanbanPage: React.FC = () => {
     }
   };
 
-  const selectedTask = allNodes.find((n) => n.id === selectedTaskId);
+  const selectedTask = allNodes.find((node) => node.id === selectedTaskId);
 
   const handleSaveTask = async (updates: Record<string, any>) => {
     if (!selectedTask) return false;
@@ -229,49 +225,68 @@ const KanbanPage: React.FC = () => {
 
   return (
     <section className="kanbanPage">
-      <header className="page-header">
-        <div className="kanbanHeroMain">
-          <p className="eyebrow">EAP</p>
-          <h1>Kanban</h1>
-          <p className="subtext">Visualizacao por status</p>
-          <div className="kanbanHeroStats" aria-label="Resumo do quadro">
-            <span className="kanbanHeroStat">
-              <strong>{totalTasks}</strong>
-              <small>Tarefas</small>
-            </span>
-            <span className="kanbanHeroStat is-progress">
-              <strong>{inProgressCount}</strong>
-              <small>Em andamento</small>
-            </span>
-            <span className="kanbanHeroStat is-delayed">
-              <strong>{delayedCount}</strong>
-              <small>Em atraso</small>
-            </span>
-            <span className="kanbanHeroStat is-done">
-              <strong>{doneCount}</strong>
-              <small>Finalizadas</small>
-            </span>
-          </div>
-          {wbsError && <p className="error-text">{wbsError}</p>}
-        </div>
+      <AppPageHero
+        className="kanbanPageHero"
+        kicker="Execucao visual"
+        title="Kanban"
+        subtitle={`Quadro operacional por status para ${selectedProjectLabel.toLowerCase()}.`}
+        stats={[
+          {
+            label: "Tarefas visiveis",
+            value: totalTasks,
+            helper:
+              sourceTasksCount !== totalTasks
+                ? `${sourceTasksCount} tarefas antes dos filtros`
+                : "Tudo o que esta visivel no quadro",
+            icon: <ClipboardList size={18} />,
+            tone: "default"
+          },
+          {
+            label: "Em andamento",
+            value: inProgressCount,
+            helper: "Itens em execucao agora",
+            icon: <Clock3 size={18} />,
+            tone: "warning"
+          },
+          {
+            label: "Em atraso",
+            value: delayedCount,
+            helper: "Demandas que precisam de acao",
+            icon: <AlertTriangle size={18} />,
+            tone: "danger"
+          },
+          {
+            label: "Finalizadas",
+            value: doneCount,
+            helper: "Tarefas concluidas no quadro",
+            icon: <CheckCircle2 size={18} />,
+            tone: "success"
+          }
+        ]}
+      />
 
+      {wbsError ? <p className="error-text">{wbsError}</p> : null}
+
+      <section className="app-toolbar-card kanbanFiltersCard">
+        <div className="app-toolbar-card__header">
+          <div>
+            <strong>Filtros do quadro</strong>
+            <p>Refine a visualizacao por tarefa, responsavel, prioridade e prazo.</p>
+          </div>
+        </div>
         <div className="kanbanFilters">
           <input
             className="gp-input"
             placeholder="Buscar tarefa"
             value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
+            onChange={(event) => setFilterText(event.target.value)}
           />
 
-          <select
-            className="gp-input"
-            value={filterOwner}
-            onChange={(e) => setFilterOwner(e.target.value)}
-          >
-            <option value="ALL">Responsável</option>
-            {members?.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name ?? m.email ?? "Membro"}
+          <select className="gp-input" value={filterOwner} onChange={(event) => setFilterOwner(event.target.value)}>
+            <option value="ALL">Responsavel</option>
+            {members?.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.name ?? member.email ?? "Membro"}
               </option>
             ))}
           </select>
@@ -279,26 +294,35 @@ const KanbanPage: React.FC = () => {
           <select
             className="gp-input"
             value={filterPriority}
-            onChange={(e) => setFilterPriority(e.target.value)}
+            onChange={(event) => setFilterPriority(event.target.value)}
           >
             <option value="ALL">Prioridade</option>
             <option value="CRITICAL">Urgente</option>
             <option value="HIGH">Alta</option>
-            <option value="MEDIUM">Média</option>
+            <option value="MEDIUM">Media</option>
             <option value="LOW">Baixa</option>
           </select>
 
-          <select
-            className="gp-input"
-            value={filterDue}
-            onChange={(e) => setFilterDue(e.target.value)}
-          >
+          <select className="gp-input" value={filterDue} onChange={(event) => setFilterDue(event.target.value)}>
             <option value="ALL">Datas</option>
             <option value="UPCOMING">A vencer</option>
             <option value="OVERDUE">Vencidas</option>
           </select>
         </div>
-      </header>
+      </section>
+
+      {totalTasks === 0 ? (
+        <AppStateCard
+          className="kanbanStateCard"
+          tone={sourceTasksCount === 0 ? "default" : "warning"}
+          title={sourceTasksCount === 0 ? "Quadro pronto para receber tarefas" : "Nenhuma tarefa encontrada"}
+          description={
+            sourceTasksCount === 0
+              ? "Crie a primeira tarefa em qualquer coluna para iniciar a operacao do quadro."
+              : "Os filtros atuais removeram todas as tarefas da visualizacao. Ajuste os filtros para voltar a ver o quadro."
+          }
+        />
+      ) : null}
 
       <KanbanBoard
         columns={kanbanColumns}
@@ -314,7 +338,7 @@ const KanbanPage: React.FC = () => {
         onTaskColumnChange={() => {}}
       />
 
-      {selectedTask && (
+      {selectedTask ? (
         <KanbanTaskModal
           task={selectedTask}
           members={members}
@@ -338,7 +362,7 @@ const KanbanPage: React.FC = () => {
           onTimeEntryDescriptionChange={onTimeEntryDescriptionChange}
           onLogTime={onLogTime}
         />
-      )}
+      ) : null}
     </section>
   );
 };
