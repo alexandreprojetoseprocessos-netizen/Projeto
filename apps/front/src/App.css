@@ -15189,6 +15189,10 @@ button[type="submit"]:hover {
   gap: 1.5rem;
 }
 
+.integrations-grid--imports {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .integration-card {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 250, 255, 0.96));
   border: 1px solid rgba(148, 163, 184, 0.2);
@@ -15293,6 +15297,10 @@ button[type="submit"]:hover {
   font-size: 0.92rem;
 }
 
+.integration-feedback--error {
+  color: #b91c1c;
+}
+
 .integration-secret-card {
   display: flex;
   align-items: center;
@@ -15376,6 +15384,12 @@ button[type="submit"]:hover {
   display: flex;
   align-items: center;
   gap: 0.45rem;
+}
+
+.integration-row-card__side--stack {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
 }
 
 .integration-chip-list {

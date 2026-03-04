@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import {
   Activity,
@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { AppPageHero, AppStateCard, AppStepGuide } from "../components/AppPageHero";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
-import { canManageOrganizationSettings, type OrgRole } from "../components/permissions";
+import { canAccessModule, canManageOrganizationSettings, type OrgRole } from "../components/permissions";
 import { apiRequest, getApiErrorMessage } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -111,9 +111,12 @@ const asStringArray = (value: unknown) => {
 
 export const IntegrationsPage = () => {
   const { token } = useAuth();
-  const { selectedOrganizationId, currentOrgRole } = useOutletContext<DashboardOutletContext>();
+  const { selectedOrganizationId, selectedProjectId, selectedProject, currentOrgRole, currentOrgModulePermissions } =
+    useOutletContext<DashboardOutletContext>();
   const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
   const canManage = canManageOrganizationSettings(orgRole);
+  const canImportWbs = canAccessModule(orgRole, currentOrgModulePermissions, "eap", "create");
+  const canImportCatalog = canAccessModule(orgRole, currentOrgModulePermissions, "budget", "create");
 
   const [catalogEvents, setCatalogEvents] = useState<CatalogEvent[]>([]);
   const [tokens, setTokens] = useState<ApiTokenSummary[]>([]);
@@ -140,6 +143,13 @@ export const IntegrationsPage = () => {
   const [webhookEvents, setWebhookEvents] = useState<string[]>([]);
   const [creatingWebhook, setCreatingWebhook] = useState(false);
   const [webhookFeedback, setWebhookFeedback] = useState<string | null>(null);
+  const [importFeedback, setImportFeedback] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [wbsImporting, setWbsImporting] = useState(false);
+  const [catalogImporting, setCatalogImporting] = useState(false);
+
+  const wbsInputRef = useRef<HTMLInputElement | null>(null);
+  const catalogInputRef = useRef<HTMLInputElement | null>(null);
 
   const headers = useMemo(
     () => ({
@@ -234,6 +244,7 @@ export const IntegrationsPage = () => {
     () => webhooks.find((item) => item.id === selectedWebhookId) ?? null,
     [selectedWebhookId, webhooks]
   );
+  const hasProjectContext = Boolean(selectedProjectId && selectedProjectId !== "all");
 
   const tokenStats = useMemo(
     () => ({
@@ -380,6 +391,54 @@ export const IntegrationsPage = () => {
     await navigator.clipboard.writeText(value);
   };
 
+  const runImport = async (kind: "wbs" | "catalog", file: File | null) => {
+    if (!token || !selectedOrganizationId || !hasProjectContext || !selectedProjectId || !file) return;
+
+    setImportError(null);
+    setImportFeedback(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("projectId", selectedProjectId);
+
+    if (kind === "wbs") {
+      setWbsImporting(true);
+    } else {
+      setCatalogImporting(true);
+    }
+
+    try {
+      const endpoint =
+        kind === "wbs" ? `/wbs/import?projectId=${selectedProjectId}` : `/service-catalog/import?projectId=${selectedProjectId}`;
+      const body = await apiRequest<Record<string, unknown>>(endpoint, {
+        method: "POST",
+        headers,
+        body: formData
+      });
+
+      const imported = typeof body.imported === "number" ? body.imported : typeof body.created === "number" ? body.created : null;
+      const updated = typeof body.updated === "number" ? body.updated : 0;
+      const warnings = Array.isArray(body.warnings) ? body.warnings.length : 0;
+      const kindLabel = kind === "wbs" ? "EAP" : "catálogo";
+
+      setImportFeedback(
+        imported !== null
+          ? `Importação de ${kindLabel} concluída: ${imported} criados, ${updated} atualizados, ${warnings} avisos.`
+          : `Importação de ${kindLabel} concluída com sucesso.`
+      );
+    } catch (error) {
+      setImportError(getApiErrorMessage(error, `Falha ao importar ${kind === "wbs" ? "EAP" : "catálogo"}.`));
+    } finally {
+      if (kind === "wbs") {
+        setWbsImporting(false);
+        if (wbsInputRef.current) wbsInputRef.current.value = "";
+      } else {
+        setCatalogImporting(false);
+        if (catalogInputRef.current) catalogInputRef.current.value = "";
+      }
+    }
+  };
+
   if (!selectedOrganizationId) {
     return (
       <section className="integrations-page">
@@ -477,6 +536,91 @@ export const IntegrationsPage = () => {
       />
 
       {pageError ? <AppStateCard title="Falha ao carregar integrações" description={pageError} tone="danger" /> : null}
+
+      <article className="integration-card">
+        <div className="integration-card__header">
+          <div>
+            <p className="integration-card__kicker">Importações</p>
+            <h2>Central rápida de importação</h2>
+          </div>
+          <Activity size={18} />
+        </div>
+
+        {!hasProjectContext ? (
+          <AppStateCard
+            title="Selecione um projeto"
+            description="Escolha um projeto específico no cabeçalho para importar EAP ou catálogo de serviços."
+            tone="info"
+          />
+        ) : (
+          <>
+            <div className="integration-delivery-meta">
+              <div>
+                <strong>{selectedProject?.name ?? "Projeto selecionado"}</strong>
+                <p>As importações desta central são aplicadas diretamente no projeto ativo.</p>
+              </div>
+            </div>
+
+            <div className="integrations-grid integrations-grid--imports">
+              <article className="integration-row-card">
+                <div className="integration-row-card__main">
+                  <strong>Importar EAP</strong>
+                  <p>Planilha `.xlsx` com código, título, datas, dependências e serviços.</p>
+                  <small>Usa o mesmo fluxo já validado na tela de EAP.</small>
+                </div>
+                <div className="integration-row-card__side integration-row-card__side--stack">
+                  <input
+                    ref={wbsInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    hidden
+                    onChange={(event) => void runImport("wbs", event.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => wbsInputRef.current?.click()}
+                    disabled={!canImportWbs || wbsImporting}
+                  >
+                    {wbsImporting ? "Importando..." : "Escolher planilha"}
+                  </button>
+                  <a className="btn-secondary" href={encodeURI("/Modelo EAP.xlsx")} download="Modelo EAP.xlsx">
+                    Baixar modelo
+                  </a>
+                </div>
+              </article>
+
+              <article className="integration-row-card">
+                <div className="integration-row-card__main">
+                  <strong>Importar catálogo de serviços</strong>
+                  <p>Planilha com nome, descrição e horas base para acelerar composição da EAP.</p>
+                  <small>Usa o importador operacional do módulo de orçamento.</small>
+                </div>
+                <div className="integration-row-card__side integration-row-card__side--stack">
+                  <input
+                    ref={catalogInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    hidden
+                    onChange={(event) => void runImport("catalog", event.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => catalogInputRef.current?.click()}
+                    disabled={!canImportCatalog || catalogImporting}
+                  >
+                    {catalogImporting ? "Importando..." : "Escolher planilha"}
+                  </button>
+                </div>
+              </article>
+            </div>
+
+            {importFeedback ? <p className="integration-feedback">{importFeedback}</p> : null}
+            {importError ? <p className="integration-feedback integration-feedback--error">{importError}</p> : null}
+          </>
+        )}
+      </article>
 
       <div className="integrations-grid">
         <article className="integration-card">
