@@ -1,12 +1,12 @@
 import { useState, type FormEvent, type ReactNode } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { ProjectPortfolio, type PortfolioProject } from "../components/ProjectPortfolio";
 import { AppStateCard } from "../components/AppPageHero";
 import ProjectTrashModal from "../components/ProjectTrashModal";
 import type { DashboardOutletContext, ProjectPriorityValue, ProjectStatusValue } from "../components/DashboardLayout";
 import { canAccessModule, canManageProjects, type OrgRole } from "../components/permissions";
-import { Trash2 } from "lucide-react";
+import { ArrowRight, Trash2 } from "lucide-react";
 import { apiRequest, getApiErrorMessage, type ApiRequestError } from "../config/api";
 import { getPlanDefinition } from "../config/plans";
 
@@ -100,11 +100,11 @@ const FirstProjectOnboarding = ({
     },
     {
       title: "Janela de trabalho",
-      description: "Se houver datas definidas, o cronograma e a EAP ganham contexto desde o inÃ­cio."
+      description: "Se houver datas definidas, o cronograma e a EAP ganham contexto desde o início."
     },
     {
-      title: "Base para execuÃ§Ã£o",
-      description: "Depois da criaÃ§Ã£o vocÃª poderÃ¡ abrir EAP, Kanban, orÃ§amento e documentos."
+      title: "Base para execução",
+      description: "Depois da criação você poderá abrir EAP, Kanban, orçamento e documentos."
     }
   ];
 
@@ -125,7 +125,7 @@ const FirstProjectOnboarding = ({
       setStartDate("");
       setEndDate("");
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "NÃ£o foi possÃ­vel criar o projeto.");
+      setError(submitError instanceof Error ? submitError.message : "Não foi possível criar o projeto.");
     } finally {
       setIsSubmitting(false);
     }
@@ -138,13 +138,13 @@ const FirstProjectOnboarding = ({
           <span className="onboarding-project__step">Passo 2 de 3</span>
           <h2>CRIE SEU PRIMEIRO PROJETO</h2>
           <p>
-            Agora que sua organizaÃ§Ã£o estÃ¡ criada, vamos configurar o primeiro projeto. VocÃª poderÃ¡ adicionar tarefas,
-            equipe, cronograma e relatÃ³rios depois.
+            Agora que sua organização está criada, vamos configurar o primeiro projeto. Você poderá adicionar tarefas,
+            equipe, cronograma e relatórios depois.
           </p>
           <div className="onboarding-project__timeline">
-            <span className="is-complete">OrganizaÃ§Ã£o criada</span>
+            <span className="is-complete">Organização criada</span>
             <span className="is-current">Projeto inicial</span>
-            <span>ExecuÃ§Ã£o liberada</span>
+            <span>Execução liberada</span>
           </div>
           <div className="onboarding-project__tips">
             {onboardingChecklist.map((item) => (
@@ -179,23 +179,120 @@ const FirstProjectOnboarding = ({
               />
             </label>
 
-              <span>Data de início (opcional)</span>
-              <span>Data de in?cio (opcional)</span>
-              <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
-              <span>Data de término (opcional)</span>
             <label className="onboarding-field">
-              <span>Data de t?rmino (opcional)</span>
+              <span>Data de início (opcional)</span>
+              <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+            </label>
+
+            <label className="onboarding-field">
+              <span>Data de término (opcional)</span>
               <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
             </label>
 
             <div className="onboarding-project__actions">
               <button className="primary-button" type="submit" disabled={isSubmitting}>
-              <span className="onboarding-project__helper">Você pode editar tudo depois.</span>
+                {isSubmitting ? "Criando..." : "Criar projeto e continuar"}
               </button>
-              <span className="onboarding-project__helper">Voc? pode editar tudo depois.</span>
+              <span className="onboarding-project__helper">Você pode editar tudo depois.</span>
             </div>
           </form>
         </div>
+      </div>
+    </section>
+  );
+};
+
+type ProjectLaunchpadProps = {
+  projectId: string;
+  projectName: string;
+  onSelectProject: (projectId: string) => void;
+  canViewEap: boolean;
+  canViewKanban: boolean;
+  canViewDocuments: boolean;
+  canViewTeam: boolean;
+};
+
+const ProjectLaunchpad = ({
+  projectId,
+  projectName,
+  onSelectProject,
+  canViewEap,
+  canViewKanban,
+  canViewDocuments,
+  canViewTeam
+}: ProjectLaunchpadProps) => {
+  const navigate = useNavigate();
+
+  const openStep = (path: string) => {
+    onSelectProject(projectId);
+    navigate(path);
+  };
+
+  const steps = [
+    {
+      key: "eap",
+      eyebrow: "Passo 1",
+      title: "Montar a EAP",
+      description: "Estruture entregas, fases e dependências para liberar o planejamento executivo.",
+      cta: "Abrir EAP",
+      enabled: canViewEap,
+      action: () => openStep(`/projects/${projectId}/edt`)
+    },
+    {
+      key: "kanban",
+      eyebrow: "Passo 2",
+      title: "Abrir o quadro",
+      description: "Transforme o planejamento em cartões operacionais e comece a controlar a execução.",
+      cta: "Abrir Kanban",
+      enabled: canViewKanban,
+      action: () => openStep(`/projects/${projectId}/board`)
+    },
+    {
+      key: "team",
+      eyebrow: "Passo 3",
+      title: "Conectar a equipe",
+      description: "Convide responsáveis e ajuste papéis antes de distribuir tarefas na operação.",
+      cta: "Abrir equipe",
+      enabled: canViewTeam,
+      action: () => openStep("/equipe")
+    },
+    {
+      key: "documents",
+      eyebrow: "Passo 4",
+      title: "Subir documentos-base",
+      description: "Anexe artefatos iniciais para o time operar com contexto já no primeiro ciclo.",
+      cta: "Abrir documentos",
+      enabled: canViewDocuments,
+      action: () => openStep(`/projects/${projectId}/documentos`)
+    }
+  ];
+
+  return (
+    <section className="projects-launchpad">
+      <div className="projects-launchpad__intro">
+        <p className="projects-launchpad__kicker">Próximos passos</p>
+        <h2>Projeto foco: {projectName}</h2>
+        <p>
+          O projeto já está criado. Agora o fluxo recomendado é estruturar escopo, abrir a execução, conectar a equipe
+          e centralizar documentos de partida.
+        </p>
+      </div>
+
+      <div className="projects-launchpad__grid">
+        {steps.map((step) => (
+          <article key={step.key} className="projects-launchpad__card">
+            <span className="projects-launchpad__eyebrow">{step.eyebrow}</span>
+            <strong>{step.title}</strong>
+            <p>{step.description}</p>
+            <div className="projects-launchpad__footer">
+              <button type="button" className="btn-secondary" onClick={step.action} disabled={!step.enabled}>
+                {step.cta}
+                <ArrowRight size={15} />
+              </button>
+              {!step.enabled ? <span className="projects-launchpad__locked">Sem acesso no seu perfil</span> : null}
+            </div>
+          </article>
+        ))}
       </div>
     </section>
   );
@@ -328,6 +425,10 @@ export const ProjectsPage = () => {
     roleCanManageProjects && canAccessModule(orgRole, currentOrgModulePermissions, "projects", "edit");
   const canDeleteProjects =
     roleCanManageProjects && canAccessModule(orgRole, currentOrgModulePermissions, "projects", "delete");
+  const canViewEapModule = canAccessModule(orgRole, currentOrgModulePermissions, "eap", "view");
+  const canViewKanbanModule = canAccessModule(orgRole, currentOrgModulePermissions, "kanban", "view");
+  const canViewDocumentsModule = canAccessModule(orgRole, currentOrgModulePermissions, "documents", "view");
+  const canViewTeamModule = canAccessModule(orgRole, currentOrgModulePermissions, "team", "view");
   const currentOrganization = organizations?.find((organization) => organization.id === selectedOrganizationId) ?? null;
   const resetForm = () => {
     setForm({
@@ -378,6 +479,9 @@ export const ProjectsPage = () => {
   const currentPlanName = projectLimits?.planCode ? getPlanDefinition(projectLimits.planCode).displayName : "Não informado";
   const limitToneClass = isAtProjectLimit ? "is-danger" : isNearProjectLimit ? "is-warning" : "is-ok";
   const activeProjectsLabel = activeProjectsCount === 1 ? "projeto ativo" : "projetos ativos";
+  const launchpadProject =
+    (portfolio ?? []).find((project) => project.projectId === selectedProjectId) ?? portfolio?.[0] ?? null;
+  const shouldShowProjectLaunchpad = Boolean(launchpadProject) && activeProjectsCount <= 3;
   const isEditing = Boolean(editingProject);
   const modalTitle = isEditing ? "Editar projeto" : "Novo projeto";
   const modalSubtitle = isEditing ? "Atualize as informações do projeto." : undefined;
@@ -610,17 +714,31 @@ export const ProjectsPage = () => {
           />
         )
       ) : (
-        <ProjectPortfolio
-          projects={portfolio}
-          error={portfolioError}
-          isLoading={portfolioLoading}
-          onExport={onExportPortfolio}
-          selectedProjectId={selectedProjectId}
-          onSelectProject={onProjectChange}
-          onCreateProject={onCreateProject}
-          onEditProject={canEditProjects ? handleOpenEditModal : undefined}
-          onTrashProject={canDeleteProjects ? handleTrashProject : undefined}
-        />
+        <>
+          {shouldShowProjectLaunchpad && launchpadProject ? (
+            <ProjectLaunchpad
+              projectId={launchpadProject.projectId}
+              projectName={launchpadProject.projectName}
+              onSelectProject={onProjectChange}
+              canViewEap={canViewEapModule}
+              canViewKanban={canViewKanbanModule}
+              canViewDocuments={canViewDocumentsModule}
+              canViewTeam={canViewTeamModule}
+            />
+          ) : null}
+
+          <ProjectPortfolio
+            projects={portfolio}
+            error={portfolioError}
+            isLoading={portfolioLoading}
+            onExport={onExportPortfolio}
+            selectedProjectId={selectedProjectId}
+            onSelectProject={onProjectChange}
+            onCreateProject={onCreateProject}
+            onEditProject={canEditProjects ? handleOpenEditModal : undefined}
+            onTrashProject={canDeleteProjects ? handleTrashProject : undefined}
+          />
+        </>
       )}
 
       <NewProjectModal
