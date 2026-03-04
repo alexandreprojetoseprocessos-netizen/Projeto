@@ -27,6 +27,25 @@ type AppStateCardProps = {
   className?: string;
 };
 
+export type AppStepGuideItem = {
+  key: string;
+  label: string;
+  title: string;
+  description: ReactNode;
+  actionLabel: string;
+  onAction?: () => void;
+  disabled?: boolean;
+  helper?: ReactNode;
+};
+
+type AppStepGuideProps = {
+  kicker?: string;
+  title: string;
+  description: ReactNode;
+  items: AppStepGuideItem[];
+  className?: string;
+};
+
 const joinClasses = (...values: Array<string | undefined | false | null>) => values.filter(Boolean).join(" ");
 
 export const AppPageHero = ({ kicker, title, subtitle, actions, stats = [], className }: AppPageHeroProps) => (
@@ -73,4 +92,36 @@ export const AppStateCard = ({
     </div>
     {action ? <div className="app-state-card__action">{action}</div> : null}
   </article>
+);
+
+export const AppStepGuide = ({
+  kicker = "Próximos passos",
+  title,
+  description,
+  items,
+  className
+}: AppStepGuideProps) => (
+  <section className={joinClasses("app-step-guide", className)}>
+    <div className="app-step-guide__intro">
+      <p className="app-step-guide__kicker">{kicker}</p>
+      <h2>{title}</h2>
+      <p>{description}</p>
+    </div>
+
+    <div className="app-step-guide__grid">
+      {items.map((item) => (
+        <article key={item.key} className="app-step-guide__card">
+          <span className="app-step-guide__label">{item.label}</span>
+          <strong>{item.title}</strong>
+          <p>{item.description}</p>
+          <div className="app-step-guide__footer">
+            <button type="button" className="btn-secondary" onClick={item.onAction} disabled={item.disabled}>
+              {item.actionLabel}
+            </button>
+            {item.helper ? <small>{item.helper}</small> : null}
+          </div>
+        </article>
+      ))}
+    </div>
+  </section>
 );

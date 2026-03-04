@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import {
   Boxes,
   Download,
@@ -15,7 +15,8 @@ import {
   Upload
 } from "lucide-react";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
-import { AppPageHero, AppStateCard } from "../components/AppPageHero";
+import { AppPageHero, AppStateCard, AppStepGuide } from "../components/AppPageHero";
+import { canAccessModule, type OrgRole } from "../components/permissions";
 import { apiRequest, getApiErrorMessage } from "../config/api";
 
 type DocumentRow = {
@@ -120,8 +121,17 @@ const fileToBase64 = (file: File) =>
   });
 
 export const DocumentsPage = () => {
-  const { attachments, attachmentsError, attachmentsLoading, selectedProject, selectedProjectId, selectedOrganizationId } =
-    useOutletContext<DashboardOutletContext>();
+  const navigate = useNavigate();
+  const {
+    attachments,
+    attachmentsError,
+    attachmentsLoading,
+    selectedProject,
+    selectedProjectId,
+    selectedOrganizationId,
+    currentOrgRole,
+    currentOrgModulePermissions
+  } = useOutletContext<DashboardOutletContext>();
   const [query, setQuery] = useState("");
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
@@ -173,6 +183,10 @@ export const DocumentsPage = () => {
     }
   ];
   const [folders, setFolders] = useState<FolderItem[]>(defaultFolders);
+  const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
+  const canViewEap = canAccessModule(orgRole, currentOrgModulePermissions, "eap", "view");
+  const canViewKanban = canAccessModule(orgRole, currentOrgModulePermissions, "kanban", "view");
+  const canUploadDocuments = canAccessModule(orgRole, currentOrgModulePermissions, "documents", "create");
 
   const currentProjectName = selectedProject?.projectName ?? selectedProject?.name ?? "";
 
@@ -213,6 +227,7 @@ export const DocumentsPage = () => {
     selectedProjectId && selectedProjectId !== "all"
       ? currentProjectName || "projeto atual"
       : "todos os projetos visiveis";
+  const shouldShowOperationalGuide = Boolean(selectedProjectId && selectedProjectId !== "all") && rows.length === 0;
 
   const folderCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -441,6 +456,60 @@ export const DocumentsPage = () => {
       )}
 
       {attachmentsError && <p className="error-text">{attachmentsError}</p>}
+
+      {shouldShowOperationalGuide ? (
+        <AppStepGuide
+          title={`Base documental inicial de ${currentProjectName || "projeto atual"}`}
+          description="Comece anexando os artefatos que sustentam a operação do projeto e mantenha escopo e execução sincronizados."
+          items={[
+            {
+              key: "upload",
+              label: "Passo 1",
+              title: "Enviar primeiro arquivo",
+              description: "Registre contrato, briefing, ata ou qualquer documento que o time precisa consultar já no início.",
+              actionLabel: showImport ? "Painel de importação aberto" : "Importar documento",
+              onAction: () => {
+                if (!showImport) handleImportClick();
+              },
+              disabled: !canUploadDocuments || showImport,
+              helper: !canUploadDocuments
+                ? "Seu perfil não pode enviar anexos."
+                : showImport
+                  ? "Escolha a pasta e selecione o arquivo no painel acima."
+                  : "Escolha a pasta de destino antes do envio."
+            },
+            {
+              key: "eap",
+              label: "Passo 2",
+              title: "Conferir a EAP",
+              description: "Revise as entregas estruturadas para anexar documentos nas categorias corretas do projeto.",
+              actionLabel: "Abrir EAP",
+              onAction: () => navigate(`/projects/${selectedProjectId}/edt`),
+              disabled: !canViewEap,
+              helper: canViewEap ? "Garanta que o escopo já está organizado." : "Seu perfil não acessa a EAP."
+            },
+            {
+              key: "kanban",
+              label: "Passo 3",
+              title: "Abrir o Kanban",
+              description: "Depois do envio, use o quadro para orientar a execução com contexto documental disponível.",
+              actionLabel: "Abrir Kanban",
+              onAction: () => navigate(`/projects/${selectedProjectId}/board`),
+              disabled: !canViewKanban,
+              helper: canViewKanban ? "Leve o time para a execução com referência." : "Seu perfil não acessa o Kanban."
+            },
+            {
+              key: "folders",
+              label: "Passo 4",
+              title: "Definir pasta de trabalho",
+              description: "Escolha a categoria principal do projeto para que os próximos arquivos já entrem organizados.",
+              actionLabel: "Selecionar primeira pasta",
+              onAction: () => setSelectedFolderId((prev) => prev ?? folders[0]?.id ?? null),
+              helper: "Você pode renomear as pastas conforme o processo do cliente."
+            }
+          ]}
+        />
+      ) : null}
 
       <div className="documents-section">
         <div className="documents-section-title">Acesso rapido</div>

@@ -1,9 +1,10 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, ClipboardList, Clock3 } from "lucide-react";
 
 import type { DashboardOutletContext } from "../components/DashboardLayout";
-import { AppPageHero, AppStateCard } from "../components/AppPageHero";
+import { AppPageHero, AppStateCard, AppStepGuide } from "../components/AppPageHero";
+import { canAccessModule, type OrgRole } from "../components/permissions";
 import {
   KanbanBoard,
   KANBAN_STATUS_ORDER,
@@ -17,11 +18,14 @@ import { normalizeStatus } from "../utils/status";
 import "./KanbanPage.css";
 
 const KanbanPage: React.FC = () => {
+  const navigate = useNavigate();
   const {
     wbsNodes,
     members,
     projects,
     selectedProjectId,
+    currentOrgRole,
+    currentOrgModulePermissions,
     wbsError,
     onUpdateWbsNode,
     onReloadWbs,
@@ -48,6 +52,10 @@ const KanbanPage: React.FC = () => {
   const [filterPriority, setFilterPriority] = useState<string>("ALL");
   const [filterDue, setFilterDue] = useState<string>("ALL");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
+  const canViewEap = canAccessModule(orgRole, currentOrgModulePermissions, "eap", "view");
+  const canViewDocuments = canAccessModule(orgRole, currentOrgModulePermissions, "documents", "view");
+  const canViewTeam = canAccessModule(orgRole, currentOrgModulePermissions, "team", "view");
 
   const flattenNodes = (nodes: any[]): any[] => {
     const result: any[] = [];
@@ -177,6 +185,7 @@ const KanbanPage: React.FC = () => {
     selectedProjectId && selectedProjectId !== "all"
       ? projectNameMap.get(selectedProjectId) ?? "Projeto atual"
       : "Todos os projetos visiveis";
+  const shouldShowOperationalGuide = Boolean(selectedProjectId && selectedProjectId !== "all") && sourceTasksCount <= 3;
 
   const handleDragEnd = async (result: any) => {
     const { destination, source, draggableId } = result;
@@ -266,6 +275,60 @@ const KanbanPage: React.FC = () => {
       />
 
       {wbsError ? <p className="error-text">{wbsError}</p> : null}
+
+      {shouldShowOperationalGuide ? (
+        <AppStepGuide
+          className="kanbanStateCard"
+          title={`Fluxo inicial do quadro para ${selectedProjectLabel}`}
+          description="Use o quadro para acompanhar execução, mas mantenha o escopo e os anexos alinhados nas primeiras entregas."
+          items={[
+            {
+              key: "eap",
+              label: "Passo 1",
+              title: "Revisar a EAP",
+              description: "Confirme fases, dependências e responsáveis antes de empurrar o trabalho para o quadro.",
+              actionLabel: "Abrir EAP",
+              onAction: () => navigate(`/projects/${selectedProjectId}/edt`),
+              disabled: !canViewEap,
+              helper: canViewEap ? "Volte à estrutura para ajustar o escopo." : "Seu perfil não acessa a EAP."
+            },
+            {
+              key: "filters",
+              label: "Passo 2",
+              title: "Limpar filtros",
+              description: "Garanta que o time veja tudo o que já está no quadro antes de priorizar a execução.",
+              actionLabel: "Mostrar quadro completo",
+              onAction: () => {
+                setFilterText("");
+                setFilterOwner("ALL");
+                setFilterPriority("ALL");
+                setFilterDue("ALL");
+              },
+              helper: "Remove busca, responsável, prioridade e datas."
+            },
+            {
+              key: "team",
+              label: "Passo 3",
+              title: "Alinhar equipe",
+              description: "Valide papéis e responsáveis antes de distribuir as primeiras tarefas do projeto.",
+              actionLabel: "Abrir equipe",
+              onAction: () => navigate("/equipe"),
+              disabled: !canViewTeam,
+              helper: canViewTeam ? "Convide ou revise responsáveis do projeto." : "Seu perfil não acessa Equipes."
+            },
+            {
+              key: "documents",
+              label: "Passo 4",
+              title: "Abrir apoio documental",
+              description: "Anexe arquivos de contexto para que o quadro já nasça com referência operacional.",
+              actionLabel: "Abrir documentos",
+              onAction: () => navigate(`/projects/${selectedProjectId}/documentos`),
+              disabled: !canViewDocuments,
+              helper: canViewDocuments ? "Suba briefings, contratos e artefatos base." : "Seu perfil não acessa Documentos."
+            }
+          ]}
+        />
+      ) : null}
 
       <section className="app-toolbar-card kanbanFiltersCard">
         <div className="app-toolbar-card__header">

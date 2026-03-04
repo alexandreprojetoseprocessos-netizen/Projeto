@@ -8,6 +8,7 @@ import { CleanFilterSelect } from "../components/CleanFilterSelect";
 import ServiceCatalogModal from "../components/ServiceCatalogModal";
 import { StatusSelect } from "../components/StatusSelect";
 import { canAccessModule, type OrgRole } from "../components/permissions";
+import { AppStepGuide } from "../components/AppPageHero";
 import { normalizeStatus, STATUS_ORDER, type Status } from "../utils/status";
 
 const MS_IN_DAY = 1000 * 60 * 60 * 24;
@@ -149,6 +150,8 @@ const EDTPage: React.FC = () => {
   const canCreateEap = canAccessModule(orgRole, currentOrgModulePermissions, "eap", "create");
   const canEditEap = canAccessModule(orgRole, currentOrgModulePermissions, "eap", "edit");
   const canDeleteEap = canAccessModule(orgRole, currentOrgModulePermissions, "eap", "delete");
+  const canViewKanban = canAccessModule(orgRole, currentOrgModulePermissions, "kanban", "view");
+  const canViewDocuments = canAccessModule(orgRole, currentOrgModulePermissions, "documents", "view");
 
   const serviceCatalogOptions = useMemo(() => {
     const list = Array.isArray(serviceCatalog) ? serviceCatalog : [];
@@ -892,7 +895,10 @@ const EDTPage: React.FC = () => {
     : [];
   const detailsDependenciesLabel = formatDependenciesLabel(selectedDependencyIds);
 
+  const sourceNodesCount = flattenNodes(wbsNodes ?? []).filter((node) => !node?.deletedAt).length;
   const currentProjectName = currentProject?.name ?? "Selecionar";
+  const shouldShowOperationalGuide =
+    !wbsLoading && Boolean(selectedProjectId && selectedProjectId !== "all") && sourceNodesCount === 0;
 
   return (
     <section className="edt-page">
@@ -916,7 +922,60 @@ const EDTPage: React.FC = () => {
         </div>
       </header>
 
-            <div className="eap-toolbar2" style={{ marginBottom: 12 }}>
+      {shouldShowOperationalGuide ? (
+        <AppStepGuide
+          title={`Estruture o início de ${currentProjectName}`}
+          description="Monte a espinha dorsal do projeto antes de distribuir execução. Defina as primeiras entregas, prepare importações e mantenha os artefatos já acessíveis para o time."
+          items={[
+            {
+              key: "create",
+              label: "Passo 1",
+              title: "Criar a primeira tarefa",
+              description: "Abra a primeira entrega ou fase da EAP para organizar escopo, responsáveis e datas base.",
+              actionLabel: "Nova tarefa",
+              onAction: () => setIsCreateOpen(true),
+              disabled: !canCreateEap,
+              helper: canCreateEap ? "Cadastre a estrutura inicial do projeto." : "Seu perfil não pode criar itens na EAP."
+            },
+            {
+              key: "import",
+              label: "Passo 2",
+              title: "Importar estrutura",
+              description: "Se já existe uma planilha base, importe a árvore da EAP para acelerar o kickoff operacional.",
+              actionLabel: "Importar planilha",
+              onAction: () => importInputRef.current?.click(),
+              disabled: !canCreateEap && !canEditEap,
+              helper:
+                canCreateEap || canEditEap
+                  ? "Use a planilha modelo para subir a primeira versão."
+                  : "Seu perfil não pode importar itens na EAP."
+            },
+            {
+              key: "kanban",
+              label: "Passo 3",
+              title: "Liberar execução",
+              description: "Depois do escopo inicial, leve o projeto para o quadro e acompanhe a operação por status.",
+              actionLabel: "Abrir Kanban",
+              onAction: () => navigate(`/projects/${selectedProjectId}/board`),
+              disabled: !canViewKanban,
+              helper: canViewKanban ? "Converta a estrutura em fluxo operacional." : "Seu perfil não acessa o Kanban."
+            },
+            {
+              key: "documents",
+              label: "Passo 4",
+              title: "Centralizar documentos",
+              description: "Suba contratos, briefings e anexos iniciais para o time operar com contexto desde o começo.",
+              actionLabel: "Abrir documentos",
+              onAction: () => navigate(`/projects/${selectedProjectId}/documentos`),
+              disabled: !canViewDocuments,
+              helper:
+                canViewDocuments ? "Garanta contexto documental para a equipe." : "Seu perfil não acessa Documentos."
+            }
+          ]}
+        />
+      ) : null}
+
+      <div className="eap-toolbar2" style={{ marginBottom: 12 }}>
         <div className="eap-actions-left">
           <button
             className="eap-btn"
