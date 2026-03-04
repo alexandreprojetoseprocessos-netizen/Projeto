@@ -899,6 +899,9 @@ projectsRouter.put("/:projectId", async (req, res) => {
 });
 
 projectsRouter.get("/:projectId/budget", async (req, res) => {
+  if (!ensureModulePermission(req, res, "budget", "view", "Voce nao tem permissao para visualizar o orcamento.")) {
+    return;
+  }
   const projectId = parseProjectIdParam(req.params.projectId);
   if (!projectId) {
     return res.status(400).json({ message: "projectId is invalid" });
@@ -1159,6 +1162,9 @@ projectsRouter.put("/:projectId/budget", async (req, res) => {
 });
 
 projectsRouter.get("/:projectId/summary", async (req, res) => {
+  if (!ensureModulePermission(req, res, "dashboard", "view", "Voce nao tem permissao para visualizar o resumo do projeto.")) {
+    return;
+  }
   const projectId = parseProjectIdParam(req.params.projectId);
   if (!projectId) {
     return res.status(400).json({ message: "projectId is invalid" });
@@ -1274,6 +1280,9 @@ projectsRouter.get("/:projectId/summary", async (req, res) => {
 });
 
 projectsRouter.get("/:projectId/board", async (req, res) => {
+  if (!ensureModulePermission(req, res, "kanban", "view", "Voce nao tem permissao para visualizar o Kanban.")) {
+    return;
+  }
   const projectId = parseProjectIdParam(req.params.projectId);
   if (!projectId) {
     return res.status(400).json({ message: "projectId is invalid" });
@@ -1567,6 +1576,9 @@ projectsRouter.patch("/:projectId/board/tasks/:taskId", async (req, res) => {
 });
 
 projectsRouter.get("/:projectId/wbs", async (req, res) => {
+  if (!ensureModulePermission(req, res, "eap", "view", "Voce nao tem permissao para visualizar a EAP.")) {
+    return;
+  }
   const projectId = parseProjectIdParam(req.params.projectId);
   if (!projectId) {
     return res.status(400).json({ message: "projectId is invalid" });
@@ -1848,6 +1860,9 @@ projectsRouter.post("/:projectId/wbs", async (req, res) => {
 });
 
 projectsRouter.get("/:projectId/gantt", async (req, res) => {
+  if (!ensureModulePermission(req, res, "timeline", "view", "Voce nao tem permissao para visualizar o cronograma.")) {
+    return;
+  }
   const projectId = parseProjectIdParam(req.params.projectId);
   if (!projectId) {
     return res.status(400).json({ message: "projectId is invalid" });
@@ -1900,6 +1915,9 @@ projectsRouter.get("/:projectId/gantt", async (req, res) => {
 });
 
 projectsRouter.get("/:projectId/attachments", async (req, res) => {
+  if (!ensureModulePermission(req, res, "documents", "view", "Voce nao tem permissao para visualizar documentos.")) {
+    return;
+  }
   const projectId = parseProjectIdParam(req.params.projectId);
   if (!projectId) {
     return res.status(400).json({ message: "projectId is invalid" });

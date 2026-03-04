@@ -246,6 +246,9 @@ wbsRouter.use(organizationMiddleware);
 
 // GET /wbs/:nodeId/comments
 wbsRouter.get("/:nodeId/comments", async (req, res) => {
+  if (!ensureModulePermission(req, res, "eap", "view", "Voce nao tem permissao para visualizar comentarios da EAP.")) {
+    return;
+  }
   const { nodeId } = req.params;
   const access = await assertNodeAccess(req as RequestWithUser, res, nodeId);
   if (!access) return;
@@ -382,6 +385,9 @@ wbsRouter.delete("/:nodeId/comments/:commentId", async (req: RequestWithUser, re
 
 // GET /wbs?projectId=...
 wbsRouter.get("/", async (req: RequestWithUser, res) => {
+  if (!ensureModulePermission(req, res, "eap", "view", "Voce nao tem permissao para visualizar a EAP.")) {
+    return;
+  }
   const { projectId } = req.query as { projectId?: string };
   const access = await assertProjectAccess(req, res, projectId);
   if (!access) return;
@@ -1308,6 +1314,9 @@ wbsRouter.post("/import", upload.single("file"), async (req: RequestWithUser, re
 
 // GET /wbs/export?projectId=...&format=xlsx
 wbsRouter.get("/export", async (req: RequestWithUser, res) => {
+  if (!ensureModulePermission(req, res, "eap", "view", "Voce nao tem permissao para exportar a EAP.")) {
+    return;
+  }
   const { projectId, format, projectName } = req.query as { projectId?: string; format?: string; projectName?: string };
   const access = await assertProjectAccess(req, res, projectId);
   if (!access) return;
@@ -1387,6 +1396,9 @@ wbsRouter.get("/export", async (req: RequestWithUser, res) => {
 
 // GET /wbs/trash?projectId=...
 wbsRouter.get("/trash", async (req: RequestWithUser, res) => {
+  if (!ensureModulePermission(req, res, "eap", "edit", "Voce nao tem permissao para visualizar a lixeira da EAP.")) {
+    return;
+  }
   const { projectId } = req.query as { projectId?: string };
   const access = await assertProjectAccess(req, res, projectId);
   if (!access) return;

@@ -80,6 +80,7 @@ import { CheckoutPage } from "./pages/CheckoutPage";
 import { apiFetch, apiUrl, getApiErrorMessage, getNetworkErrorMessage, parseApiError, type ApiFetchOptions } from "./config/api";
 
 import { getPlanDefinition } from "./config/plans";
+import { canAccessModule } from "./components/permissions";
 
 
 
@@ -495,6 +496,20 @@ export const App = () => {
     [selectedOrganizationId]
   );
   const normalizedActiveProjectId = useMemo(() => normalizeUuid(activeProjectId), [activeProjectId]);
+
+  const currentOrganization = useMemo(
+    () => organizations.find((organization) => organization.id === normalizedSelectedOrganizationId) ?? null,
+    [organizations, normalizedSelectedOrganizationId]
+  );
+  const currentOrgRole = normalizeOrgRole(currentOrganization?.role);
+  const currentOrgModulePermissions = currentOrganization?.modulePermissions ?? null;
+  const canViewDashboardModule = canAccessModule(currentOrgRole, currentOrgModulePermissions, "dashboard", "view");
+  const canViewBudgetModule = canAccessModule(currentOrgRole, currentOrgModulePermissions, "budget", "view");
+  const canViewEapModule = canAccessModule(currentOrgRole, currentOrgModulePermissions, "eap", "view");
+  const canViewKanbanModule = canAccessModule(currentOrgRole, currentOrgModulePermissions, "kanban", "view");
+  const canViewTimelineModule = canAccessModule(currentOrgRole, currentOrgModulePermissions, "timeline", "view");
+  const canViewDocumentsModule = canAccessModule(currentOrgRole, currentOrgModulePermissions, "documents", "view");
+  const canViewReportsModule = canAccessModule(currentOrgRole, currentOrgModulePermissions, "reports", "view");
 
 
 
@@ -1153,9 +1168,17 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !normalizedActiveProjectId || !normalizedSelectedOrganizationId) {
+    if (
+      status !== "authenticated" ||
+      !token ||
+      !normalizedActiveProjectId ||
+      !normalizedSelectedOrganizationId ||
+      !canViewDashboardModule
+    ) {
 
       setProjectSummary(null);
+
+      setSummaryError(null);
 
       return;
 
@@ -1247,9 +1270,17 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !normalizedActiveProjectId || !normalizedSelectedOrganizationId) {
+    if (
+      status !== "authenticated" ||
+      !token ||
+      !normalizedActiveProjectId ||
+      !normalizedSelectedOrganizationId ||
+      !canViewBudgetModule
+    ) {
 
       setServiceCatalog([]);
+
+      setServiceCatalogError(null);
 
       return;
 
@@ -1292,9 +1323,16 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
+    if (
+      status !== "authenticated" ||
+      !token ||
+      !normalizedSelectedOrganizationId ||
+      !canViewEapModule
+    ) {
 
       setWbsNodes([]);
+
+      setWbsError(null);
 
       setSelectedNodeId(null);
 
@@ -1367,7 +1405,18 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId || selectedProjectId !== "all") {
+    if (
+      status !== "authenticated" ||
+      !token ||
+      !normalizedSelectedOrganizationId ||
+      selectedProjectId !== "all" ||
+      !canViewEapModule
+    ) {
+
+      if (!canViewEapModule) {
+        setWbsNodes([]);
+        setWbsError(null);
+      }
 
       return;
 
@@ -1495,9 +1544,17 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   useEffect(() => {
 
-    if (!normalizedSelectedNodeId || status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
+    if (
+      !normalizedSelectedNodeId ||
+      status !== "authenticated" ||
+      !token ||
+      !normalizedSelectedOrganizationId ||
+      !canViewEapModule
+    ) {
 
       setComments([]);
+
+      setCommentsError(null);
 
       return;
 
@@ -1542,7 +1599,11 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   const loadBoardColumns = useCallback(async () => {
 
-    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId || !canViewKanbanModule) {
+
+      setBoardColumns([]);
+
+      setBoardError(null);
 
       return;
 
@@ -1793,9 +1854,11 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId || !canViewKanbanModule) {
 
       setBoardColumns([]);
+
+      setBoardError(null);
 
       return;
 
@@ -1855,11 +1918,13 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId || !canViewTimelineModule) {
 
       setGanttTasks([]);
 
       setGanttMilestones([]);
+
+      setGanttError(null);
 
       return;
 
@@ -2052,9 +2117,11 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId || !canViewDocumentsModule) {
 
       setAttachments([]);
+
+      setAttachmentsError(null);
 
       setAttachmentsLoading(false);
 
@@ -2212,9 +2279,11 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId || !canViewReportsModule) {
 
       setPortfolio([]);
+
+      setPortfolioError(null);
 
       setPortfolioLoading(false);
 
@@ -2264,9 +2333,11 @@ const [reportMetricsError, setReportMetricsError] = useState<string | null>(null
 
   useEffect(() => {
 
-    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId) {
+    if (status !== "authenticated" || !token || !normalizedSelectedOrganizationId || !canViewReportsModule) {
 
       setReportMetrics(null);
+
+      setReportMetricsError(null);
 
       setReportMetricsLoading(false);
 
@@ -3413,10 +3484,6 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
     modulePermissions: organization.modulePermissions ?? null
 
   }));
-
-  const currentOrgRole = organizationCards.find((org) => org.id === selectedOrganizationId)?.role ?? null;
-  const currentOrgModulePermissions =
-    organizationCards.find((org) => org.id === selectedOrganizationId)?.modulePermissions ?? null;
 
 
 
