@@ -31,24 +31,45 @@ enum BillingCycle {
   ANNUAL
 }
 
+enum IntegrationProvider {
+  CUSTOM
+  SLACK
+  GOOGLE_CALENDAR
+  OUTLOOK_CALENDAR
+  TRELLO
+  ASANA
+  JIRA
+  GITHUB
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
 model Organization {
-  id          String                   @id @default(uuid())
-  name        String
-  slug        String                   @unique
-  domain      String?
-  plan        OrganizationPlan         @default(FREE)
-  timezone    String                   @default("America/Sao_Paulo")
-  createdAt   DateTime                 @default(now())
-  updatedAt   DateTime                 @updatedAt
-  isActive    Boolean                  @default(true)
-  status      OrganizationStatus       @default(ACTIVE)
-  deletedAt   DateTime?
-  auditLogs   AuditLog[]
-  memberships OrganizationMembership[]
-  invites     Invite[]
-  projects    Project[]
-  templates   ProjectTemplate[]
-  tags        Tag[]
+  id                   String                   @id @default(uuid())
+  name                 String
+  slug                 String                   @unique
+  domain               String?
+  plan                 OrganizationPlan         @default(FREE)
+  timezone             String                   @default("America/Sao_Paulo")
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  isActive             Boolean                  @default(true)
+  status               OrganizationStatus       @default(ACTIVE)
+  deletedAt            DateTime?
+  apiTokens            ApiToken[]
+  auditLogs            AuditLog[]
+  integrationImports   IntegrationImportJob[]
+  memberships          OrganizationMembership[]
+  invites              Invite[]
+  projects             Project[]
+  templates            ProjectTemplate[]
+  tags                 Tag[]
+  webhookDeliveries    WebhookDelivery[]
+  webhookSubscriptions WebhookSubscription[]
 }
 
 model User {
@@ -71,9 +92,11 @@ model User {
   twoFactorSecret     String?
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
+  apiTokens           ApiToken[]
   attachments         Attachment[]
   auditLogs           AuditLog[]
   comments            Comment[]
+  integrationImports  IntegrationImportJob[]
   notifications       Notification[]
   memberships         OrganizationMembership[]
   managedProjects     Project[]                @relation("ProjectManager")
@@ -85,6 +108,7 @@ model User {
   invitesCreated      Invite[]                 @relation("InviteCreatedBy")
   invitesAccepted     Invite[]                 @relation("InviteAcceptedBy")
   subscriptions       Subscription[]
+  webhookSubscriptions WebhookSubscription[]
 }
 
 model OrganizationMembership {
@@ -429,6 +453,86 @@ model FieldDefinition {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ApiToken {
+  id             String       @id @default(uuid())
+  organizationId String
+  createdById    String
+  name           String
+  tokenPrefix    String
+  tokenLastFour  String
+  tokenHash      String       @unique
+  scopes         Json?
+  lastUsedAt     DateTime?
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  createdBy      User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, revokedAt])
+}
+
+model WebhookSubscription {
+  id             String              @id @default(uuid())
+  organizationId String
+  createdById    String
+  provider       IntegrationProvider @default(CUSTOM)
+  name           String
+  targetUrl      String
+  secret         String
+  eventNames     String[]
+  isActive       Boolean             @default(true)
+  lastTriggeredAt DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  createdBy      User                @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deliveries     WebhookDelivery[]
+
+  @@index([organizationId, isActive])
+}
+
+model WebhookDelivery {
+  id             String                @id @default(uuid())
+  subscriptionId String
+  organizationId String
+  eventName      String
+  requestId      String                @default(uuid())
+  status         WebhookDeliveryStatus @default(PENDING)
+  attemptCount   Int                   @default(1)
+  payload        Json
+  responseStatus Int?
+  responseBody   String?
+  errorMessage   String?
+  deliveredAt    DateTime?
+  lastAttemptAt  DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription   WebhookSubscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([subscriptionId, status])
+}
+
+model IntegrationImportJob {
+  id             String       @id @default(uuid())
+  organizationId String
+  createdById    String
+  source         String
+  entity         String
+  status         String
+  fileName       String?
+  summary        Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  createdBy      User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
 }
 
 model AuditLog {

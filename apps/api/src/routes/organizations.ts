@@ -13,6 +13,7 @@ import { getOrgLimitForPlan } from "../services/subscriptionLimits";
 import { getDefaultModulePermissions, normalizeModulePermissionsForRole } from "../services/modulePermissions";
 import { normalizeUuid } from "../utils/uuid";
 import { writeAuditLog } from "../services/audit";
+import { dispatchIntegrationEvent } from "../services/webhookDispatcher";
 
 export const organizationsRouter = Router();
 
@@ -60,6 +61,29 @@ const toOrganizationAuditSummary = (organization: {
   isActive: organization.isActive,
   deletedAt: organization.deletedAt?.toISOString() ?? null
 });
+
+const emitOrganizationIntegrationEvent = ({
+  organizationId,
+  actorId,
+  eventName,
+  organization
+}: {
+  organizationId: string;
+  actorId?: string | null;
+  eventName: string;
+  organization: ReturnType<typeof toOrganizationAuditSummary>;
+}) => {
+  void dispatchIntegrationEvent({
+    organizationId,
+    actorId: actorId ?? null,
+    eventName,
+    entity: "ORGANIZATION",
+    entityId: organizationId,
+    payload: {
+      organization
+    }
+  });
+};
 
 organizationsRouter.post("/", async (req, res) => {
   if (!req.user) {
@@ -111,6 +135,13 @@ organizationsRouter.post("/", async (req, res) => {
     diff: {
       after: toOrganizationAuditSummary(organization)
     }
+  });
+
+  emitOrganizationIntegrationEvent({
+    organizationId: organization.id,
+    actorId: req.user.id,
+    eventName: "organization.created",
+    organization: toOrganizationAuditSummary(organization)
   });
 
   return res.status(201).json({ organization });
@@ -283,6 +314,13 @@ organizationsRouter.patch(
         }
       });
 
+      emitOrganizationIntegrationEvent({
+        organizationId,
+        actorId: req.user?.id ?? null,
+        eventName: "organization.updated",
+        organization: toOrganizationAuditSummary(updated)
+      });
+
       return res.json({ organization: updated });
     } catch (error) {
       console.error("Error updating organization", error);
@@ -326,6 +364,13 @@ organizationsRouter.patch(
         }
       });
 
+      emitOrganizationIntegrationEvent({
+        organizationId,
+        actorId: req.user?.id ?? null,
+        eventName: "organization.deactivated",
+        organization: toOrganizationAuditSummary(updated)
+      });
+
       return res.json({ organization: updated });
     } catch (error) {
       console.error("Error deactivating organization", error);
@@ -367,6 +412,13 @@ organizationsRouter.patch(
           before: toOrganizationAuditSummary(existing),
           after: toOrganizationAuditSummary(updated)
         }
+      });
+
+      emitOrganizationIntegrationEvent({
+        organizationId,
+        actorId: req.user?.id ?? null,
+        eventName: "organization.trashed",
+        organization: toOrganizationAuditSummary(updated)
       });
 
       return res.json({ organization: updated });
@@ -436,6 +488,13 @@ organizationsRouter.patch(
         }
       });
 
+      emitOrganizationIntegrationEvent({
+        organizationId,
+        actorId: req.user.id,
+        eventName: "organization.restored",
+        organization: toOrganizationAuditSummary(updated)
+      });
+
       return res.json({ organization: updated });
     } catch (error) {
       console.error("Error restoring organization", error);
@@ -471,6 +530,13 @@ organizationsRouter.delete(
         diff: {
           before: toOrganizationAuditSummary(organization)
         }
+      });
+
+      emitOrganizationIntegrationEvent({
+        organizationId,
+        actorId: req.user?.id ?? null,
+        eventName: "organization.deleted",
+        organization: toOrganizationAuditSummary(organization)
       });
 
       await prisma.organization.delete({

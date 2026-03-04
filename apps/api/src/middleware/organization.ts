@@ -41,6 +41,8 @@ export const organizationMiddleware = async (req: RequestWithUser, res: Response
 
   req.organization = membership.organization;
   req.organizationMembership = membership;
+  req.organizationId = membership.organizationId;
+  req.organizationRole = membership.role as OrgRole;
 
   return next();
 };
