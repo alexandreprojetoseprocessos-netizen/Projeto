@@ -93,6 +93,20 @@ const FirstProjectOnboarding = ({
   const [endDate, setEndDate] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const onboardingChecklist = [
+    {
+      title: "Escopo inicial",
+      description: "Cadastre um nome claro para o time reconhecer o objetivo imediatamente."
+    },
+    {
+      title: "Janela de trabalho",
+      description: "Se houver datas definidas, o cronograma e a EAP ganham contexto desde o inÃ­cio."
+    },
+    {
+      title: "Base para execuÃ§Ã£o",
+      description: "Depois da criaÃ§Ã£o vocÃª poderÃ¡ abrir EAP, Kanban, orÃ§amento e documentos."
+    }
+  ];
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -111,7 +125,7 @@ const FirstProjectOnboarding = ({
       setStartDate("");
       setEndDate("");
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Não foi possível criar o projeto.");
+      setError(submitError instanceof Error ? submitError.message : "NÃ£o foi possÃ­vel criar o projeto.");
     } finally {
       setIsSubmitting(false);
     }
@@ -124,18 +138,21 @@ const FirstProjectOnboarding = ({
           <span className="onboarding-project__step">Passo 2 de 3</span>
           <h2>CRIE SEU PRIMEIRO PROJETO</h2>
           <p>
-            Agora que sua organização está criada, vamos configurar o primeiro projeto. Você poderá adicionar tarefas,
-            equipe, cronograma e relatórios depois.
+            Agora que sua organizaÃ§Ã£o estÃ¡ criada, vamos configurar o primeiro projeto. VocÃª poderÃ¡ adicionar tarefas,
+            equipe, cronograma e relatÃ³rios depois.
           </p>
+          <div className="onboarding-project__timeline">
+            <span className="is-complete">OrganizaÃ§Ã£o criada</span>
+            <span className="is-current">Projeto inicial</span>
+            <span>ExecuÃ§Ã£o liberada</span>
+          </div>
           <div className="onboarding-project__tips">
-            <div>
-              <strong>Comece simples.</strong>
-              <span>Um nome claro e uma descrição curta já ajudam o time.</span>
-            </div>
-            <div>
-              <strong>Datas opcionais.</strong>
-              <span>Você pode ajustar o cronograma a qualquer momento.</span>
-            </div>
+            {onboardingChecklist.map((item) => (
+              <div key={item.title}>
+                <strong>{item.title}</strong>
+                <span>{item.description}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -162,20 +179,20 @@ const FirstProjectOnboarding = ({
               />
             </label>
 
-            <label className="onboarding-field">
               <span>Data de início (opcional)</span>
+              <span>Data de in?cio (opcional)</span>
               <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
-            </label>
-            <label className="onboarding-field">
               <span>Data de término (opcional)</span>
+            <label className="onboarding-field">
+              <span>Data de t?rmino (opcional)</span>
               <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
             </label>
 
             <div className="onboarding-project__actions">
               <button className="primary-button" type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Criando..." : "Criar projeto e continuar"}
-              </button>
               <span className="onboarding-project__helper">Você pode editar tudo depois.</span>
+              </button>
+              <span className="onboarding-project__helper">Voc? pode editar tudo depois.</span>
             </div>
           </form>
         </div>
@@ -358,7 +375,7 @@ export const ProjectsPage = () => {
     projectLimitRemaining !== null &&
     projectLimitRemaining > 0 &&
     (projectLimitRemaining <= 1 || projectUsagePercent >= 80);
-  const currentPlanName = projectLimits?.planCode ? getPlanDefinition(projectLimits.planCode).displayName : "Nao informado";
+  const currentPlanName = projectLimits?.planCode ? getPlanDefinition(projectLimits.planCode).displayName : "Não informado";
   const limitToneClass = isAtProjectLimit ? "is-danger" : isNearProjectLimit ? "is-warning" : "is-ok";
   const activeProjectsLabel = activeProjectsCount === 1 ? "projeto ativo" : "projetos ativos";
   const isEditing = Boolean(editingProject);
@@ -508,7 +525,7 @@ export const ProjectsPage = () => {
         <div className="projects-header-actions">
           <div className={`projects-capacity-card ${limitToneClass}`}>
             <div className="projects-capacity-card__row">
-              <span className="projects-capacity-card__label">Capacidade da organizacao</span>
+              <span className="projects-capacity-card__label">Capacidade da organização</span>
               <span className="projects-capacity-card__plan">Plano {currentPlanName}</span>
             </div>
             <div className="projects-capacity-card__count">
@@ -520,7 +537,7 @@ export const ProjectsPage = () => {
                 <span>{usedProjectsCount} em uso no plano atual sem limite.</span>
               ) : (
                 <span>
-                  {usedProjectsCount} de {projectLimitMax} usados na organizacao.
+                  {usedProjectsCount} de {projectLimitMax} usados na organização.
                 </span>
               )}
               {projectLimitMax !== null && projectLimitRemaining !== null && (
@@ -537,7 +554,7 @@ export const ProjectsPage = () => {
               </div>
             )}
             {isNearProjectLimit && !isAtProjectLimit && (
-              <p className="projects-capacity-card__hint">A organizacao esta perto do limite do plano.</p>
+              <p className="projects-capacity-card__hint">A organização está perto do limite do plano.</p>
             )}
           </div>
 
@@ -588,8 +605,8 @@ export const ProjectsPage = () => {
         ) : (
           <AppStateCard
             tone="warning"
-            title="Portf�lio sem projetos dispon�veis"
-            description="Seu perfil tem acesso apenas de leitura nesta organiza��o. Quando um projeto estiver ativo para o seu escopo, ele aparecer� aqui."
+            title="Portfólio sem projetos disponíveis"
+            description="Seu perfil tem acesso apenas de leitura nesta organização. Quando um projeto estiver ativo para o seu escopo, ele aparecerá aqui."
           />
         )
       ) : (
@@ -770,4 +787,5 @@ export const ProjectsPage = () => {
     </div>
   );
 };
+
 

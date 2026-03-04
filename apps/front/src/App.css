@@ -9529,30 +9529,44 @@ button[type="submit"]:hover {
   color: hsl(var(--org-foreground));
 }
 
-.org-onboarding .page-header {
-  margin-bottom: 28px;
+.orgOnboardingHero {
+  margin-bottom: 18px;
 }
 
-.org-onboarding .page-header-kicker {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: hsl(var(--org-foreground) / 0.6);
+.org-onboarding-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.org-onboarding .page-header-title {
-  font-size: 30px;
-  font-weight: 700;
-  margin: 6px 0 8px;
+.org-onboarding-journey {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.org-onboarding-step {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.96));
+  border: 1px solid hsl(var(--org-border) / 0.7);
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: var(--org-shadow-soft);
+  display: grid;
+  gap: 6px;
+}
+
+.org-onboarding-step strong {
   color: hsl(var(--org-foreground));
+  font-size: 14px;
 }
 
-.org-onboarding .page-header-subtitle {
-  font-size: 14px;
-  line-height: 1.6;
-  max-width: 680px;
-  color: hsl(var(--org-foreground) / 0.6);
+.org-onboarding-step p {
+  margin: 0;
+  color: hsl(var(--org-foreground) / 0.64);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .org-onboarding .org-grid {
@@ -10025,6 +10039,10 @@ button[type="submit"]:hover {
   color: hsl(var(--org-foreground) / 0.6);
 }
 
+.org-onboarding .org-empty-card {
+  border-style: dashed;
+}
+
 .org-onboarding .org-plan-card {
   position: sticky;
   top: 24px;
@@ -10162,6 +10180,10 @@ button[type="submit"]:hover {
 }
 
 @media (max-width: 1024px) {
+  .org-onboarding-journey {
+    grid-template-columns: 1fr;
+  }
+
   .org-onboarding .org-grid {
     grid-template-columns: 1fr;
   }
@@ -11270,6 +11292,39 @@ button[type="submit"]:hover {
 .onboarding-project__intro p {
   color: #475569;
   margin: 0 0 16px;
+}
+
+.onboarding-project__timeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.onboarding-project__timeline span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #dbe6f3;
+  background: #f8fbff;
+  color: #526984;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.onboarding-project__timeline span.is-complete {
+  border-color: #b9e4cd;
+  background: #eefbf3;
+  color: #0f7a53;
+}
+
+.onboarding-project__timeline span.is-current {
+  border-color: #cdddf7;
+  background: #eef4ff;
+  color: #1d4ed8;
 }
 
 .onboarding-project__step {

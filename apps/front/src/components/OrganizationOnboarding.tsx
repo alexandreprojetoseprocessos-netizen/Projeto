@@ -1,8 +1,9 @@
-﻿import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, ChevronRight, Crown, PauseCircle, Trash2 } from "lucide-react";
+import { Building2, ChevronRight, Crown, PauseCircle, ShieldCheck, Trash2, Workflow } from "lucide-react";
 import OrgActionsMenu from "./OrgActionsMenu";
 import OrgStatusModal from "./OrgStatusModal";
+import { AppPageHero, AppStateCard } from "./AppPageHero";
 import { canManageOrganizationSettings, type OrgRole } from "./permissions";
 
 export type OrganizationCard = {
@@ -75,6 +76,20 @@ export const OrganizationSelector = ({
   const organizationsPercent =
     max === null || max === 0 ? 100 : Math.min(100, Math.round((used / max) * 100));
   const limitReachedTitle = !canCreateMore ? "Limite de organizações do seu plano atingido." : undefined;
+  const onboardingSteps = [
+    {
+      title: "1. Criar organização",
+      description: "Defina o ambiente principal onde projetos, equipe e documentos vão viver."
+    },
+    {
+      title: "2. Escolher contexto",
+      description: "Entre na organização correta para operar com o escopo certo desde o início."
+    },
+    {
+      title: "3. Abrir o primeiro projeto",
+      description: "Depois do ambiente criado, o fluxo segue para o primeiro cadastro do portfólio."
+    }
+  ];
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -145,14 +160,61 @@ export const OrganizationSelector = ({
         </div>
       )}
 
-      <div className="page-header org-page-header">
-        <div className="page-header-kicker">BEM-VINDO(A)</div>
-        <h1 className="page-header-title">Criar nova organização</h1>
-        <p className="page-header-subtitle">
-          A organização representa sua empresa, clínica ou negócio. É aqui que você concentra projetos, pessoas e
-          documentos.
-        </p>
-      </div>
+      <AppPageHero
+        className="orgOnboardingHero"
+        kicker="Onboarding inicial"
+        title="Criar nova organização"
+        subtitle="A organização representa sua empresa, clínica ou negócio. É aqui que você concentra projetos, pessoas e documentos."
+        actions={
+          <div className="org-onboarding-hero-actions">
+            <button type="button" className="primary-button" disabled={!canCreateMore} onClick={scrollToCreate}>
+              Criar nova organização
+            </button>
+            <button type="button" className="button-outline org-plan-button" onClick={() => navigate("/plano")}>
+              Ver detalhes do plano
+            </button>
+          </div>
+        }
+        stats={[
+          {
+            label: "Plano atual",
+            value: planName,
+            helper: userEmail ?? "Conta principal do workspace",
+            icon: <Crown size={18} />,
+            tone: "default"
+          },
+          {
+            label: "Organizações usadas",
+            value: used,
+            helper: max === null ? "Sem limite contratado" : `Capacidade total ${max}`,
+            icon: <Building2 size={18} />,
+            tone: "info"
+          },
+          {
+            label: "Disponibilidade",
+            value: max === null ? "Livre" : remaining ?? 0,
+            helper: max === null ? "Criação livre no plano atual" : "Vagas restantes no plano",
+            icon: <ShieldCheck size={18} />,
+            tone: canCreateMore ? "success" : "danger"
+          },
+          {
+            label: "Fluxo",
+            value: "3 etapas",
+            helper: "Organização, contexto e primeiro projeto",
+            icon: <Workflow size={18} />,
+            tone: "warning"
+          }
+        ]}
+      />
+
+      <section className="org-onboarding-journey">
+        {onboardingSteps.map((step) => (
+          <article key={step.title} className="org-onboarding-step">
+            <strong>{step.title}</strong>
+            <p>{step.description}</p>
+          </article>
+        ))}
+      </section>
 
       <div className="org-grid">
         <div className="org-left-column">
@@ -179,7 +241,7 @@ export const OrganizationSelector = ({
 
               <div className="form-group">
                 <label>
-                  Dominio (opcional)
+                  Domínio (opcional)
                   <input
                     type="text"
                     placeholder="ex: minhaempresa.com"
@@ -235,16 +297,17 @@ export const OrganizationSelector = ({
             </div>
             <div className="org-list-divider" />
             {orgList.length === 0 ? (
-              <div className="org-empty">
-                <h3>Nenhuma organização cadastrada ainda</h3>
-                <p>
-                  Crie a sua primeira organização para começar a estruturar seus projetos. Você pode adicionar quantas
-                  precisar dentro do seu plano.
-                </p>
-                <button type="button" className="primary-button" onClick={scrollToCreate}>
-                  Criar primeira organização
-                </button>
-              </div>
+              <AppStateCard
+                className="org-empty-card"
+                tone="warning"
+                title="Nenhuma organização cadastrada ainda"
+                description="Crie a sua primeira organização para começar a estruturar projetos, equipes e documentos em um ambiente único."
+                action={
+                  <button type="button" className="primary-button" onClick={scrollToCreate}>
+                    Criar primeira organização
+                  </button>
+                }
+              />
             ) : (
               <div className="org-list-grid">
                 {orgList.map((organization) => {
