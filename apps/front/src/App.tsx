@@ -34,6 +34,8 @@ import { apiFetch, apiUrl, getApiErrorMessage, getNetworkErrorMessage, parseApiE
 
 import { getPlanDefinition } from "./config/plans";
 import { canAccessModule } from "./components/permissions";
+import { AppRouteBoundary } from "./components/AppRouteBoundary";
+import { reportClientError } from "./utils/clientErrorReporter";
 
 const DashboardLayout = lazy(() =>
   import("./components/DashboardLayout").then((module) => ({ default: module.DashboardLayout }))
@@ -346,7 +348,11 @@ const RouteLoadingState = () => (
   </section>
 );
 
-const renderLazyPage = (element: ReactNode) => <Suspense fallback={<RouteLoadingState />}>{element}</Suspense>;
+const renderLazyPage = (element: ReactNode, routeLabel?: string) => (
+  <AppRouteBoundary routeLabel={routeLabel}>
+    <Suspense fallback={<RouteLoadingState />}>{element}</Suspense>
+  </AppRouteBoundary>
+);
 
 
 async function fetchJson<TResponse = unknown>(
@@ -457,6 +463,33 @@ export const App = () => {
   }, [location.pathname]);
 
   const canUseAllProjects = useMemo(() => canUseAllProjectsOnPath(location.pathname), [location.pathname]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const handleWindowError = (event: ErrorEvent) => {
+      reportClientError("window.error", event.error ?? event.message, {
+        pathname: window.location.pathname,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno
+      });
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      reportClientError("window.unhandledrejection", event.reason, {
+        pathname: window.location.pathname
+      });
+    };
+
+    window.addEventListener("error", handleWindowError);
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener("error", handleWindowError);
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+    };
+  }, []);
 
 
   const [subscriptionStatus, setSubscriptionStatus] = useState<"idle" | "loading" | "active" | "none" | "error">(
@@ -3756,11 +3789,11 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     if (location.pathname === "/") {
 
-      return renderLazyPage(<Landing />);
+      return renderLazyPage(<Landing />, "a página inicial");
 
     }
 
-    return renderLazyPage(<Auth />);
+    return renderLazyPage(<Auth />, "a autenticação");
 
   }
 
@@ -3886,7 +3919,7 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
     <Routes>
 
-      <Route path="/" element={renderLazyPage(<Landing />)} />
+      <Route path="/" element={renderLazyPage(<Landing />, "a página inicial")} />
 
       <Route
 
@@ -4080,7 +4113,8 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
                 await fetchSubscription();
               }}
 
-            />
+            />,
+            "o checkout"
 
           )}
 
@@ -4124,33 +4158,34 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
               onReloadOrganizations={() => setOrganizationsRefresh((value) => value + 1)}
 
-            />
+            />,
+            "a seleção de organização"
 
           )}
 
         />
 
-        <Route path="dashboard" element={renderLazyPage(<DashboardPage />)} />
+        <Route path="dashboard" element={renderLazyPage(<DashboardPage />, "o dashboard")} />
 
-        <Route path="projects" element={renderLazyPage(<ProjectsPage />)} />
+        <Route path="projects" element={renderLazyPage(<ProjectsPage />, "os projetos")} />
 
-        <Route path="projects/:id" element={renderLazyPage(<ProjectDetailsPage />)} />
+        <Route path="projects/:id" element={renderLazyPage(<ProjectDetailsPage />, "os detalhes do projeto")} />
 
-        <Route path="projects/:id/edt" element={renderLazyPage(<ProjectEDTPage />)} />
+        <Route path="projects/:id/edt" element={renderLazyPage(<ProjectEDTPage />, "a EAP do projeto")} />
 
-        <Route path="projects/:id/board" element={renderLazyPage(<ProjectBoardPage />)} />
+        <Route path="projects/:id/board" element={renderLazyPage(<ProjectBoardPage />, "o quadro do projeto")} />
 
-        <Route path="projects/:id/cronograma" element={renderLazyPage(<ProjectTimelinePage />)} />
+        <Route path="projects/:id/cronograma" element={renderLazyPage(<ProjectTimelinePage />, "o cronograma do projeto")} />
 
-        <Route path="projects/:id/documentos" element={renderLazyPage(<ProjectDocumentsPage />)} />
+        <Route path="projects/:id/documentos" element={renderLazyPage(<ProjectDocumentsPage />, "os documentos do projeto")} />
 
-        <Route path="projects/:id/atividades" element={renderLazyPage(<ProjectActivitiesPage />)} />
+        <Route path="projects/:id/atividades" element={renderLazyPage(<ProjectActivitiesPage />, "o orçamento do projeto")} />
 
         <Route
 
           path="EAP/organizacao/:organizationId/projeto/:projectId"
 
-          element={renderLazyPage(<EDTPage />)}
+          element={renderLazyPage(<EDTPage />, "a EAP")}
 
         />
 
@@ -4182,27 +4217,27 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
 
         <Route path="edt" element={<Navigate to="/EAP" replace />} />
 
-        <Route path="board" element={renderLazyPage(<BoardPage />)} />
+        <Route path="board" element={renderLazyPage(<BoardPage />, "o quadro")} />
 
-        <Route path="kanban" element={renderLazyPage(<KanbanPage />)} />
+        <Route path="kanban" element={renderLazyPage(<KanbanPage />, "o Kanban")} />
 
-        <Route path="cronograma" element={renderLazyPage(<TimelinePage />)} />
+        <Route path="cronograma" element={renderLazyPage(<TimelinePage />, "o cronograma")} />
 
-        <Route path="diagrama" element={renderLazyPage(<DiagramPage />)} />
+        <Route path="diagrama" element={renderLazyPage(<DiagramPage />, "o diagrama")} />
 
-        <Route path="relatorios" element={renderLazyPage(<ReportsPage />)} />
+        <Route path="relatorios" element={renderLazyPage(<ReportsPage />, "os relatórios")} />
 
-        <Route path="documentos" element={renderLazyPage(<DocumentsPage />)} />
+        <Route path="documentos" element={renderLazyPage(<DocumentsPage />, "os documentos")} />
 
-        <Route path="atividades" element={renderLazyPage(<ActivitiesPage />)} />
+        <Route path="atividades" element={renderLazyPage(<ActivitiesPage />, "o orçamento")} />
 
-        <Route path="plano" element={renderLazyPage(<PlanPage />)} />
+        <Route path="plano" element={renderLazyPage(<PlanPage />, "o plano")} />
 
-        <Route path="equipe" element={renderLazyPage(<TeamPage />)} />
+        <Route path="equipe" element={renderLazyPage(<TeamPage />, "a equipe")} />
 
       </Route>
 
-      <Route path="*" element={renderLazyPage(<NotFoundPage />)} />
+      <Route path="*" element={renderLazyPage(<NotFoundPage />, "esta área")} />
 
     </Routes>
 
