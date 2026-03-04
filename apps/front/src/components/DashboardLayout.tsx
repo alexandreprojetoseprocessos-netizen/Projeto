@@ -48,7 +48,7 @@ import clsx from "clsx";
 import { DependenciesDropdown, type DependencyOption } from "./DependenciesDropdown";
 import { CleanDatePicker } from "./CleanDatePicker";
 import type { PortfolioProject } from "./ProjectPortfolio";
-import { normalizeModulePermissionsForRole, type ModulePermissionKey } from "./permissions";
+import { canManageOrganizationSettings, normalizeModulePermissionsForRole, type ModulePermissionKey } from "./permissions";
 
 import {
 
@@ -469,9 +469,35 @@ const MenuDotsIcon: KPIIcon = (props) => (
 
 );
 
+const IntegrationIcon: KPIIcon = (props) => (
+
+  <svg viewBox="0 0 24 24" {...svgStrokeProps} {...props}>
+
+    <path d="M8 8h4" />
+
+    <path d="M12 16H8" />
+
+    <path d="M8 12h8" />
+
+    <rect x="3" y="6" width="5" height="4" rx="1.5" />
+
+    <rect x="3" y="14" width="5" height="4" rx="1.5" />
+
+    <rect x="16" y="10" width="5" height="4" rx="1.5" />
+
+  </svg>
+
+);
 
 
-const sidebarNavigation = [
+
+const sidebarNavigation: Array<{
+  id: string;
+  label: string;
+  icon: KPIIcon;
+  path: string;
+  adminOnly?: boolean;
+}> = [
   { id: "organizacao", label: "Organizações", icon: BuildingIcon, path: "/organizacao" },
   { id: "dashboard", label: "Dashboard", icon: InsightIcon, path: "/dashboard" },
   { id: "projects", label: "Projetos", icon: ProjectFolderIcon, path: "/projects" },
@@ -483,6 +509,7 @@ const sidebarNavigation = [
   { id: "documentos", label: "Documentos", icon: FileIcon, path: "/documentos" },
   { id: "relatorios", label: "Relatórios", icon: ReportIcon, path: "/relatorios" },
   { id: "equipe", label: "Equipes", icon: UsersIcon, path: "/equipe" },
+  { id: "integracoes", label: "Integracoes", icon: IntegrationIcon, path: "/integracoes", adminOnly: true },
   { id: "plano", label: "Meu plano", icon: PlanIcon, path: "/plano" }
 ];
 
@@ -498,6 +525,7 @@ const sidebarModuleById: Record<string, ModulePermissionKey> = {
   documentos: "documents",
   relatorios: "reports",
   equipe: "team",
+  integracoes: "organization",
   plano: "plan"
 };
 
@@ -536,6 +564,7 @@ const resolveModuleFromPath = (pathname: string): ModulePermissionKey | null => 
   if (path === "/documentos" || path.startsWith("/documentos/")) return "documents";
   if (path === "/relatorios" || path.startsWith("/relatorios/")) return "reports";
   if (path === "/equipe" || path.startsWith("/equipe/")) return "team";
+  if (path === "/integracoes" || path.startsWith("/integracoes/")) return "organization";
   if (path === "/plano" || path.startsWith("/plano/") || path === "/checkout" || path.startsWith("/checkout/")) return "plan";
 
   return null;
@@ -9319,6 +9348,9 @@ export const DashboardLayout = ({
           {sidebarNavigation.map((item) => {
             const Icon = item.icon;
             const moduleKey = sidebarModuleById[item.id] ?? "dashboard";
+            if (item.adminOnly && !canManageOrganizationSettings(normalizedRole)) {
+              return null;
+            }
             if (!currentOrgModuleAccess[moduleKey]?.view) {
               return null;
             }
@@ -13047,6 +13079,8 @@ export const TemplatesPanel = ({
 
 
 };
+
+
 
 
 

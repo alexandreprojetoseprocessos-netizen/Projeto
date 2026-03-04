@@ -70,6 +70,7 @@ const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const DocumentsPage = lazy(() => import("./pages/DocumentsPage"));
 const ActivitiesPage = lazy(() => import("./pages/ActivitiesPage"));
 const PlanPage = lazy(() => import("./pages/PlanPage"));
+const IntegrationsPage = lazy(() => import("./pages/IntegrationsPage"));
 const TeamPage = lazy(() => import("./pages/TeamPage").then((module) => ({ default: module.TeamPage })));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 const Landing = lazy(() => import("./pages/Landing"));
@@ -4230,6 +4231,8 @@ const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
         <Route path="documentos" element={renderLazyPage(<DocumentsPage />, "os documentos")} />
 
         <Route path="atividades" element={renderLazyPage(<ActivitiesPage />, "o orçamento")} />
+
+        <Route path="integracoes" element={renderLazyPage(<IntegrationsPage />, "as integrações")} />
 
         <Route path="plano" element={renderLazyPage(<PlanPage />, "o plano")} />
 
