@@ -14,7 +14,9 @@ import {
   findActiveApiTokensByOrganization,
   issueApiToken,
   revokeApiToken,
-  summarizeApiToken
+  resolveApiTokenByPlainText,
+  summarizeApiToken,
+  touchApiTokenLastUsed
 } from "../services/integrationTokens";
 import { completeImportJob, createImportJob, failImportJob, listImportJobsByOrganization, summarizeImportJob } from "../services/importJobs";
 import {
@@ -223,6 +225,13 @@ const buildJiraDescription = (row: Record<string, unknown>) => {
   return parts.join("\n\n");
 };
 
+const readInboundBearerToken = (authorization?: string | string[]) => {
+  const header = Array.isArray(authorization) ? authorization[0] : authorization;
+  if (!header) return null;
+  const value = header.replace(/^Bearer\s+/i, "").trim();
+  return value || null;
+};
+
 integrationsRouter.post("/github/webhook", async (req, res) => {
   const signature = req.headers["x-hub-signature-256"] as string | undefined;
   const rawBody = (req as any).rawBody ?? JSON.stringify(req.body ?? {});
@@ -258,6 +267,211 @@ integrationsRouter.get("/google-calendar/feed/:accessToken", async (req, res) =>
   }
 
   return res.setHeader("Content-Type", "text/calendar; charset=utf-8").send(ics);
+});
+
+integrationsRouter.post("/inbound/kanban/task-upsert", async (req, res) => {
+  const plainToken = readInboundBearerToken(req.headers.authorization);
+  if (!plainToken) {
+    return res.status(401).json({ message: "Authorization Bearer token is required." });
+  }
+
+  const apiToken = await resolveApiTokenByPlainText(plainToken);
+  if (!apiToken) {
+    return res.status(401).json({ message: "API token invalido ou expirado." });
+  }
+
+  const projectId = normalizeUuid(req.body?.projectId);
+  const externalKey =
+    typeof req.body?.externalKey === "string" && req.body.externalKey.trim() ? req.body.externalKey.trim().slice(0, 191) : "";
+  const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+  const status = resolveBoardStatus(typeof req.body?.status === "string" ? req.body.status : "Backlog");
+  const priority = resolveJiraPriority(typeof req.body?.priority === "string" ? req.body.priority : "Medium");
+  const description = typeof req.body?.description === "string" ? req.body.description.trim() : "";
+  const source = typeof req.body?.source === "string" && req.body.source.trim() ? req.body.source.trim().slice(0, 64) : "INBOUND";
+  const startDate = parseSpreadsheetDateValue(req.body?.startDate);
+  const dueDate = parseSpreadsheetDateValue(req.body?.dueDate);
+  const externalUrl = typeof req.body?.externalUrl === "string" ? req.body.externalUrl.trim() : "";
+  const estimateHours =
+    typeof req.body?.estimateHours === "number"
+      ? req.body.estimateHours
+      : typeof req.body?.estimateHours === "string"
+      ? Number(req.body.estimateHours)
+      : null;
+
+  if (!projectId) {
+    return res.status(400).json({ message: "projectId is required." });
+  }
+  if (!externalKey) {
+    return res.status(400).json({ message: "externalKey is required." });
+  }
+  if (!title) {
+    return res.status(400).json({ message: "title is required." });
+  }
+
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      organizationId: apiToken.organizationId
+    },
+    select: {
+      id: true,
+      organizationId: true,
+      name: true
+    }
+  });
+
+  if (!project) {
+    return res.status(404).json({ message: "Project not found for this API token." });
+  }
+
+  await ensureBoardColumns(projectId);
+  const [columns, existingTaskDetail] = await Promise.all([
+    prisma.boardColumn.findMany({
+      where: { projectId },
+      orderBy: [{ order: "asc" }]
+    }),
+    prisma.taskDetail.findFirst({
+      where: {
+        externalSource: source,
+        externalKey
+      },
+      include: {
+        wbsNode: {
+          select: {
+            id: true,
+            projectId: true,
+            boardColumnId: true,
+            order: true
+          }
+        }
+      }
+    })
+  ]);
+
+  const targetColumn =
+    columns.find((column) => column.status === status) ??
+    columns.find((column) => column.status === TaskStatus.BACKLOG) ??
+    columns[0] ??
+    null;
+
+  if (!targetColumn) {
+    return res.status(500).json({ message: "Board columns not available for this project." });
+  }
+
+  if (existingTaskDetail?.wbsNode?.projectId && existingTaskDetail.wbsNode.projectId !== projectId) {
+    return res.status(409).json({
+      message: "externalKey ja esta vinculado a outro projeto para este source."
+    });
+  }
+
+  const nextOrder = await prisma.wbsNode.count({
+    where: { projectId, boardColumnId: targetColumn.id }
+  });
+
+  const customFields = {
+    source,
+    externalKey,
+    externalUrl: externalUrl || null
+  } as Prisma.InputJsonValue;
+
+  let action: "created" | "updated" = "created";
+
+  const task = await prisma.$transaction(async (tx) => {
+    if (existingTaskDetail?.wbsNode?.projectId === projectId) {
+      action = "updated";
+      const updatedNode = await tx.wbsNode.update({
+        where: { id: existingTaskDetail.wbsNodeId },
+        data: {
+          title,
+          description: description || null,
+          status,
+          priority,
+          boardColumnId: targetColumn.id,
+          order: existingTaskDetail.wbsNode.boardColumnId === targetColumn.id ? existingTaskDetail.wbsNode.order : nextOrder,
+          startDate,
+          endDate: dueDate,
+          estimateHours: Number.isFinite(estimateHours ?? NaN) ? new Prisma.Decimal(Number(estimateHours)) : undefined,
+          progress: status === TaskStatus.DONE ? 100 : undefined
+        }
+      });
+
+      await tx.taskDetail.upsert({
+        where: { wbsNodeId: existingTaskDetail.wbsNodeId },
+        update: {
+          externalSource: source,
+          externalKey,
+          customFields
+        },
+        create: {
+          wbsNodeId: existingTaskDetail.wbsNodeId,
+          externalSource: source,
+          externalKey,
+          customFields
+        }
+      });
+
+      return updatedNode;
+    }
+
+    const createdNode = await tx.wbsNode.create({
+      data: {
+        projectId,
+        parentId: null,
+        level: 0,
+        order: nextOrder,
+        title,
+        description: description || null,
+        type: "TASK",
+        status,
+        priority,
+        boardColumnId: targetColumn.id,
+        startDate,
+        endDate: dueDate,
+        estimateHours: Number.isFinite(estimateHours ?? NaN) ? new Prisma.Decimal(Number(estimateHours)) : undefined,
+        progress: status === TaskStatus.DONE ? 100 : 0
+      }
+    });
+
+    await tx.taskDetail.create({
+      data: {
+        wbsNodeId: createdNode.id,
+        externalSource: source,
+        externalKey,
+        customFields
+      }
+    });
+
+    return createdNode;
+  });
+
+  await touchApiTokenLastUsed(apiToken.id);
+
+  await writeAuditLog({
+    organizationId: project.organizationId,
+    actorId: apiToken.createdById,
+    projectId,
+    action: "INBOUND_KANBAN_TASK_UPSERTED",
+    entity: "KANBAN_TASK",
+    entityId: task.id,
+    diff: {
+      action,
+      source,
+      externalKey,
+      status,
+      priority
+    }
+  });
+
+  return res.status(action === "created" ? 201 : 200).json({
+    action,
+    task: {
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      boardColumnId: task.boardColumnId
+    }
+  });
 });
 
 integrationsRouter.use(authMiddleware, organizationMiddleware);

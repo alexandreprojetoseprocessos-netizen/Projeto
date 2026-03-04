@@ -15263,6 +15263,18 @@ button[type="submit"]:hover {
   color: #64748b;
 }
 
+.integration-code-block {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  white-space: pre;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.04);
+  padding: 1rem;
+  color: #0f172a;
+}
+
 .integration-checklist {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

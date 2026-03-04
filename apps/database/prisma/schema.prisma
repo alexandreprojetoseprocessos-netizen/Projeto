@@ -311,7 +311,11 @@ model TaskDetail {
   customFields  Json?
   slaDate       DateTime?
   blockedReason String?
+  externalSource String?
+  externalKey    String?
   wbsNode       WbsNode   @relation(fields: [wbsNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([externalSource, externalKey])
 }
 
 model Dependency {
