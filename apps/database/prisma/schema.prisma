@@ -63,6 +63,7 @@ model Organization {
   apiTokens            ApiToken[]
   auditLogs            AuditLog[]
   integrationImports   IntegrationImportJob[]
+  integrationConnections IntegrationConnection[]
   memberships          OrganizationMembership[]
   invites              Invite[]
   projects             Project[]
@@ -97,6 +98,7 @@ model User {
   auditLogs           AuditLog[]
   comments            Comment[]
   integrationImports  IntegrationImportJob[]
+  integrationConnections IntegrationConnection[]
   notifications       Notification[]
   memberships         OrganizationMembership[]
   managedProjects     Project[]                @relation("ProjectManager")
@@ -533,6 +535,28 @@ model IntegrationImportJob {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt])
+}
+
+model IntegrationConnection {
+  id                    String              @id @default(uuid())
+  organizationId        String
+  createdById           String
+  provider              IntegrationProvider
+  name                  String
+  isActive              Boolean             @default(true)
+  eventNames            String[]
+  config                Json
+  lastTriggeredAt       DateTime?
+  lastValidatedAt       DateTime?
+  lastValidationStatus  String?
+  lastValidationMessage String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  createdBy             User                @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  organization          Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, provider])
+  @@index([organizationId, isActive])
 }
 
 model AuditLog {

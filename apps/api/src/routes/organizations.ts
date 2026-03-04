@@ -75,6 +75,7 @@ const emitOrganizationIntegrationEvent = ({
 }) => {
   void dispatchIntegrationEvent({
     organizationId,
+    organizationName: organization.name,
     actorId: actorId ?? null,
     eventName,
     entity: "ORGANIZATION",

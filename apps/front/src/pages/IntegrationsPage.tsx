@@ -13,7 +13,8 @@ import {
   ShieldCheck,
   Trash2,
   Webhook,
-  XCircle
+  XCircle,
+  MessageSquareShare
 } from "lucide-react";
 import { AppPageHero, AppStateCard, AppStepGuide } from "../components/AppPageHero";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
@@ -72,6 +73,22 @@ type TokenCreateResponse = {
 
 type WebhookCreateResponse = {
   webhook?: WebhookSummary | null;
+};
+
+type SlackConnectionSummary = {
+  id: string;
+  provider: string;
+  name: string;
+  isActive: boolean;
+  eventNames: string[];
+  createdAt: string;
+  updatedAt: string;
+  lastTriggeredAt?: string | null;
+  lastValidatedAt?: string | null;
+  lastValidationStatus?: string | null;
+  lastValidationMessage?: string | null;
+  webhookConfigured?: boolean;
+  webhookPreview?: string | null;
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -143,6 +160,14 @@ export const IntegrationsPage = () => {
   const [webhookEvents, setWebhookEvents] = useState<string[]>([]);
   const [creatingWebhook, setCreatingWebhook] = useState(false);
   const [webhookFeedback, setWebhookFeedback] = useState<string | null>(null);
+  const [slackConnection, setSlackConnection] = useState<SlackConnectionSummary | null>(null);
+  const [slackName, setSlackName] = useState("Slack");
+  const [slackWebhookUrl, setSlackWebhookUrl] = useState("");
+  const [slackEvents, setSlackEvents] = useState<string[]>([]);
+  const [slackIsActive, setSlackIsActive] = useState(true);
+  const [slackLoading, setSlackLoading] = useState(false);
+  const [slackTesting, setSlackTesting] = useState(false);
+  const [slackFeedback, setSlackFeedback] = useState<string | null>(null);
   const [importFeedback, setImportFeedback] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [wbsImporting, setWbsImporting] = useState(false);
@@ -172,23 +197,35 @@ export const IntegrationsPage = () => {
     setPageLoading(true);
     setPageError(null);
     try {
-      const [catalogBody, tokenBody, webhookBody] = await Promise.all([
+      const [catalogBody, tokenBody, webhookBody, slackBody] = await Promise.all([
         apiRequest<{ events?: CatalogEvent[] }>("/integrations/catalog/events", { headers }),
         apiRequest<{ tokens?: ApiTokenSummary[] }>("/integrations/tokens", { headers }),
-        apiRequest<{ webhooks?: WebhookSummary[] }>("/integrations/webhooks", { headers })
+        apiRequest<{ webhooks?: WebhookSummary[] }>("/integrations/webhooks", { headers }),
+        apiRequest<{ slack?: SlackConnectionSummary | null }>("/integrations/slack", { headers })
       ]);
 
       const nextCatalog = Array.isArray(catalogBody.events) ? catalogBody.events : [];
       const nextTokens = Array.isArray(tokenBody.tokens) ? tokenBody.tokens : [];
       const nextWebhooks = Array.isArray(webhookBody.webhooks) ? webhookBody.webhooks : [];
+      const nextSlack = slackBody.slack ?? null;
 
       setCatalogEvents(nextCatalog);
       setTokens(nextTokens);
       setWebhooks(nextWebhooks);
+      setSlackConnection(nextSlack);
       setTokenScopes((current) => current.filter((scope) => nextCatalog.some((eventItem) => eventItem.eventName === scope)));
       setWebhookEvents((current) =>
         current.filter((scope) => nextCatalog.some((eventItem) => eventItem.eventName === scope))
       );
+      setSlackEvents((current) => {
+        if (nextSlack?.eventNames?.length) {
+          return nextSlack.eventNames.filter((scope) => nextCatalog.some((eventItem) => eventItem.eventName === scope));
+        }
+        return current.filter((scope) => nextCatalog.some((eventItem) => eventItem.eventName === scope));
+      });
+      setSlackName(nextSlack?.name ?? "Slack");
+      setSlackIsActive(nextSlack?.isActive ?? true);
+      setSlackWebhookUrl("");
       setSelectedWebhookId((current) => {
         if (current && nextWebhooks.some((item) => item.id === current)) return current;
         return nextWebhooks[0]?.id ?? null;
@@ -198,6 +235,7 @@ export const IntegrationsPage = () => {
       setCatalogEvents([]);
       setTokens([]);
       setWebhooks([]);
+      setSlackConnection(null);
     } finally {
       setPageLoading(false);
     }
@@ -391,6 +429,52 @@ export const IntegrationsPage = () => {
     await navigator.clipboard.writeText(value);
   };
 
+  const handleSaveSlack = async () => {
+    if (!token || !selectedOrganizationId || !canManage) return;
+
+    setSlackLoading(true);
+    setSlackFeedback(null);
+    try {
+      const body = await apiRequest<{ slack?: SlackConnectionSummary | null }>("/integrations/slack", {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          name: slackName.trim() || "Slack",
+          webhookUrl: slackWebhookUrl.trim() || undefined,
+          eventNames: slackEvents,
+          isActive: slackIsActive
+        })
+      });
+      setSlackConnection(body.slack ?? null);
+      setSlackWebhookUrl("");
+      setSlackFeedback("Integração Slack salva com sucesso.");
+      await loadPage();
+    } catch (error) {
+      setSlackFeedback(getApiErrorMessage(error, "Falha ao salvar integração Slack."));
+    } finally {
+      setSlackLoading(false);
+    }
+  };
+
+  const handleTestSlack = async () => {
+    if (!token || !selectedOrganizationId || !canManage) return;
+
+    setSlackTesting(true);
+    setSlackFeedback(null);
+    try {
+      const body = await apiRequest<{ message?: string }>("/integrations/slack/test", {
+        method: "POST",
+        headers
+      });
+      setSlackFeedback(body.message ?? "Teste enviado ao Slack.");
+      await loadPage();
+    } catch (error) {
+      setSlackFeedback(getApiErrorMessage(error, "Falha ao testar Slack."));
+    } finally {
+      setSlackTesting(false);
+    }
+  };
+
   const runImport = async (kind: "wbs" | "catalog", file: File | null) => {
     if (!token || !selectedOrganizationId || !hasProjectContext || !selectedProjectId || !file) return;
 
@@ -536,6 +620,109 @@ export const IntegrationsPage = () => {
       />
 
       {pageError ? <AppStateCard title="Falha ao carregar integrações" description={pageError} tone="danger" /> : null}
+
+      <article className="integration-card">
+        <div className="integration-card__header">
+          <div>
+            <p className="integration-card__kicker">Nativo</p>
+            <h2>Slack</h2>
+          </div>
+          <MessageSquareShare size={18} />
+        </div>
+
+        <div className="integration-form-grid">
+          <label className="integration-field">
+            <span>Nome da conexão</span>
+            <input value={slackName} onChange={(event) => setSlackName(event.target.value)} placeholder="Slack do PMO" />
+          </label>
+          <label className="integration-field">
+            <span>Status</span>
+            <select value={slackIsActive ? "active" : "paused"} onChange={(event) => setSlackIsActive(event.target.value === "active")}>
+              <option value="active">Ativo</option>
+              <option value="paused">Pausado</option>
+            </select>
+          </label>
+        </div>
+
+        <label className="integration-field">
+          <span>Webhook do Slack</span>
+          <input
+            value={slackWebhookUrl}
+            onChange={(event) => setSlackWebhookUrl(event.target.value)}
+            placeholder={slackConnection?.webhookPreview ?? "https://hooks.slack.com/services/..."}
+          />
+          <small>Se já existe uma conexão salva, deixe vazio para manter o webhook atual.</small>
+        </label>
+
+        <div className="integration-field">
+          <span>Eventos enviados ao Slack</span>
+          <div className="integration-checklist">
+            {catalogEvents.map((eventItem) => (
+              <label key={eventItem.eventName} className="integration-checklist__item">
+                <input
+                  type="checkbox"
+                  checked={slackEvents.includes(eventItem.eventName)}
+                  onChange={() => toggleEventSelection(eventItem.eventName, slackEvents, setSlackEvents)}
+                />
+                <span>{eventItem.eventName}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="integration-card__actions">
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => void handleSaveSlack()}
+            disabled={slackLoading || !slackEvents.length || (!slackConnection && !slackWebhookUrl.trim())}
+          >
+            {slackLoading ? "Salvando..." : "Salvar Slack"}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void handleTestSlack()}
+            disabled={slackTesting || !slackConnection}
+          >
+            <SendHorizontal size={16} />
+            {slackTesting ? "Testando..." : "Testar"}
+          </button>
+          {slackFeedback ? <p className="integration-feedback">{slackFeedback}</p> : null}
+        </div>
+
+        {slackConnection ? (
+          <div className="integration-secret-card">
+            <div>
+              <strong>Conexão atual</strong>
+              <small>
+                Último teste: {formatDateTime(slackConnection.lastValidatedAt)} · Último disparo:{" "}
+                {formatDateTime(slackConnection.lastTriggeredAt)}
+              </small>
+              <code>{slackConnection.webhookPreview ?? "Webhook configurado"}</code>
+            </div>
+            <span
+              className={`integration-status-badge is-${
+                slackConnection.lastValidationStatus === "FAILED"
+                  ? "failed"
+                  : slackConnection.lastValidationStatus === "SUCCESS"
+                  ? "success"
+                  : "pending"
+              }`}
+            >
+              {slackConnection.lastValidationStatus === "FAILED" ? <XCircle size={14} /> : null}
+              {slackConnection.lastValidationStatus === "SUCCESS" ? <CheckCircle2 size={14} /> : null}
+              {slackConnection.lastValidationStatus === "FAILED"
+                ? "Falha"
+                : slackConnection.lastValidationStatus === "SUCCESS"
+                ? "Saudável"
+                : "Sem teste"}
+            </span>
+          </div>
+        ) : (
+          <p className="integration-muted">Nenhuma conexão Slack salva nesta organização.</p>
+        )}
+      </article>
 
       <article className="integration-card">
         <div className="integration-card__header">

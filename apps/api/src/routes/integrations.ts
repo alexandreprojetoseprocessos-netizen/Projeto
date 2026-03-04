@@ -4,7 +4,7 @@ import { authMiddleware } from "../middleware/auth";
 import { organizationMiddleware } from "../middleware/organization";
 import type { RequestWithUser } from "../types/http";
 import { logger } from "../config/logger";
-import { sendSlackMessage, verifyGithubSignature } from "../services/integrations";
+import { verifyGithubSignature } from "../services/integrations";
 import {
   createWebhookSecret,
   findActiveApiTokensByOrganization,
@@ -23,6 +23,14 @@ import {
   summarizeWebhookSubscription,
   updateWebhookSubscription
 } from "../services/webhookDispatcher";
+import {
+  getIntegrationConnection,
+  sanitizeSlackWebhookUrl,
+  sendSlackConnectionMessage,
+  SLACK_SUPPORTED_EVENTS,
+  summarizeIntegrationConnection,
+  upsertSlackConnection
+} from "../services/integrationConnections";
 import { writeAuditLog } from "../services/audit";
 import { canManageOrganizationSettings } from "../services/permissions";
 
@@ -78,17 +86,107 @@ integrationsRouter.get("/catalog/events", (_req, res) => {
   });
 });
 
+integrationsRouter.get("/slack", async (req, res) => {
+  if (!ensureOrgAdmin(req, res)) return;
+
+  const connection = await getIntegrationConnection(req.organizationId!, IntegrationProvider.SLACK);
+  if (!connection) {
+    return res.json({ slack: null });
+  }
+
+  const config = connection.config && typeof connection.config === "object" ? (connection.config as Record<string, unknown>) : {};
+  const webhookUrl = typeof config.webhookUrl === "string" ? config.webhookUrl : "";
+
+  return res.json({
+    slack: {
+      ...summarizeIntegrationConnection(connection),
+      webhookConfigured: Boolean(webhookUrl),
+      webhookPreview: webhookUrl ? `${webhookUrl.slice(0, 36)}...` : null
+    }
+  });
+});
+
+integrationsRouter.put("/slack", async (req, res) => {
+  if (!ensureOrgAdmin(req, res)) return;
+
+  const name = typeof req.body?.name === "string" && req.body.name.trim() ? req.body.name.trim() : "Slack";
+  const eventNames = normalizeEvents(req.body?.eventNames);
+  const isActive = typeof req.body?.isActive === "boolean" ? req.body.isActive : true;
+  const webhookUrlRaw = typeof req.body?.webhookUrl === "string" ? req.body.webhookUrl.trim() : "";
+  const existing = await getIntegrationConnection(req.organizationId!, IntegrationProvider.SLACK);
+  const existingConfig =
+    existing?.config && typeof existing.config === "object" ? (existing.config as Record<string, unknown>) : null;
+  const fallbackWebhook = typeof existingConfig?.webhookUrl === "string" ? existingConfig.webhookUrl : "";
+  const normalizedWebhookUrl = sanitizeSlackWebhookUrl(webhookUrlRaw || fallbackWebhook);
+
+  if (!normalizedWebhookUrl) {
+    return res.status(400).json({ message: "Webhook do Slack inválido." });
+  }
+
+  if (!eventNames.length) {
+    return res.status(400).json({ message: "Selecione ao menos um evento para o Slack." });
+  }
+
+  const connection = await upsertSlackConnection({
+    organizationId: req.organizationId!,
+    createdById: req.user!.id,
+    name,
+    webhookUrl: normalizedWebhookUrl,
+    eventNames,
+    isActive
+  });
+
+  await writeAuditLog({
+    organizationId: req.organizationId!,
+    actorId: req.user!.id,
+    action: existing ? "INTEGRATION_SLACK_UPDATED" : "INTEGRATION_SLACK_CREATED",
+    entity: "INTEGRATION_CONNECTION",
+    entityId: connection.id,
+    diff: {
+      after: {
+        id: connection.id,
+        provider: connection.provider,
+        isActive: connection.isActive,
+        eventNames: connection.eventNames
+      }
+    }
+  });
+
+  return res.json({
+    slack: {
+      ...summarizeIntegrationConnection(connection),
+      webhookConfigured: true,
+      webhookPreview: `${normalizedWebhookUrl.slice(0, 36)}...`
+    }
+  });
+});
+
 integrationsRouter.post("/slack/test", async (req, res) => {
   if (!ensureOrgAdmin(req, res)) return;
 
   try {
-    await sendSlackMessage({
+    const connection = await getIntegrationConnection(req.organizationId!, IntegrationProvider.SLACK);
+    if (!connection) {
+      return res.status(404).json({ message: "Integração Slack não configurada." });
+    }
+
+    await sendSlackConnectionMessage({
+      connection,
       text: `:white_check_mark: Slack integration test OK for organization ${req.organization?.name ?? req.organizationId}.`
     });
-    return res.json({ message: "Notification sent (if webhook configured)." });
+
+    await writeAuditLog({
+      organizationId: req.organizationId!,
+      actorId: req.user!.id,
+      action: "INTEGRATION_SLACK_TESTED",
+      entity: "INTEGRATION_CONNECTION",
+      entityId: connection.id
+    });
+
+    return res.json({ message: "Mensagem de teste enviada ao Slack." });
   } catch (error) {
     logger.error({ err: error, organizationId: req.organizationId }, "Failed to send Slack test");
-    return res.status(500).json({ message: "Failed to send Slack notification" });
+    return res.status(500).json({ message: "Falha ao enviar teste para o Slack." });
   }
 });
 
@@ -345,6 +443,7 @@ integrationsRouter.post("/webhooks/:webhookId/test", async (req, res) => {
 
   await dispatchIntegrationEvent({
     organizationId: req.organizationId!,
+    organizationName: req.organization?.name ?? null,
     actorId: req.user!.id,
     entity: "WEBHOOK_SUBSCRIPTION",
     entityId: target.id,

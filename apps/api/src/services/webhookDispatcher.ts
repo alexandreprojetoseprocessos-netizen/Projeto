@@ -3,6 +3,7 @@ import axios from "axios";
 import { prisma } from "@gestao/database";
 import { WebhookDeliveryStatus, type IntegrationProvider, type Prisma, type WebhookSubscription } from "@prisma/client";
 import { logger } from "../config/logger";
+import { dispatchSlackIntegrationEvent } from "./integrationConnections";
 
 type DispatchClient = Prisma.TransactionClient | typeof prisma;
 
@@ -283,6 +284,7 @@ const deliverToSubscription = async ({
 
 export const dispatchIntegrationEvent = async ({
   organizationId,
+  organizationName,
   eventName,
   actorId,
   entity,
@@ -290,6 +292,7 @@ export const dispatchIntegrationEvent = async ({
   payload
 }: {
   organizationId: string;
+  organizationName?: string | null;
   eventName: string;
   actorId?: string | null;
   entity?: string | null;
@@ -302,10 +305,6 @@ export const dispatchIntegrationEvent = async ({
       isActive: true
     }
   });
-
-  if (!subscriptions.length) {
-    return { dispatched: 0 };
-  }
 
   const envelope: DeliveryEnvelope = {
     id: crypto.randomUUID(),
@@ -322,5 +321,14 @@ export const dispatchIntegrationEvent = async ({
 
   await Promise.allSettled(matches.map((subscription) => deliverToSubscription({ subscription, envelope })));
 
-  return { dispatched: matches.length };
+  const slackResult = await dispatchSlackIntegrationEvent({
+    organizationId,
+    organizationName,
+    eventName,
+    entity,
+    entityId,
+    payload
+  });
+
+  return { dispatched: matches.length + slackResult.dispatched };
 };
