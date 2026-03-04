@@ -543,6 +543,7 @@ model IntegrationConnection {
   createdById           String
   provider              IntegrationProvider
   name                  String
+  accessToken           String?             @unique
   isActive              Boolean             @default(true)
   eventNames            String[]
   config                Json

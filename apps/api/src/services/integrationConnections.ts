@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import axios from "axios";
 import { prisma } from "@gestao/database";
 import { IntegrationProvider, type IntegrationConnection, type Prisma } from "@prisma/client";
@@ -21,8 +22,21 @@ type SlackConfig = {
   webhookUrl: string;
 };
 
+type GoogleCalendarConfig = {
+  projectId: string;
+  includeTasks: boolean;
+  includeMilestones: boolean;
+};
+
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+
+const truncateText = (value: string | null | undefined, max = 300) => {
+  if (!value) return null;
+  return value.length > max ? `${value.slice(0, max)}...` : value;
+};
+
+export const generateIntegrationAccessToken = () => crypto.randomBytes(24).toString("hex");
 
 export const sanitizeSlackWebhookUrl = (value: string) => {
   try {
@@ -42,10 +56,22 @@ const readSlackConfig = (config: unknown): SlackConfig | null => {
   return { webhookUrl };
 };
 
+const readGoogleCalendarConfig = (config: unknown): GoogleCalendarConfig | null => {
+  const record = asRecord(config);
+  const projectId = typeof record?.projectId === "string" ? record.projectId : null;
+  if (!projectId) return null;
+  return {
+    projectId,
+    includeTasks: record?.includeTasks !== false,
+    includeMilestones: record?.includeMilestones !== false
+  };
+};
+
 export const summarizeIntegrationConnection = (connection: IntegrationConnection) => ({
   id: connection.id,
   provider: connection.provider,
   name: connection.name,
+  accessToken: connection.accessToken,
   isActive: connection.isActive,
   eventNames: connection.eventNames,
   createdAt: connection.createdAt,
@@ -63,6 +89,15 @@ export const getIntegrationConnection = async (organizationId: string, provider:
         organizationId,
         provider
       }
+    }
+  });
+
+export const getIntegrationConnectionByAccessToken = async (provider: IntegrationProvider, accessToken: string) =>
+  prisma.integrationConnection.findFirst({
+    where: {
+      provider,
+      accessToken,
+      isActive: true
     }
   });
 
@@ -111,6 +146,72 @@ export const upsertSlackConnection = async ({
     }
   });
 
+export const upsertGoogleCalendarConnection = async ({
+  client = prisma,
+  organizationId,
+  createdById,
+  name,
+  projectId,
+  includeTasks,
+  includeMilestones,
+  isActive,
+  accessToken
+}: {
+  client?: ServiceClient;
+  organizationId: string;
+  createdById: string;
+  name: string;
+  projectId: string;
+  includeTasks: boolean;
+  includeMilestones: boolean;
+  isActive: boolean;
+  accessToken?: string;
+}) => {
+  const existing = await client.integrationConnection.findUnique({
+    where: {
+      organizationId_provider: {
+        organizationId,
+        provider: IntegrationProvider.GOOGLE_CALENDAR
+      }
+    }
+  });
+
+  const resolvedAccessToken = accessToken ?? existing?.accessToken ?? generateIntegrationAccessToken();
+
+  return client.integrationConnection.upsert({
+    where: {
+      organizationId_provider: {
+        organizationId,
+        provider: IntegrationProvider.GOOGLE_CALENDAR
+      }
+    },
+    update: {
+      name,
+      isActive,
+      accessToken: resolvedAccessToken,
+      config: {
+        projectId,
+        includeTasks,
+        includeMilestones
+      }
+    },
+    create: {
+      organizationId,
+      createdById,
+      provider: IntegrationProvider.GOOGLE_CALENDAR,
+      name,
+      isActive,
+      accessToken: resolvedAccessToken,
+      eventNames: [],
+      config: {
+        projectId,
+        includeTasks,
+        includeMilestones
+      }
+    }
+  });
+};
+
 export const sendSlackConnectionMessage = async ({
   connection,
   text
@@ -120,7 +221,7 @@ export const sendSlackConnectionMessage = async ({
 }) => {
   const config = readSlackConfig(connection.config);
   if (!config?.webhookUrl) {
-    throw new Error("Webhook do Slack não configurado.");
+    throw new Error("Webhook do Slack nao configurado.");
   }
 
   const response = await axios.post(
@@ -143,9 +244,9 @@ export const sendSlackConnectionMessage = async ({
       lastValidatedAt: new Date(),
       lastValidationStatus: ok ? "SUCCESS" : "FAILED",
       lastValidationMessage: ok
-        ? "Entrega concluída."
+        ? "Entrega concluida."
         : typeof response.data === "string"
-        ? response.data.slice(0, 300)
+        ? truncateText(response.data)
         : `Slack respondeu HTTP ${response.status}`
     }
   });
@@ -173,12 +274,12 @@ const formatSlackMessage = ({
 }) => {
   const details = Object.entries(payload)
     .slice(0, 4)
-    .map(([key, value]) => `• ${key}: ${typeof value === "object" ? JSON.stringify(value) : String(value)}`)
+    .map(([key, value]) => `- ${key}: ${typeof value === "object" ? JSON.stringify(value) : String(value)}`)
     .join("\n");
 
   return [
     `:satellite: *Meu G&P*`,
-    `Organização: *${organizationName ?? "Organização"}*`,
+    `Organizacao: *${organizationName ?? "Organizacao"}*`,
     `Evento: \`${eventName}\``,
     entity ? `Entidade: \`${entity}\`` : null,
     entityId ? `Registro: \`${entityId}\`` : null,
@@ -234,4 +335,119 @@ export const dispatchSlackIntegrationEvent = async ({
     );
     return { dispatched: 0 };
   }
+};
+
+const formatIcsDateTime = (value: Date) => {
+  const year = value.getUTCFullYear();
+  const month = `${value.getUTCMonth() + 1}`.padStart(2, "0");
+  const day = `${value.getUTCDate()}`.padStart(2, "0");
+  const hours = `${value.getUTCHours()}`.padStart(2, "0");
+  const minutes = `${value.getUTCMinutes()}`.padStart(2, "0");
+  const seconds = `${value.getUTCSeconds()}`.padStart(2, "0");
+  return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
+};
+
+const formatIcsDateOnly = (value: Date) => {
+  const year = value.getUTCFullYear();
+  const month = `${value.getUTCMonth() + 1}`.padStart(2, "0");
+  const day = `${value.getUTCDate()}`.padStart(2, "0");
+  return `${year}${month}${day}`;
+};
+
+const escapeIcs = (value: string) =>
+  value.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+
+const addOneDay = (value: Date) => new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate() + 1));
+
+export const buildGoogleCalendarFeed = async (connection: IntegrationConnection) => {
+  const config = readGoogleCalendarConfig(connection.config);
+  if (!config?.projectId) {
+    return null;
+  }
+
+  const project = await prisma.project.findFirst({
+    where: {
+      id: config.projectId,
+      organizationId: connection.organizationId
+    },
+    select: {
+      id: true,
+      name: true,
+      milestones: {
+        select: {
+          id: true,
+          name: true,
+          dueDate: true,
+          status: true
+        },
+        orderBy: { dueDate: "asc" }
+      },
+      wbsNodes: {
+        where: {
+          deletedAt: null,
+          type: { in: ["TASK", "SUBTASK"] }
+        },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          startDate: true,
+          endDate: true
+        },
+        orderBy: { startDate: "asc" }
+      }
+    }
+  });
+
+  if (!project) {
+    return null;
+  }
+
+  const now = new Date();
+  const events: string[] = [];
+
+  if (config.includeMilestones) {
+    for (const milestone of project.milestones) {
+      const dueDate = milestone.dueDate instanceof Date ? milestone.dueDate : new Date(milestone.dueDate);
+      events.push([
+        "BEGIN:VEVENT",
+        `UID:milestone-${milestone.id}@meugp`,
+        `DTSTAMP:${formatIcsDateTime(now)}`,
+        `DTSTART;VALUE=DATE:${formatIcsDateOnly(dueDate)}`,
+        `DTEND;VALUE=DATE:${formatIcsDateOnly(addOneDay(dueDate))}`,
+        `SUMMARY:${escapeIcs(`[Marco] ${milestone.name}`)}`,
+        `DESCRIPTION:${escapeIcs(`Status: ${milestone.status ?? "PLANNED"} | Projeto: ${project.name}`)}`,
+        "END:VEVENT"
+      ].join("\r\n"));
+    }
+  }
+
+  if (config.includeTasks) {
+    for (const task of project.wbsNodes) {
+      if (!task.startDate && !task.endDate) continue;
+      const startDate = task.startDate ? new Date(task.startDate) : new Date(task.endDate as Date);
+      const endDate = task.endDate ? addOneDay(new Date(task.endDate)) : addOneDay(startDate);
+      events.push([
+        "BEGIN:VEVENT",
+        `UID:task-${task.id}@meugp`,
+        `DTSTAMP:${formatIcsDateTime(now)}`,
+        `DTSTART;VALUE=DATE:${formatIcsDateOnly(startDate)}`,
+        `DTEND;VALUE=DATE:${formatIcsDateOnly(endDate)}`,
+        `SUMMARY:${escapeIcs(task.title)}`,
+        `DESCRIPTION:${escapeIcs(`Status: ${task.status} | Projeto: ${project.name}`)}`,
+        "END:VEVENT"
+      ].join("\r\n"));
+    }
+  }
+
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Meu GP//Google Calendar Feed//PT-BR",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    `X-WR-CALNAME:${escapeIcs(`Meu G&P - ${project.name}`)}`,
+    ...events,
+    "END:VCALENDAR"
+  ].join("\r\n");
 };

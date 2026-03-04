@@ -19,7 +19,7 @@ import {
 import { AppPageHero, AppStateCard, AppStepGuide } from "../components/AppPageHero";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
 import { canAccessModule, canManageOrganizationSettings, type OrgRole } from "../components/permissions";
-import { apiRequest, getApiErrorMessage } from "../config/api";
+import { apiRequest, apiUrl, getApiErrorMessage } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
 
 type CatalogEvent = {
@@ -91,6 +91,23 @@ type SlackConnectionSummary = {
   webhookPreview?: string | null;
 };
 
+type GoogleCalendarConnectionSummary = {
+  id: string;
+  provider: string;
+  name: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastTriggeredAt?: string | null;
+  lastValidatedAt?: string | null;
+  lastValidationStatus?: string | null;
+  lastValidationMessage?: string | null;
+  projectId?: string | null;
+  includeTasks?: boolean;
+  includeMilestones?: boolean;
+  feedPath?: string | null;
+};
+
 type ImportJobSummary = {
   id: string;
   source: string;
@@ -144,7 +161,14 @@ const asStringArray = (value: unknown) => {
 
 export const IntegrationsPage = () => {
   const { token } = useAuth();
-  const { selectedOrganizationId, selectedProjectId, selectedProject, currentOrgRole, currentOrgModulePermissions } =
+  const {
+    selectedOrganizationId,
+    selectedProjectId,
+    selectedProject,
+    currentOrgRole,
+    currentOrgModulePermissions,
+    projects
+  } =
     useOutletContext<DashboardOutletContext>();
   const orgRole = (currentOrgRole ?? "MEMBER") as OrgRole;
   const canManage = canManageOrganizationSettings(orgRole);
@@ -184,6 +208,14 @@ export const IntegrationsPage = () => {
   const [slackLoading, setSlackLoading] = useState(false);
   const [slackTesting, setSlackTesting] = useState(false);
   const [slackFeedback, setSlackFeedback] = useState<string | null>(null);
+  const [calendarConnection, setCalendarConnection] = useState<GoogleCalendarConnectionSummary | null>(null);
+  const [calendarName, setCalendarName] = useState("Google Calendar");
+  const [calendarProjectId, setCalendarProjectId] = useState("");
+  const [calendarIncludeTasks, setCalendarIncludeTasks] = useState(true);
+  const [calendarIncludeMilestones, setCalendarIncludeMilestones] = useState(true);
+  const [calendarIsActive, setCalendarIsActive] = useState(true);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarFeedback, setCalendarFeedback] = useState<string | null>(null);
   const [importJobs, setImportJobs] = useState<ImportJobSummary[]>([]);
   const [importFeedback, setImportFeedback] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -206,6 +238,9 @@ export const IntegrationsPage = () => {
       setCatalogEvents([]);
       setTokens([]);
       setWebhooks([]);
+      setSlackConnection(null);
+      setCalendarConnection(null);
+      setImportJobs([]);
       setPageError(null);
       setPageLoading(false);
       return;
@@ -214,11 +249,12 @@ export const IntegrationsPage = () => {
     setPageLoading(true);
     setPageError(null);
     try {
-      const [catalogBody, tokenBody, webhookBody, slackBody, jobsBody] = await Promise.all([
+      const [catalogBody, tokenBody, webhookBody, slackBody, calendarBody, jobsBody] = await Promise.all([
         apiRequest<{ events?: CatalogEvent[] }>("/integrations/catalog/events", { headers }),
         apiRequest<{ tokens?: ApiTokenSummary[] }>("/integrations/tokens", { headers }),
         apiRequest<{ webhooks?: WebhookSummary[] }>("/integrations/webhooks", { headers }),
         apiRequest<{ slack?: SlackConnectionSummary | null }>("/integrations/slack", { headers }),
+        apiRequest<{ calendar?: GoogleCalendarConnectionSummary | null }>("/integrations/google-calendar", { headers }),
         apiRequest<{ jobs?: ImportJobSummary[] }>("/integrations/import-jobs?limit=12", { headers })
       ]);
 
@@ -226,12 +262,14 @@ export const IntegrationsPage = () => {
       const nextTokens = Array.isArray(tokenBody.tokens) ? tokenBody.tokens : [];
       const nextWebhooks = Array.isArray(webhookBody.webhooks) ? webhookBody.webhooks : [];
       const nextSlack = slackBody.slack ?? null;
+      const nextCalendar = calendarBody.calendar ?? null;
       const nextJobs = Array.isArray(jobsBody.jobs) ? jobsBody.jobs : [];
 
       setCatalogEvents(nextCatalog);
       setTokens(nextTokens);
       setWebhooks(nextWebhooks);
       setSlackConnection(nextSlack);
+      setCalendarConnection(nextCalendar);
       setImportJobs(nextJobs);
       setTokenScopes((current) => current.filter((scope) => nextCatalog.some((eventItem) => eventItem.eventName === scope)));
       setWebhookEvents((current) =>
@@ -246,6 +284,11 @@ export const IntegrationsPage = () => {
       setSlackName(nextSlack?.name ?? "Slack");
       setSlackIsActive(nextSlack?.isActive ?? true);
       setSlackWebhookUrl("");
+      setCalendarName(nextCalendar?.name ?? "Google Calendar");
+      setCalendarProjectId(nextCalendar?.projectId ?? (selectedProjectId && selectedProjectId !== "all" ? selectedProjectId : ""));
+      setCalendarIncludeTasks(nextCalendar?.includeTasks !== false);
+      setCalendarIncludeMilestones(nextCalendar?.includeMilestones !== false);
+      setCalendarIsActive(nextCalendar?.isActive ?? true);
       setSelectedWebhookId((current) => {
         if (current && nextWebhooks.some((item) => item.id === current)) return current;
         return nextWebhooks[0]?.id ?? null;
@@ -256,11 +299,12 @@ export const IntegrationsPage = () => {
       setTokens([]);
       setWebhooks([]);
       setSlackConnection(null);
+      setCalendarConnection(null);
       setImportJobs([]);
     } finally {
       setPageLoading(false);
     }
-  }, [canManage, headers, selectedOrganizationId, token]);
+  }, [canManage, headers, selectedOrganizationId, selectedProjectId, token]);
 
   const loadDeliveries = useCallback(
     async (webhookId: string | null) => {
@@ -304,6 +348,7 @@ export const IntegrationsPage = () => {
     [selectedWebhookId, webhooks]
   );
   const hasProjectContext = Boolean(selectedProjectId && selectedProjectId !== "all");
+  const calendarFeedUrl = calendarConnection?.feedPath ? apiUrl(calendarConnection.feedPath) : null;
 
   const tokenStats = useMemo(
     () => ({
@@ -493,6 +538,36 @@ export const IntegrationsPage = () => {
       setSlackFeedback(getApiErrorMessage(error, "Falha ao testar Slack."));
     } finally {
       setSlackTesting(false);
+    }
+  };
+
+  const handleSaveCalendar = async (regenerateToken = false) => {
+    if (!token || !selectedOrganizationId || !canManage) return;
+
+    setCalendarLoading(true);
+    setCalendarFeedback(null);
+    try {
+      const body = await apiRequest<{ calendar?: GoogleCalendarConnectionSummary | null }>("/integrations/google-calendar", {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          name: calendarName.trim() || "Google Calendar",
+          projectId: calendarProjectId || undefined,
+          includeTasks: calendarIncludeTasks,
+          includeMilestones: calendarIncludeMilestones,
+          isActive: calendarIsActive,
+          regenerateToken
+        })
+      });
+      setCalendarConnection(body.calendar ?? null);
+      setCalendarFeedback(
+        regenerateToken ? "Feed do Google Calendar atualizado com novo token." : "Integração Google Calendar salva com sucesso."
+      );
+      await loadPage();
+    } catch (error) {
+      setCalendarFeedback(getApiErrorMessage(error, "Falha ao salvar integração Google Calendar."));
+    } finally {
+      setCalendarLoading(false);
     }
   };
 
@@ -742,6 +817,113 @@ export const IntegrationsPage = () => {
           </div>
         ) : (
           <p className="integration-muted">Nenhuma conexão Slack salva nesta organização.</p>
+        )}
+      </article>
+
+      <article className="integration-card">
+        <div className="integration-card__header">
+          <div>
+            <p className="integration-card__kicker">Nativo</p>
+            <h2>Google Calendar</h2>
+          </div>
+          <ExternalLink size={18} />
+        </div>
+
+        <div className="integration-form-grid">
+          <label className="integration-field">
+            <span>Nome da conexão</span>
+            <input
+              value={calendarName}
+              onChange={(event) => setCalendarName(event.target.value)}
+              placeholder="Calendário executivo"
+            />
+          </label>
+          <label className="integration-field">
+            <span>Status</span>
+            <select
+              value={calendarIsActive ? "active" : "paused"}
+              onChange={(event) => setCalendarIsActive(event.target.value === "active")}
+            >
+              <option value="active">Ativo</option>
+              <option value="paused">Pausado</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="integration-form-grid">
+          <label className="integration-field">
+            <span>Projeto sincronizado</span>
+            <select value={calendarProjectId} onChange={(event) => setCalendarProjectId(event.target.value)}>
+              <option value="">Selecione um projeto</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="integration-field">
+            <span>Itens publicados</span>
+            <div className="integration-checklist">
+              <label className="integration-checklist__item">
+                <input
+                  type="checkbox"
+                  checked={calendarIncludeMilestones}
+                  onChange={() => setCalendarIncludeMilestones((current) => !current)}
+                />
+                <span>Marcos</span>
+              </label>
+              <label className="integration-checklist__item">
+                <input
+                  type="checkbox"
+                  checked={calendarIncludeTasks}
+                  onChange={() => setCalendarIncludeTasks((current) => !current)}
+                />
+                <span>Tarefas</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="integration-card__actions">
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => void handleSaveCalendar(false)}
+            disabled={calendarLoading || !calendarProjectId || (!calendarIncludeTasks && !calendarIncludeMilestones)}
+          >
+            {calendarLoading ? "Salvando..." : "Salvar Google Calendar"}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void handleSaveCalendar(true)}
+            disabled={calendarLoading || !calendarConnection}
+          >
+            <RefreshCw size={16} />
+            Regenerar feed
+          </button>
+          {calendarFeedback ? <p className="integration-feedback">{calendarFeedback}</p> : null}
+        </div>
+
+        {calendarConnection ? (
+          <div className="integration-secret-card">
+            <div>
+              <strong>Feed ICS</strong>
+              <small>
+                Projeto:{" "}
+                {projects.find((project) => project.id === (calendarConnection.projectId ?? ""))?.name ?? "Projeto configurado"} ·
+                Atualizado em {formatDateTime(calendarConnection.updatedAt)}
+              </small>
+              <code>{calendarFeedUrl ?? "Feed indisponível"}</code>
+            </div>
+            <button type="button" className="btn-secondary" onClick={() => void handleCopy(calendarFeedUrl)}>
+              <Copy size={16} />
+              Copiar URL
+            </button>
+          </div>
+        ) : (
+          <p className="integration-muted">Nenhum feed Google Calendar configurado nesta organização.</p>
         )}
       </article>
 
