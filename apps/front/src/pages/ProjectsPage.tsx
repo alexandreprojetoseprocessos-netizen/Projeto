@@ -2,6 +2,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { useOutletContext } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { ProjectPortfolio, type PortfolioProject } from "../components/ProjectPortfolio";
+import { AppStateCard } from "../components/AppPageHero";
 import ProjectTrashModal from "../components/ProjectTrashModal";
 import type { DashboardOutletContext, ProjectPriorityValue, ProjectStatusValue } from "../components/DashboardLayout";
 import { canAccessModule, canManageProjects, type OrgRole } from "../components/permissions";
@@ -585,7 +586,11 @@ export const ProjectsPage = () => {
         canCreateProjects ? (
           <FirstProjectOnboarding onCreateProject={handleCreateFirstProject} />
         ) : (
-          <p className="muted">VocÃª tem acesso apenas para visualizar projetos nesta organizaÃ§Ã£o.</p>
+          <AppStateCard
+            tone="warning"
+            title="Portfólio sem projetos disponíveis"
+            description="Seu perfil tem acesso apenas de leitura nesta organização. Quando um projeto estiver ativo para o seu escopo, ele aparecerá aqui."
+          />
         )
       ) : (
         <ProjectPortfolio
@@ -765,3 +770,4 @@ export const ProjectsPage = () => {
     </div>
   );
 };
+

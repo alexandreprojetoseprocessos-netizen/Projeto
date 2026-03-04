@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
+import { AppStateCard } from "../components/AppPageHero";
 import { normalizeStatus } from "../utils/status";
 import { useAuth } from "../contexts/AuthContext";
 import { apiRequest, getApiErrorMessage } from "../config/api";
@@ -436,7 +437,7 @@ const ReportsPage = () => {
             ))}
           </div>
         ) : (
-          <p className="muted">Nenhum projeto finalizado.</p>
+          <AppStateCard tone="success" title="Nenhum projeto finalizado" description="Os projetos concluidos aparecem aqui com o resumo consolidado de entrega." />
         )}
       </section>
 
@@ -462,7 +463,7 @@ const ReportsPage = () => {
             })}
           </div>
         ) : (
-          <p className="muted">Nenhum projeto em andamento.</p>
+          <AppStateCard tone="info" title="Nenhum projeto em andamento" description="Quando houver execucao ativa, esta secao passa a mostrar progresso, prazo e responsavel." />
         )}
       </section>
 
@@ -485,7 +486,7 @@ const ReportsPage = () => {
             ))}
           </div>
         ) : (
-          <p className="muted">Nenhum projeto planejado.</p>
+          <AppStateCard tone="default" title="Nenhum projeto planejado" description="Projetos ainda na etapa de planejamento aparecem aqui com a fila pronta para acompanhamento." />
         )}
       </section>
 
@@ -530,7 +531,7 @@ const ReportsPage = () => {
         </div>
 
         {groupedProjects.inProgress.length === 0 ? (
-          <p className="muted">Nenhum projeto em andamento.</p>
+          <AppStateCard tone="warning" title="Sem atualizacoes em andamento" description="A visao macro do escopo aparece aqui assim que existir ao menos um projeto em execucao." />
         ) : (
           groupedProjects.inProgress.map((project) => {
             const panelState = panelData[project.projectId] ?? { nodes: [], loading: false, error: null };
@@ -669,3 +670,4 @@ const ReportsPage = () => {
 };
 
 export default ReportsPage;
+
