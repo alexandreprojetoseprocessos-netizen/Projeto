@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import {
+  Boxes,
   Download,
   Eye,
   FileText,
@@ -9,10 +10,12 @@ import {
   Grid2x2,
   List,
   Search,
+  ShieldCheck,
   Trash2,
   Upload
 } from "lucide-react";
 import type { DashboardOutletContext } from "../components/DashboardLayout";
+import { AppPageHero, AppStateCard } from "../components/AppPageHero";
 import { apiRequest, getApiErrorMessage } from "../config/api";
 
 type DocumentRow = {
@@ -206,6 +209,10 @@ export const DocumentsPage = () => {
   }, [rows, query, folders, selectedFolderId]);
 
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) ?? null;
+  const currentScopeLabel =
+    selectedProjectId && selectedProjectId !== "all"
+      ? currentProjectName || "projeto atual"
+      : "todos os projetos visiveis";
 
   const folderCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -328,27 +335,62 @@ export const DocumentsPage = () => {
 
   return (
     <section className="documents-page">
-      <header className="documents-header">
-        <div>
-          <h1>Documentos</h1>
-          <p>Gerencie todos os documentos dos seus projetos</p>
-        </div>
-        <div className="documents-header-actions">
-          <button
-            className="documents-import-button"
-            type="button"
-            onClick={handleImportClick}
-            disabled={!selectedProjectId || selectedProjectId === "all"}
-            title={
-              !selectedProjectId || selectedProjectId === "all"
-                ? "Selecione um projeto especifico para importar."
-                : undefined
-            }
-          >
-            <Upload size={16} /> Importar
-          </button>
-        </div>
-      </header>
+      <AppPageHero
+        className="documentsPageHero"
+        kicker="Base documental"
+        title="Documentos"
+        subtitle={`Centralize anexos, pastas e arquivos operacionais de ${currentScopeLabel}.`}
+        actions={
+          <div className="documents-header-actions">
+            <button
+              className="documents-import-button"
+              type="button"
+              onClick={handleImportClick}
+              disabled={!selectedProjectId || selectedProjectId === "all"}
+              title={
+                !selectedProjectId || selectedProjectId === "all"
+                  ? "Selecione um projeto especifico para importar."
+                  : undefined
+              }
+            >
+              <Upload size={16} /> Importar
+            </button>
+          </div>
+        }
+        stats={[
+          {
+            label: "Arquivos totais",
+            value: rows.length,
+            helper: "Documentos disponiveis no escopo atual",
+            icon: <FileText size={18} />,
+            tone: "default"
+          },
+          {
+            label: "Pastas ativas",
+            value: folders.length,
+            helper: "Categorias prontas para organizar arquivos",
+            icon: <Folder size={18} />,
+            tone: "info"
+          },
+          {
+            label: "Resultado filtrado",
+            value: filteredRows.length,
+            helper: selectedFolder ? `Pasta ${selectedFolder.name}` : "Sem filtro de pasta",
+            icon: <Boxes size={18} />,
+            tone: "warning"
+          },
+          {
+            label: "Importacao",
+            value: selectedProjectId && selectedProjectId !== "all" ? "Liberada" : "Bloqueada",
+            helper:
+              selectedProjectId && selectedProjectId !== "all"
+                ? "Projeto especifico selecionado"
+                : 'Escolha um projeto para habilitar o envio',
+            icon: <ShieldCheck size={18} />,
+            tone: selectedProjectId && selectedProjectId !== "all" ? "success" : "danger"
+          }
+        ]}
+      />
 
       {showImport && (
         <div className="documents-import-panel">
@@ -399,8 +441,6 @@ export const DocumentsPage = () => {
       )}
 
       {attachmentsError && <p className="error-text">{attachmentsError}</p>}
-
-
 
       <div className="documents-section">
         <div className="documents-section-title">Acesso rapido</div>
@@ -464,6 +504,12 @@ export const DocumentsPage = () => {
 
         {attachmentsLoading ? (
           <div className="documents-table-skeleton">Carregando documentos...</div>
+        ) : !rows.length ? (
+          <AppStateCard
+            tone="default"
+            title="Nenhum documento disponivel"
+            description="Assim que anexos e arquivos forem enviados, eles aparecerao aqui com pasta, autor e data de atualizacao."
+          />
         ) : (
           <div className="documents-table">
             <div className="documents-table-row documents-table-row--header">
@@ -501,7 +547,11 @@ export const DocumentsPage = () => {
                 </div>
               ))
             ) : (
-              <div className="documents-table-skeleton">Nenhum arquivo encontrado.</div>
+              <AppStateCard
+                tone="warning"
+                title="Nenhum arquivo encontrado"
+                description="Os filtros atuais nao retornaram resultados. Ajuste a busca ou troque a pasta selecionada."
+              />
             )}
           </div>
         )}

@@ -1194,7 +1194,13 @@ body {
 
 /* ---------- CRONOGRAMA ---------- */
 .timeline-page {
+  display: grid;
+  gap: 18px;
   padding: 20px 24px;
+}
+
+.timelinePageHero {
+  margin-bottom: 2px;
 }
 
 .timeline-board {
@@ -1856,6 +1862,10 @@ body {
   gap: 22px;
 }
 
+.documentsPageHero {
+  margin-bottom: 2px;
+}
+
 .documents-header {
   display: flex;
   justify-content: space-between;
@@ -1867,8 +1877,6 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  margin-left: auto;
-  margin-right: 120px;
 }
 
 .documents-import-button {
@@ -2160,6 +2168,12 @@ body {
   border-radius: 18px;
   padding: 20px 22px;
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  display: grid;
+  gap: 14px;
+}
+
+.documents-table-card > .app-state-card {
+  margin-top: 4px;
 }
 
 .documents-import-panel {
@@ -14556,7 +14570,17 @@ button[type="submit"]:hover {
 
 /* ---------- DIAGRAMA ---------- */
 .diagram-page {
+  display: grid;
+  gap: 18px;
   padding: 20px 24px;
+}
+
+.diagramPageHero {
+  margin-bottom: 2px;
+}
+
+.diagramStateCard {
+  margin-top: -4px;
 }
 
 
@@ -14573,8 +14597,11 @@ button[type="submit"]:hover {
   gap: 6px;
 }
 .diagram-export-button {
-  height: 36px;
-  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 16px;
   align-self: flex-start;
   white-space: nowrap;
 }
