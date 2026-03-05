@@ -1,29 +1,129 @@
-# Integrações (Block 4)
+﻿# Integracoes (Fase 3)
 
-## Slack
+Este documento reflete o estado atual da central de Integracoes do sistema.
 
-1. Crie um **Incoming Webhook** (Slack → Apps → Incoming Webhooks → Add new).  
-2. Copie a URL e defina `SLACK_WEBHOOK_URL` no `.env`.  
-3. Teste com `POST /integrations/slack/test` (usa o webhook configurado).  
-   - `curl -X POST http://localhost:4000/integrations/slack/test`.
-4. Comentários e apontamentos de horas (rotas `/wbs/:id/comments` e `/wbs/:id/time-entries`) disparam mensagens automáticas se o webhook estiver configurado.
+## Permissoes e contexto
 
-## GitHub Webhooks
+- A central de Integracoes exige perfil com gestao da organizacao (`OWNER` ou `ADMIN`).
+- Sempre opere com organizacao selecionada no cabecalho.
+- Para importacoes operacionais, selecione tambem um projeto especifico (nao usar `Todos`).
 
-1. Defina `GITHUB_WEBHOOK_SECRET` (string aleatória) no `.env`.  
-2. Em um repositório GitHub → Settings → Webhooks → Add:
-   - Payload URL: `https://<sua-api>/integrations/github/webhook`
-   - Content-Type: `application/json`
-   - Secret: **mesmo valor** de `GITHUB_WEBHOOK_SECRET`
-3. O endpoint valida `x-hub-signature-256` usando o corpo bruto (`req.rawBody`) e registra o evento no log (`logger.info`).  
-   - Expanda o handler para acionar automações (ex.: criar tarefa quando receber `pull_request`).
+## Endpoints principais
 
-## Webhooks genéricos
+### Catalogo de eventos
 
-`POST /integrations/webhooks/:event` aceita qualquer payload e responde 202. Útil para integrar Zapier/Make com eventos simples (`curl -X POST .../webhooks/task.updated -d '{...}'`).  
+- `GET /integrations/catalog/events`
 
-## Próximos passos
+Retorna os eventos disponiveis para:
+- escopo de token
+- assinatura de Slack
+- assinatura de webhooks de saida
 
-- Implementar notificações direcionadas (filter por projectId ou canal Slack específico).  
-- Adicionar assinatura HMAC própria para `/integrations/webhooks/:event`.  
-- Automatizar criação de comentários/time entries com eventos GitHub (ex.: `smart commits`).  
+### Tokens de API
+
+- `GET /integrations/tokens`
+- `POST /integrations/tokens`
+- `DELETE /integrations/tokens/:tokenId`
+
+Uso:
+- emitir token por integracao externa (ERP, ETL, BI, parceiros)
+- definir expiracao opcional
+- definir escopos de eventos opcionais
+
+### Webhooks de saida
+
+- `GET /integrations/webhooks`
+- `POST /integrations/webhooks`
+- `PATCH /integrations/webhooks/:webhookId`
+- `DELETE /integrations/webhooks/:webhookId`
+- `POST /integrations/webhooks/:webhookId/test`
+- `GET /integrations/webhooks/:webhookId/deliveries?limit=10`
+
+Uso:
+- cadastrar URL destino para eventos da organizacao
+- ativar/pausar webhook
+- testar entrega
+- consultar trilha de entregas (status e HTTP code)
+
+### Inbound Kanban (upsert por referencia externa)
+
+- `POST /integrations/inbound/kanban/task-upsert`
+
+Requisitos:
+- enviar `Authorization: Bearer <token>`
+- token precisa pertencer a mesma organizacao
+- payload deve conter `projectId`, `externalKey`, `title`
+
+Exemplo:
+
+```json
+{
+  "projectId": "PROJECT_ID",
+  "externalKey": "EXT-123",
+  "source": "ERP",
+  "title": "Atualizar contrato",
+  "description": "Gerado por sistema externo",
+  "status": "Em andamento",
+  "priority": "Alta",
+  "startDate": "2026-03-04",
+  "dueDate": "2026-03-07",
+  "estimateHours": 8,
+  "externalUrl": "https://sistema.externo/item/EXT-123"
+}
+```
+
+Comportamento:
+- cria card/tarefa na primeira chamada
+- atualiza o mesmo registro quando `externalKey` + `source` ja existir
+
+### Slack nativo
+
+- `GET /integrations/slack`
+- `PUT /integrations/slack`
+- `POST /integrations/slack/test`
+
+Uso:
+- salvar webhook do Slack por organizacao
+- escolher eventos que devem ser enviados
+- disparar teste direto pela tela
+
+### Google Calendar nativo (feed ICS)
+
+- `GET /integrations/google-calendar`
+- `PUT /integrations/google-calendar`
+- `GET /integrations/google-calendar/feed/:accessToken`
+
+Uso:
+- vincular projeto
+- escolher publicacao de tarefas e/ou marcos
+- regenerar feed quando necessario
+
+## Central de importacoes
+
+Endpoints usados pela tela:
+- `POST /wbs/import?projectId=...`
+- `POST /service-catalog/import?projectId=...`
+- `POST /integrations/imports/trello?projectId=...`
+- `POST /integrations/imports/jira?projectId=...`
+- `GET /integrations/import-jobs?limit=12`
+
+Arquivos aceitos:
+- EAP: `.xlsx`, `.xls`
+- Catalogo de servicos: `.xlsx`, `.xls`
+- Trello: `.json`
+- Jira: `.csv`, `.xlsx`, `.xls`
+
+## Boas praticas operacionais
+
+- Use um token por sistema externo.
+- Restrinja escopos ao minimo necessario.
+- Teste webhook antes de ativar em producao.
+- Monitore entregas com erro e reprocesse no sistema de origem quando preciso.
+- Em importacoes, valide arquivo em ambiente de homologacao antes do uso produtivo.
+
+## Proximos incrementos sugeridos
+
+- Filtro de entregas por status/evento no historico de webhook.
+- Retry manual por entrega falha.
+- Assinatura HMAC padrao para webhooks custom.
+- Dashboard de saude de integracoes por organizacao.
