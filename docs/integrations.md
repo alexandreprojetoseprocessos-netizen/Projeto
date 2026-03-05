@@ -37,15 +37,18 @@ Uso:
 - `PATCH /integrations/webhooks/:webhookId`
 - `DELETE /integrations/webhooks/:webhookId`
 - `POST /integrations/webhooks/:webhookId/test`
-- `GET /integrations/webhooks/:webhookId/deliveries?limit=10`
+- `GET /integrations/webhooks/:webhookId/deliveries?limit=...`
 - `POST /integrations/webhooks/:webhookId/deliveries/:deliveryId/retry`
+- `POST /integrations/webhooks/:webhookId/deliveries/retry`
 
 Uso:
 - cadastrar URL destino para eventos da organizacao
 - ativar/pausar webhook
 - testar entrega
-- consultar trilha de entregas (status e HTTP code)
-- reenviar manualmente entregas com falha
+- consultar trilha de entregas (status, HTTP code, filtro por status/evento e ordenacao)
+- reenviar manualmente entregas com falha (individual ou em lote filtrado)
+- exportar trilha filtrada em CSV
+- retry em lote aceita ate 50 `deliveryIds` por requisicao
 
 ### Inbound Kanban (upsert por referencia externa)
 
@@ -125,7 +128,7 @@ Arquivos aceitos:
 
 ## Proximos incrementos sugeridos
 
-- Filtro de entregas por status/evento no historico de webhook.
-- Retry manual por entrega falha.
 - Assinatura HMAC padrao para webhooks custom.
+- Retry assíncrono em lote pelo backend (evitar fan-out no front).
 - Dashboard de saude de integracoes por organizacao.
+- Alertas proativos para aumento de falha por webhook.

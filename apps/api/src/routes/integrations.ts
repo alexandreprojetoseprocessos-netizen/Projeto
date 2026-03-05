@@ -26,6 +26,7 @@ import {
   dispatchIntegrationEvent,
   listWebhookDeliveries,
   listWebhookSubscriptions,
+  retryWebhookDeliveriesBatch,
   retryWebhookDelivery,
   sanitizeWebhookTargetUrl,
   summarizeWebhookSubscription,
@@ -1363,6 +1364,58 @@ integrationsRouter.post("/webhooks/:webhookId/deliveries/:deliveryId/retry", asy
   });
 
   return res.status(202).json({ queued: true });
+});
+
+integrationsRouter.post("/webhooks/:webhookId/deliveries/retry", async (req, res) => {
+  if (!ensureOrgAdmin(req, res)) return;
+
+  const rawDeliveryIds = Array.isArray((req.body as { deliveryIds?: unknown })?.deliveryIds)
+    ? ((req.body as { deliveryIds: unknown[] }).deliveryIds ?? [])
+    : [];
+  const deliveryIds = rawDeliveryIds
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (!deliveryIds.length) {
+    return res.status(400).json({ message: "Informe ao menos um deliveryId para reenfileirar." });
+  }
+
+  if (deliveryIds.length > 50) {
+    return res.status(400).json({ message: "Limite de 50 entregas por reenvio em lote." });
+  }
+
+  const result = await retryWebhookDeliveriesBatch({
+    organizationId: req.organizationId!,
+    subscriptionId: req.params.webhookId,
+    deliveryIds
+  });
+
+  if (!result.retried.length) {
+    return res.status(404).json({ message: "Nenhuma entrega válida encontrada para este webhook." });
+  }
+
+  await writeAuditLog({
+    organizationId: req.organizationId!,
+    actorId: req.user!.id,
+    action: "INTEGRATION_WEBHOOK_DELIVERIES_RETRIED_BATCH",
+    entity: "WEBHOOK_DELIVERY",
+    entityId: req.params.webhookId,
+    diff: {
+      patch: {
+        requested: deliveryIds.length,
+        retried: result.retried.length,
+        failed: result.failed.length,
+        eventNames: [...new Set(result.retried.map((item) => item.eventName))]
+      } as Prisma.InputJsonValue
+    }
+  });
+
+  return res.status(202).json({
+    queued: result.retried.length,
+    failed: result.failed.length,
+    failures: result.failed
+  });
 });
 
 integrationsRouter.post("/webhooks/:webhookId/test", async (req, res) => {

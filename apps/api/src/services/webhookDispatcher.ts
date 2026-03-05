@@ -109,6 +109,12 @@ export const listWebhookDeliveries = async (organizationId: string, subscription
     take: limit
   });
 
+export type RetriedWebhookDelivery = {
+  id: string;
+  subscriptionId: string;
+  eventName: string;
+};
+
 export const retryWebhookDelivery = async ({
   organizationId,
   subscriptionId,
@@ -160,6 +166,48 @@ export const retryWebhookDelivery = async ({
     id: delivery.id,
     subscriptionId: delivery.subscriptionId,
     eventName: delivery.eventName
+  } as RetriedWebhookDelivery;
+};
+
+export const retryWebhookDeliveriesBatch = async ({
+  organizationId,
+  subscriptionId,
+  deliveryIds
+}: {
+  organizationId: string;
+  subscriptionId: string;
+  deliveryIds: string[];
+}) => {
+  const uniqueIds = [...new Set(deliveryIds.filter((id) => typeof id === "string" && id.trim().length > 0))];
+  const results = await Promise.allSettled(
+    uniqueIds.map((deliveryId) =>
+      retryWebhookDelivery({
+        organizationId,
+        subscriptionId,
+        deliveryId
+      })
+    )
+  );
+
+  const retried: RetriedWebhookDelivery[] = [];
+  const failed: Array<{ deliveryId: string; reason: string }> = [];
+
+  results.forEach((result, index) => {
+    const deliveryId = uniqueIds[index]!;
+    if (result.status === "fulfilled" && result.value) {
+      retried.push(result.value);
+      return;
+    }
+    if (result.status === "fulfilled" && !result.value) {
+      failed.push({ deliveryId, reason: "NOT_FOUND" });
+      return;
+    }
+    failed.push({ deliveryId, reason: "RETRY_ERROR" });
+  });
+
+  return {
+    retried,
+    failed
   };
 };
 

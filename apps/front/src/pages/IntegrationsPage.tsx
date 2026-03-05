@@ -580,16 +580,18 @@ export const IntegrationsPage = () => {
     setRetryingBatch(true);
     setDeliveryError(null);
     try {
-      const results = await Promise.allSettled(
-        failures.map((delivery) =>
-          apiRequest(`/integrations/webhooks/${selectedWebhookId}/deliveries/${delivery.id}/retry`, {
-            method: "POST",
-            headers
-          })
-        )
-      );
-      const successCount = results.filter((result) => result.status === "fulfilled").length;
-      const failCount = results.length - successCount;
+      const body = await apiRequest<{
+        queued?: number;
+        failed?: number;
+      }>(`/integrations/webhooks/${selectedWebhookId}/deliveries/retry`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          deliveryIds: failures.map((delivery) => delivery.id)
+        })
+      });
+      const successCount = Number(body.queued ?? 0);
+      const failCount = Number(body.failed ?? 0);
       setWebhookFeedback(
         failCount
           ? `${successCount} entrega(s) reenfileiradas e ${failCount} com falha no reenvio.`
