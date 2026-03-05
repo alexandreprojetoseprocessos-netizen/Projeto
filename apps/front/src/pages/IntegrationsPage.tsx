@@ -197,6 +197,7 @@ export const IntegrationsPage = () => {
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<"all" | WebhookDelivery["status"]>("all");
   const [deliveryEventFilter, setDeliveryEventFilter] = useState("");
+  const [retryingDeliveryId, setRetryingDeliveryId] = useState<string | null>(null);
 
   const [tokenName, setTokenName] = useState("");
   const [tokenExpiresAt, setTokenExpiresAt] = useState("");
@@ -531,6 +532,26 @@ export const IntegrationsPage = () => {
       await loadDeliveries(webhookId);
     } catch (error) {
       setWebhookFeedback(getApiErrorMessage(error, "Falha ao testar webhook."));
+    }
+  };
+
+  const handleRetryDelivery = async (deliveryId: string) => {
+    if (!token || !selectedOrganizationId || !canManage || !selectedWebhookId) return;
+
+    setRetryingDeliveryId(deliveryId);
+    setDeliveryError(null);
+    try {
+      await apiRequest(`/integrations/webhooks/${selectedWebhookId}/deliveries/${deliveryId}/retry`, {
+        method: "POST",
+        headers
+      });
+      setWebhookFeedback("Entrega reenfileirada para novo envio.");
+      await loadDeliveries(selectedWebhookId);
+      await loadPage();
+    } catch (error) {
+      setDeliveryError(getApiErrorMessage(error, "Falha ao reenviar entrega."));
+    } finally {
+      setRetryingDeliveryId(null);
     }
   };
 
@@ -1610,6 +1631,17 @@ export const IntegrationsPage = () => {
                       {DELIVERY_STATUS_LABELS[delivery.status]}
                     </span>
                     <code>{delivery.responseStatus ? `HTTP ${delivery.responseStatus}` : "Sem resposta"}</code>
+                    {delivery.status === "FAILED" ? (
+                      <button
+                        type="button"
+                        className="btn-secondary integration-delivery-retry"
+                        onClick={() => void handleRetryDelivery(delivery.id)}
+                        disabled={retryingDeliveryId === delivery.id}
+                      >
+                        <RefreshCw size={14} />
+                        {retryingDeliveryId === delivery.id ? "Reenviando..." : "Reenviar"}
+                      </button>
+                    ) : null}
                   </div>
                 </article>
               ))}

@@ -26,6 +26,7 @@ import {
   dispatchIntegrationEvent,
   listWebhookDeliveries,
   listWebhookSubscriptions,
+  retryWebhookDelivery,
   sanitizeWebhookTargetUrl,
   summarizeWebhookSubscription,
   updateWebhookSubscription
@@ -1332,6 +1333,36 @@ integrationsRouter.get("/webhooks/:webhookId/deliveries", async (req, res) => {
   const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 20;
   const deliveries = await listWebhookDeliveries(req.organizationId!, req.params.webhookId, limit);
   return res.json({ deliveries });
+});
+
+integrationsRouter.post("/webhooks/:webhookId/deliveries/:deliveryId/retry", async (req, res) => {
+  if (!ensureOrgAdmin(req, res)) return;
+
+  const retried = await retryWebhookDelivery({
+    organizationId: req.organizationId!,
+    subscriptionId: req.params.webhookId,
+    deliveryId: req.params.deliveryId
+  });
+
+  if (!retried) {
+    return res.status(404).json({ message: "Entrega não encontrada para este webhook." });
+  }
+
+  await writeAuditLog({
+    organizationId: req.organizationId!,
+    actorId: req.user!.id,
+    action: "INTEGRATION_WEBHOOK_DELIVERY_RETRIED",
+    entity: "WEBHOOK_DELIVERY",
+    entityId: retried.id,
+    diff: {
+      patch: {
+        subscriptionId: retried.subscriptionId,
+        eventName: retried.eventName
+      } as Prisma.InputJsonValue
+    }
+  });
+
+  return res.status(202).json({ queued: true });
 });
 
 integrationsRouter.post("/webhooks/:webhookId/test", async (req, res) => {

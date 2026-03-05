@@ -38,12 +38,14 @@ Uso:
 - `DELETE /integrations/webhooks/:webhookId`
 - `POST /integrations/webhooks/:webhookId/test`
 - `GET /integrations/webhooks/:webhookId/deliveries?limit=10`
+- `POST /integrations/webhooks/:webhookId/deliveries/:deliveryId/retry`
 
 Uso:
 - cadastrar URL destino para eventos da organizacao
 - ativar/pausar webhook
 - testar entrega
 - consultar trilha de entregas (status e HTTP code)
+- reenviar manualmente entregas com falha
 
 ### Inbound Kanban (upsert por referencia externa)
 

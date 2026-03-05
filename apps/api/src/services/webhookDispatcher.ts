@@ -109,6 +109,60 @@ export const listWebhookDeliveries = async (organizationId: string, subscription
     take: limit
   });
 
+export const retryWebhookDelivery = async ({
+  organizationId,
+  subscriptionId,
+  deliveryId
+}: {
+  organizationId: string;
+  subscriptionId: string;
+  deliveryId: string;
+}) => {
+  const delivery = await prisma.webhookDelivery.findFirst({
+    where: {
+      id: deliveryId,
+      organizationId,
+      subscriptionId
+    },
+    include: {
+      subscription: true
+    }
+  });
+
+  if (!delivery) return null;
+
+  const rawEnvelope =
+    delivery.payload && typeof delivery.payload === "object" && !Array.isArray(delivery.payload)
+      ? (delivery.payload as Record<string, unknown>)
+      : null;
+  const rawPayload =
+    rawEnvelope?.payload && typeof rawEnvelope.payload === "object" && !Array.isArray(rawEnvelope.payload)
+      ? (rawEnvelope.payload as Record<string, unknown>)
+      : {};
+
+  const envelope: DeliveryEnvelope = {
+    id: crypto.randomUUID(),
+    event: typeof rawEnvelope?.event === "string" ? rawEnvelope.event : delivery.eventName,
+    occurredAt: new Date().toISOString(),
+    organizationId: delivery.organizationId,
+    actorId: typeof rawEnvelope?.actorId === "string" ? rawEnvelope.actorId : null,
+    entity: typeof rawEnvelope?.entity === "string" ? rawEnvelope.entity : null,
+    entityId: typeof rawEnvelope?.entityId === "string" ? rawEnvelope.entityId : null,
+    payload: rawPayload
+  };
+
+  await deliverToSubscription({
+    subscription: delivery.subscription,
+    envelope
+  });
+
+  return {
+    id: delivery.id,
+    subscriptionId: delivery.subscriptionId,
+    eventName: delivery.eventName
+  };
+};
+
 export const createWebhookSubscription = async ({
   client = prisma,
   organizationId,

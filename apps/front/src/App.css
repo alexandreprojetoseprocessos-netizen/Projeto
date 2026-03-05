@@ -15563,6 +15563,13 @@ button[type="submit"]:hover {
   color: #64748b;
 }
 
+.integration-delivery-retry {
+  min-height: 34px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
 .integration-status-badge {
   display: inline-flex;
   align-items: center;
