@@ -159,6 +159,15 @@ const asStringArray = (value: unknown) => {
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 };
 
+const feedbackClassName = (message: string | null) => {
+  if (!message) return "integration-feedback";
+  const normalized = message.toLocaleLowerCase("pt-BR");
+  if (normalized.includes("falha") || normalized.includes("erro")) {
+    return "integration-feedback integration-feedback--error";
+  }
+  return "integration-feedback integration-feedback--success";
+};
+
 export const IntegrationsPage = () => {
   const { token } = useAuth();
   const {
@@ -352,6 +361,7 @@ export const IntegrationsPage = () => {
     () => webhooks.find((item) => item.id === selectedWebhookId) ?? null,
     [selectedWebhookId, webhooks]
   );
+  const catalogEventNames = useMemo(() => catalogEvents.map((item) => item.eventName), [catalogEvents]);
   const hasProjectContext = Boolean(selectedProjectId && selectedProjectId !== "all");
   const calendarFeedUrl = calendarConnection?.feedPath ? apiUrl(calendarConnection.feedPath) : null;
   const inboundKanbanUrl = apiUrl("/integrations/inbound/kanban/task-upsert");
@@ -623,6 +633,7 @@ export const IntegrationsPage = () => {
           ? `Importação de ${kindLabel} concluída: ${imported} criados, ${updated} atualizados, ${warnings} avisos.`
           : `Importação de ${kindLabel} concluída com sucesso.`
       );
+      await loadPage();
     } catch (error) {
       setImportError(
         getApiErrorMessage(
@@ -818,18 +829,44 @@ export const IntegrationsPage = () => {
         </label>
 
         <div className="integration-field">
-          <span>Eventos enviados ao Slack</span>
+          <div className="integration-field__header">
+            <span>Eventos enviados ao Slack</span>
+            <div className="integration-field__tools">
+              <button
+                type="button"
+                className="integration-tool-button"
+                onClick={() => setSlackEvents([...catalogEventNames])}
+                disabled={!catalogEventNames.length || slackEvents.length >= catalogEventNames.length}
+              >
+                Selecionar todos
+              </button>
+              <button
+                type="button"
+                className="integration-tool-button"
+                onClick={() => setSlackEvents([])}
+                disabled={!slackEvents.length}
+              >
+                Limpar
+              </button>
+            </div>
+          </div>
           <div className="integration-checklist">
-            {catalogEvents.map((eventItem) => (
-              <label key={eventItem.eventName} className="integration-checklist__item">
-                <input
-                  type="checkbox"
-                  checked={slackEvents.includes(eventItem.eventName)}
-                  onChange={() => toggleEventSelection(eventItem.eventName, slackEvents, setSlackEvents)}
-                />
-                <span>{eventItem.eventName}</span>
-              </label>
-            ))}
+            {catalogEvents.map((eventItem) => {
+              const isSelected = slackEvents.includes(eventItem.eventName);
+              return (
+                <label key={eventItem.eventName} className={`integration-checklist__item ${isSelected ? "is-checked" : ""}`}>
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggleEventSelection(eventItem.eventName, slackEvents, setSlackEvents)}
+                  />
+                  <div className="integration-checklist__content">
+                    <span>{formatScopeLabel(eventItem.eventName)}</span>
+                    <small>{eventItem.description?.trim() || eventItem.eventName}</small>
+                  </div>
+                </label>
+              );
+            })}
           </div>
         </div>
 
@@ -851,7 +888,7 @@ export const IntegrationsPage = () => {
             <SendHorizontal size={16} />
             {slackTesting ? "Testando..." : "Testar"}
           </button>
-          {slackFeedback ? <p className="integration-feedback">{slackFeedback}</p> : null}
+          {slackFeedback ? <p className={feedbackClassName(slackFeedback)}>{slackFeedback}</p> : null}
         </div>
 
         {slackConnection ? (
@@ -932,7 +969,7 @@ export const IntegrationsPage = () => {
           <div className="integration-field">
             <span>Itens publicados</span>
             <div className="integration-checklist">
-              <label className="integration-checklist__item">
+              <label className={`integration-checklist__item ${calendarIncludeMilestones ? "is-checked" : ""}`}>
                 <input
                   type="checkbox"
                   checked={calendarIncludeMilestones}
@@ -940,7 +977,7 @@ export const IntegrationsPage = () => {
                 />
                 <span>Marcos</span>
               </label>
-              <label className="integration-checklist__item">
+              <label className={`integration-checklist__item ${calendarIncludeTasks ? "is-checked" : ""}`}>
                 <input
                   type="checkbox"
                   checked={calendarIncludeTasks}
@@ -970,7 +1007,7 @@ export const IntegrationsPage = () => {
             <RefreshCw size={16} />
             Regenerar feed
           </button>
-          {calendarFeedback ? <p className="integration-feedback">{calendarFeedback}</p> : null}
+          {calendarFeedback ? <p className={feedbackClassName(calendarFeedback)}>{calendarFeedback}</p> : null}
         </div>
 
         {calendarConnection ? (
@@ -1123,7 +1160,7 @@ export const IntegrationsPage = () => {
               </article>
             </div>
 
-            {importFeedback ? <p className="integration-feedback">{importFeedback}</p> : null}
+            {importFeedback ? <p className={feedbackClassName(importFeedback)}>{importFeedback}</p> : null}
             {importError ? <p className="integration-feedback integration-feedback--error">{importError}</p> : null}
           </>
         )}
@@ -1135,7 +1172,10 @@ export const IntegrationsPage = () => {
             <p className="integration-card__kicker">Histórico</p>
             <h2>Jobs de importação</h2>
           </div>
-          <RefreshCw size={18} />
+          <button type="button" className="btn-secondary" onClick={() => void loadPage()} disabled={pageLoading}>
+            <RefreshCw size={16} />
+            Atualizar
+          </button>
         </div>
 
         {!importJobs.length ? (
@@ -1214,18 +1254,44 @@ export const IntegrationsPage = () => {
           </div>
 
           <div className="integration-field">
-            <span>Escopo de eventos</span>
+            <div className="integration-field__header">
+              <span>Escopo de eventos</span>
+              <div className="integration-field__tools">
+                <button
+                  type="button"
+                  className="integration-tool-button"
+                  onClick={() => setTokenScopes([...catalogEventNames])}
+                  disabled={!catalogEventNames.length || tokenScopes.length >= catalogEventNames.length}
+                >
+                  Selecionar todos
+                </button>
+                <button
+                  type="button"
+                  className="integration-tool-button"
+                  onClick={() => setTokenScopes([])}
+                  disabled={!tokenScopes.length}
+                >
+                  Limpar
+                </button>
+              </div>
+            </div>
             <div className="integration-checklist">
-              {catalogEvents.map((eventItem) => (
-                <label key={eventItem.eventName} className="integration-checklist__item">
-                  <input
-                    type="checkbox"
-                    checked={tokenScopes.includes(eventItem.eventName)}
-                    onChange={() => toggleEventSelection(eventItem.eventName, tokenScopes, setTokenScopes)}
-                  />
-                  <span>{formatScopeLabel(eventItem.eventName)}</span>
-                </label>
-              ))}
+              {catalogEvents.map((eventItem) => {
+                const isSelected = tokenScopes.includes(eventItem.eventName);
+                return (
+                  <label key={eventItem.eventName} className={`integration-checklist__item ${isSelected ? "is-checked" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleEventSelection(eventItem.eventName, tokenScopes, setTokenScopes)}
+                    />
+                    <div className="integration-checklist__content">
+                      <span>{formatScopeLabel(eventItem.eventName)}</span>
+                      <small>{eventItem.description?.trim() || eventItem.eventName}</small>
+                    </div>
+                  </label>
+                );
+              })}
             </div>
             <small>Se nada for marcado, o token nasce sem filtro explícito de escopo.</small>
           </div>
@@ -1235,7 +1301,7 @@ export const IntegrationsPage = () => {
               <KeyRound size={16} />
               {creatingToken ? "Emitindo..." : "Emitir token"}
             </button>
-            {tokenFeedback ? <p className="integration-feedback">{tokenFeedback}</p> : null}
+            {tokenFeedback ? <p className={feedbackClassName(tokenFeedback)}>{tokenFeedback}</p> : null}
           </div>
 
           {latestPlainToken ? (
@@ -1267,8 +1333,8 @@ export const IntegrationsPage = () => {
                   {asStringArray(tokenItem.scopes).length ? (
                     <div className="integration-chip-list">
                       {asStringArray(tokenItem.scopes).map((scope) => (
-                        <span key={scope} className="integration-chip">
-                          {scope}
+                        <span key={scope} className="integration-chip" title={scope}>
+                          {formatScopeLabel(scope)}
                         </span>
                       ))}
                     </div>
@@ -1324,18 +1390,44 @@ export const IntegrationsPage = () => {
           </div>
 
           <div className="integration-field">
-            <span>Eventos emitidos</span>
+            <div className="integration-field__header">
+              <span>Eventos emitidos</span>
+              <div className="integration-field__tools">
+                <button
+                  type="button"
+                  className="integration-tool-button"
+                  onClick={() => setWebhookEvents([...catalogEventNames])}
+                  disabled={!catalogEventNames.length || webhookEvents.length >= catalogEventNames.length}
+                >
+                  Selecionar todos
+                </button>
+                <button
+                  type="button"
+                  className="integration-tool-button"
+                  onClick={() => setWebhookEvents([])}
+                  disabled={!webhookEvents.length}
+                >
+                  Limpar
+                </button>
+              </div>
+            </div>
             <div className="integration-checklist">
-              {catalogEvents.map((eventItem) => (
-                <label key={eventItem.eventName} className="integration-checklist__item">
-                  <input
-                    type="checkbox"
-                    checked={webhookEvents.includes(eventItem.eventName)}
-                    onChange={() => toggleEventSelection(eventItem.eventName, webhookEvents, setWebhookEvents)}
-                  />
-                  <span>{eventItem.eventName}</span>
-                </label>
-              ))}
+              {catalogEvents.map((eventItem) => {
+                const isSelected = webhookEvents.includes(eventItem.eventName);
+                return (
+                  <label key={eventItem.eventName} className={`integration-checklist__item ${isSelected ? "is-checked" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleEventSelection(eventItem.eventName, webhookEvents, setWebhookEvents)}
+                    />
+                    <div className="integration-checklist__content">
+                      <span>{formatScopeLabel(eventItem.eventName)}</span>
+                      <small>{eventItem.description?.trim() || eventItem.eventName}</small>
+                    </div>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
@@ -1349,7 +1441,7 @@ export const IntegrationsPage = () => {
               <Webhook size={16} />
               {creatingWebhook ? "Salvando..." : "Cadastrar webhook"}
             </button>
-            {webhookFeedback ? <p className="integration-feedback">{webhookFeedback}</p> : null}
+            {webhookFeedback ? <p className={feedbackClassName(webhookFeedback)}>{webhookFeedback}</p> : null}
           </div>
 
           <div className="integration-list">
@@ -1368,8 +1460,8 @@ export const IntegrationsPage = () => {
                   </small>
                   <div className="integration-chip-list">
                     {webhookItem.eventNames.map((eventName) => (
-                      <span key={eventName} className="integration-chip">
-                        {eventName}
+                      <span key={eventName} className="integration-chip" title={eventName}>
+                        {formatScopeLabel(eventName)}
                       </span>
                     ))}
                   </div>
