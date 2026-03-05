@@ -233,6 +233,8 @@ export const IntegrationsPage = () => {
   const [catalogImporting, setCatalogImporting] = useState(false);
   const [trelloImporting, setTrelloImporting] = useState(false);
   const [jiraImporting, setJiraImporting] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
 
   const wbsInputRef = useRef<HTMLInputElement | null>(null);
   const catalogInputRef = useRef<HTMLInputElement | null>(null);
@@ -365,6 +367,22 @@ export const IntegrationsPage = () => {
   const hasProjectContext = Boolean(selectedProjectId && selectedProjectId !== "all");
   const calendarFeedUrl = calendarConnection?.feedPath ? apiUrl(calendarConnection.feedPath) : null;
   const inboundKanbanUrl = apiUrl("/integrations/inbound/kanban/task-upsert");
+  const inboundSamplePayload = useMemo(
+    () => `{
+  "projectId": "${selectedProjectId && selectedProjectId !== "all" ? selectedProjectId : "PROJECT_ID"}",
+  "externalKey": "EXT-123",
+  "source": "ERP",
+  "title": "Atualizar contrato",
+  "description": "Gerado por sistema externo",
+  "status": "Em andamento",
+  "priority": "Alta",
+  "startDate": "2026-03-04",
+  "dueDate": "2026-03-07",
+  "estimateHours": 8,
+  "externalUrl": "https://sistema.externo/item/EXT-123"
+}`,
+    [selectedProjectId]
+  );
 
   const tokenStats = useMemo(
     () => ({
@@ -506,9 +524,30 @@ export const IntegrationsPage = () => {
     }
   };
 
-  const handleCopy = async (value: string | null) => {
-    if (!value || typeof navigator === "undefined" || !navigator.clipboard?.writeText) return;
-    await navigator.clipboard.writeText(value);
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = async (value: string | null, label = "Conteúdo") => {
+    if (!value) return;
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+      setCopyFeedback(`Não foi possível copiar ${label.toLocaleLowerCase("pt-BR")} automaticamente.`);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyFeedback(`${label} copiado com sucesso.`);
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = window.setTimeout(() => setCopyFeedback(null), 2800);
+    } catch {
+      setCopyFeedback(`Falha ao copiar ${label.toLocaleLowerCase("pt-BR")}.`);
+    }
   };
 
   const handleSaveSlack = async () => {
@@ -725,6 +764,7 @@ export const IntegrationsPage = () => {
           }
         ]}
       />
+      {copyFeedback ? <p className={feedbackClassName(copyFeedback)}>{copyFeedback}</p> : null}
 
       <AppStepGuide
         title="Base técnica da Fase 1"
@@ -769,7 +809,7 @@ export const IntegrationsPage = () => {
             <small>Use um token de API em `Authorization: Bearer ...` para criar ou atualizar cards externos por `externalKey`.</small>
             <code>{inboundKanbanUrl}</code>
           </div>
-          <button type="button" className="btn-secondary" onClick={() => void handleCopy(inboundKanbanUrl)}>
+          <button type="button" className="btn-secondary" onClick={() => void handleCopy(inboundKanbanUrl, "URL do endpoint")}>
             <Copy size={16} />
             Copiar URL
           </button>
@@ -777,19 +817,13 @@ export const IntegrationsPage = () => {
 
         <div className="integration-field">
           <span>Payload base</span>
-          <code className="integration-code-block">{`{
-  "projectId": "${selectedProjectId && selectedProjectId !== "all" ? selectedProjectId : "PROJECT_ID"}",
-  "externalKey": "EXT-123",
-  "source": "ERP",
-  "title": "Atualizar contrato",
-  "description": "Gerado por sistema externo",
-  "status": "Em andamento",
-  "priority": "Alta",
-  "startDate": "2026-03-04",
-  "dueDate": "2026-03-07",
-  "estimateHours": 8,
-  "externalUrl": "https://sistema.externo/item/EXT-123"
-}`}</code>
+          <code className="integration-code-block">{inboundSamplePayload}</code>
+        </div>
+        <div className="integration-card__actions">
+          <button type="button" className="btn-secondary" onClick={() => void handleCopy(inboundSamplePayload, "Payload base")}>
+            <Copy size={16} />
+            Copiar payload
+          </button>
         </div>
       </article>
 
@@ -1021,7 +1055,7 @@ export const IntegrationsPage = () => {
               </small>
               <code>{calendarFeedUrl ?? "Feed indisponível"}</code>
             </div>
-            <button type="button" className="btn-secondary" onClick={() => void handleCopy(calendarFeedUrl)}>
+            <button type="button" className="btn-secondary" onClick={() => void handleCopy(calendarFeedUrl, "URL do feed")}>
               <Copy size={16} />
               Copiar URL
             </button>
@@ -1310,7 +1344,7 @@ export const IntegrationsPage = () => {
                 <strong>Token emitido</strong>
                 <code>{latestPlainToken}</code>
               </div>
-              <button type="button" className="btn-secondary" onClick={() => void handleCopy(latestPlainToken)}>
+              <button type="button" className="btn-secondary" onClick={() => void handleCopy(latestPlainToken, "Token")}>
                 <Copy size={16} />
                 Copiar
               </button>
