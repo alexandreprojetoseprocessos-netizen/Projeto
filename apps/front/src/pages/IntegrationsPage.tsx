@@ -197,6 +197,8 @@ export const IntegrationsPage = () => {
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<"all" | WebhookDelivery["status"]>("all");
   const [deliveryEventFilter, setDeliveryEventFilter] = useState("");
+  const [deliverySort, setDeliverySort] = useState<"newest" | "oldest">("newest");
+  const [deliveryLimit, setDeliveryLimit] = useState(10);
   const [retryingDeliveryId, setRetryingDeliveryId] = useState<string | null>(null);
 
   const [tokenName, setTokenName] = useState("");
@@ -326,7 +328,7 @@ export const IntegrationsPage = () => {
   }, [canManage, headers, selectedOrganizationId, selectedProjectId, token]);
 
   const loadDeliveries = useCallback(
-    async (webhookId: string | null) => {
+    async (webhookId: string | null, limit = deliveryLimit) => {
       if (!token || !selectedOrganizationId || !canManage || !webhookId) {
         setDeliveries([]);
         setDeliveryError(null);
@@ -335,14 +337,14 @@ export const IntegrationsPage = () => {
       }
 
       setDeliveryLoading(true);
-      setDeliveryError(null);
-      try {
-        const body = await apiRequest<{ deliveries?: WebhookDelivery[] }>(
-          `/integrations/webhooks/${webhookId}/deliveries?limit=10`,
-          {
-            headers
-          }
-        );
+        setDeliveryError(null);
+        try {
+          const body = await apiRequest<{ deliveries?: WebhookDelivery[] }>(
+          `/integrations/webhooks/${webhookId}/deliveries?limit=${limit}`,
+            {
+              headers
+            }
+          );
         setDeliveries(Array.isArray(body.deliveries) ? body.deliveries : []);
       } catch (error) {
         setDeliveries([]);
@@ -351,7 +353,7 @@ export const IntegrationsPage = () => {
         setDeliveryLoading(false);
       }
     },
-    [canManage, headers, selectedOrganizationId, token]
+    [canManage, deliveryLimit, headers, selectedOrganizationId, token]
   );
 
   useEffect(() => {
@@ -361,6 +363,10 @@ export const IntegrationsPage = () => {
   useEffect(() => {
     void loadDeliveries(selectedWebhookId);
   }, [loadDeliveries, selectedWebhookId]);
+
+  useEffect(() => {
+    setDeliveryLimit(10);
+  }, [selectedWebhookId]);
 
   const selectedWebhook = useMemo(
     () => webhooks.find((item) => item.id === selectedWebhookId) ?? null,
@@ -398,12 +404,18 @@ export const IntegrationsPage = () => {
   );
   const filteredDeliveries = useMemo(() => {
     const eventTerm = deliveryEventFilter.trim().toLocaleLowerCase("pt-BR");
-    return deliveries.filter((delivery) => {
+    const filtered = deliveries.filter((delivery) => {
       const matchesStatus = deliveryStatusFilter === "all" ? true : delivery.status === deliveryStatusFilter;
       const matchesEvent = !eventTerm ? true : delivery.eventName.toLocaleLowerCase("pt-BR").includes(eventTerm);
       return matchesStatus && matchesEvent;
     });
-  }, [deliveries, deliveryEventFilter, deliveryStatusFilter]);
+    return [...filtered].sort((a, b) => {
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      if (deliverySort === "oldest") return aTime - bTime;
+      return bTime - aTime;
+    });
+  }, [deliveries, deliveryEventFilter, deliverySort, deliveryStatusFilter]);
 
   const toggleEventSelection = (value: string, current: string[], setter: (items: string[]) => void) => {
     setter(current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
@@ -546,7 +558,7 @@ export const IntegrationsPage = () => {
         headers
       });
       setWebhookFeedback("Entrega reenfileirada para novo envio.");
-      await loadDeliveries(selectedWebhookId);
+      await loadDeliveries(selectedWebhookId, deliveryLimit);
       await loadPage();
     } catch (error) {
       setDeliveryError(getApiErrorMessage(error, "Falha ao reenviar entrega."));
@@ -1557,7 +1569,7 @@ export const IntegrationsPage = () => {
           <button
             type="button"
             className="btn-secondary"
-            onClick={() => void loadDeliveries(selectedWebhookId)}
+            onClick={() => void loadDeliveries(selectedWebhookId, deliveryLimit)}
             disabled={!selectedWebhookId || deliveryLoading}
           >
             <RefreshCw size={16} />
@@ -1584,6 +1596,13 @@ export const IntegrationsPage = () => {
               </a>
             </div>
             <div className="integration-delivery-filters">
+              <label className="integration-field">
+                <span>Ordem</span>
+                <select value={deliverySort} onChange={(event) => setDeliverySort(event.target.value as "newest" | "oldest")}>
+                  <option value="newest">Mais recentes primeiro</option>
+                  <option value="oldest">Mais antigas primeiro</option>
+                </select>
+              </label>
               <label className="integration-field">
                 <span>Status</span>
                 <select
@@ -1646,6 +1665,22 @@ export const IntegrationsPage = () => {
                 </article>
               ))}
             </div>
+            {selectedWebhook && deliveries.length >= deliveryLimit && deliveryLimit < 100 ? (
+              <div className="integration-card__actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    const nextLimit = Math.min(deliveryLimit + 10, 100);
+                    setDeliveryLimit(nextLimit);
+                    void loadDeliveries(selectedWebhook.id, nextLimit);
+                  }}
+                  disabled={deliveryLoading}
+                >
+                  {deliveryLoading ? "Carregando..." : "Carregar mais entregas"}
+                </button>
+              </div>
+            ) : null}
           </>
         )}
       </article>
