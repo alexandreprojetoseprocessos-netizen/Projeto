@@ -195,6 +195,8 @@ export const IntegrationsPage = () => {
   const [pageError, setPageError] = useState<string | null>(null);
   const [deliveryLoading, setDeliveryLoading] = useState(false);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<"all" | WebhookDelivery["status"]>("all");
+  const [deliveryEventFilter, setDeliveryEventFilter] = useState("");
 
   const [tokenName, setTokenName] = useState("");
   const [tokenExpiresAt, setTokenExpiresAt] = useState("");
@@ -393,6 +395,14 @@ export const IntegrationsPage = () => {
     }),
     [deliveries, tokens.length, webhooks]
   );
+  const filteredDeliveries = useMemo(() => {
+    const eventTerm = deliveryEventFilter.trim().toLocaleLowerCase("pt-BR");
+    return deliveries.filter((delivery) => {
+      const matchesStatus = deliveryStatusFilter === "all" ? true : delivery.status === deliveryStatusFilter;
+      const matchesEvent = !eventTerm ? true : delivery.eventName.toLocaleLowerCase("pt-BR").includes(eventTerm);
+      return matchesStatus && matchesEvent;
+    });
+  }, [deliveries, deliveryEventFilter, deliveryStatusFilter]);
 
   const toggleEventSelection = (value: string, current: string[], setter: (items: string[]) => void) => {
     setter(current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
@@ -1552,14 +1562,40 @@ export const IntegrationsPage = () => {
                 Abrir URL
               </a>
             </div>
+            <div className="integration-delivery-filters">
+              <label className="integration-field">
+                <span>Status</span>
+                <select
+                  value={deliveryStatusFilter}
+                  onChange={(event) => setDeliveryStatusFilter(event.target.value as "all" | WebhookDelivery["status"])}
+                >
+                  <option value="all">Todos</option>
+                  <option value="SUCCESS">Sucesso</option>
+                  <option value="FAILED">Falha</option>
+                  <option value="PENDING">Pendente</option>
+                </select>
+              </label>
+              <label className="integration-field">
+                <span>Evento</span>
+                <input
+                  value={deliveryEventFilter}
+                  onChange={(event) => setDeliveryEventFilter(event.target.value)}
+                  placeholder="Filtrar por nome do evento"
+                />
+              </label>
+            </div>
 
             {deliveryError ? <AppStateCard title="Falha ao carregar entregas" description={deliveryError} tone="danger" /> : null}
             {deliveryLoading ? <p className="integration-muted">Carregando entregas...</p> : null}
-            {!deliveryLoading && !deliveries.length ? (
-              <p className="integration-muted">Ainda não há entregas registradas para esse webhook.</p>
+            {!deliveryLoading && !filteredDeliveries.length ? (
+              <p className="integration-muted">
+                {deliveries.length
+                  ? "Nenhuma entrega corresponde aos filtros atuais."
+                  : "Ainda não há entregas registradas para esse webhook."}
+              </p>
             ) : null}
             <div className="integration-delivery-list">
-              {deliveries.map((delivery) => (
+              {filteredDeliveries.map((delivery) => (
                 <article key={delivery.id} className="integration-delivery-item">
                   <div className="integration-delivery-item__main">
                     <strong>{delivery.eventName}</strong>

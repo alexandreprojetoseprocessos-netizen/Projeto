@@ -15514,6 +15514,12 @@ button[type="submit"]:hover {
   word-break: break-all;
 }
 
+.integration-delivery-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
 .integration-delivery-list {
   display: flex;
   flex-direction: column;
@@ -15594,7 +15600,8 @@ button[type="submit"]:hover {
   }
 
   .integration-form-grid,
-  .integration-checklist {
+  .integration-checklist,
+  .integration-delivery-filters {
     grid-template-columns: 1fr;
   }
 }
