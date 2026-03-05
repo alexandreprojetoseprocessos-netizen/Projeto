@@ -15342,7 +15342,42 @@ button[type="submit"]:hover {
   min-height: 18px;
   margin: 0;
   flex: 0 0 18px;
-  accent-color: #2563eb;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1.5px solid rgba(148, 163, 184, 0.9);
+  border-radius: 6px;
+  background: #ffffff;
+  display: grid;
+  place-content: center;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.integration-checklist__item input[type="checkbox"]::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  transform: scale(0);
+  transform-origin: center;
+  transition: transform 0.14s ease-in-out;
+  clip-path: polygon(14% 52%, 0 66%, 42% 100%, 100% 20%, 85% 6%, 41% 70%);
+  background: #ffffff;
+}
+
+.integration-checklist__item input[type="checkbox"]:checked {
+  border-color: #2563eb;
+  background: #2563eb;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
+}
+
+.integration-checklist__item input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+
+.integration-checklist__item input[type="checkbox"]:focus-visible {
+  outline: none;
+  border-color: #1d4ed8;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
 }
 
 .integration-checklist__content {

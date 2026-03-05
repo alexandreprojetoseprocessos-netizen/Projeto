@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock3,
   Copy,
+  Download,
   ExternalLink,
   KeyRound,
   Link2,
@@ -200,6 +201,7 @@ export const IntegrationsPage = () => {
   const [deliverySort, setDeliverySort] = useState<"newest" | "oldest">("newest");
   const [deliveryLimit, setDeliveryLimit] = useState(10);
   const [retryingDeliveryId, setRetryingDeliveryId] = useState<string | null>(null);
+  const [retryingBatch, setRetryingBatch] = useState(false);
 
   const [tokenName, setTokenName] = useState("");
   const [tokenExpiresAt, setTokenExpiresAt] = useState("");
@@ -565,6 +567,86 @@ export const IntegrationsPage = () => {
     } finally {
       setRetryingDeliveryId(null);
     }
+  };
+
+  const handleRetryFilteredFailures = async () => {
+    if (!token || !selectedOrganizationId || !canManage || !selectedWebhookId) return;
+    const failures = filteredDeliveries.filter((delivery) => delivery.status === "FAILED");
+    if (!failures.length) {
+      setWebhookFeedback("Nenhuma entrega com falha nos filtros atuais.");
+      return;
+    }
+
+    setRetryingBatch(true);
+    setDeliveryError(null);
+    try {
+      const results = await Promise.allSettled(
+        failures.map((delivery) =>
+          apiRequest(`/integrations/webhooks/${selectedWebhookId}/deliveries/${delivery.id}/retry`, {
+            method: "POST",
+            headers
+          })
+        )
+      );
+      const successCount = results.filter((result) => result.status === "fulfilled").length;
+      const failCount = results.length - successCount;
+      setWebhookFeedback(
+        failCount
+          ? `${successCount} entrega(s) reenfileiradas e ${failCount} com falha no reenvio.`
+          : `${successCount} entrega(s) reenfileiradas com sucesso.`
+      );
+      await loadDeliveries(selectedWebhookId, deliveryLimit);
+      await loadPage();
+    } catch (error) {
+      setDeliveryError(getApiErrorMessage(error, "Falha ao reenviar lote de entregas."));
+    } finally {
+      setRetryingBatch(false);
+    }
+  };
+
+  const handleExportDeliveriesCsv = () => {
+    if (!filteredDeliveries.length) {
+      setWebhookFeedback("Nenhuma entrega para exportar com os filtros atuais.");
+      return;
+    }
+    const escapeCsv = (value: unknown) => {
+      const text = String(value ?? "");
+      const normalized = text.replace(/"/g, "\"\"");
+      return /[;"\n\r]/.test(normalized) ? `"${normalized}"` : normalized;
+    };
+    const header = [
+      "evento",
+      "status",
+      "criado_em_iso",
+      "entregue_em_iso",
+      "response_status",
+      "response_body"
+    ];
+    const lines = filteredDeliveries.map((delivery) =>
+      [
+        delivery.eventName,
+        delivery.status,
+        delivery.createdAt ?? "",
+        delivery.deliveredAt ?? "",
+        delivery.responseStatus ?? "",
+        delivery.responseBody ?? ""
+      ]
+        .map(escapeCsv)
+        .join(";")
+    );
+    const csv = [header.join(";"), ...lines].join("\n");
+    const fileSafeWebhook = (selectedWebhook?.name ?? "webhook").replace(/[^a-zA-Z0-9-_]+/g, "_");
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `entregas_${fileSafeWebhook}_${timestamp}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+    setWebhookFeedback(`${filteredDeliveries.length} entrega(s) exportadas em CSV.`);
   };
 
   useEffect(() => {
@@ -1623,6 +1705,26 @@ export const IntegrationsPage = () => {
                   placeholder="Filtrar por nome do evento"
                 />
               </label>
+            </div>
+            <div className="integration-card__actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleExportDeliveriesCsv}
+                disabled={!filteredDeliveries.length}
+              >
+                <Download size={16} />
+                Exportar CSV
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => void handleRetryFilteredFailures()}
+                disabled={retryingBatch || !filteredDeliveries.some((delivery) => delivery.status === "FAILED")}
+              >
+                <RefreshCw size={16} />
+                {retryingBatch ? "Reenviando falhas..." : "Reenviar falhas filtradas"}
+              </button>
             </div>
 
             {deliveryError ? <AppStateCard title="Falha ao carregar entregas" description={deliveryError} tone="danger" /> : null}
