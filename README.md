@@ -77,3 +77,8 @@ https://<seu-subdominio>.ngrok-free.app/billing/webhook
 ```
 npm run lint
 ```
+
+## Manual do usuario
+
+- Guia completo para usuarios finais: `docs/manual-usuario.md`
+- Guia tecnico de integracoes: `docs/integrations.md`
