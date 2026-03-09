@@ -1884,7 +1884,7 @@ export const IntegrationsPage = () => {
             {pageLoading ? <p className="integration-muted">Carregando tokens...</p> : null}
             {!pageLoading && !tokens.length ? <p className="integration-muted">Nenhum token ativo nesta organização.</p> : null}
             {tokens.map((tokenItem) => (
-              <article key={tokenItem.id} className="integration-row-card">
+              <article key={tokenItem.id} className="integration-row-card integration-row-card--token">
                 <div className="integration-row-card__main">
                   <strong>{tokenItem.name}</strong>
                   <p>
@@ -1903,7 +1903,12 @@ export const IntegrationsPage = () => {
                     </div>
                   ) : null}
                 </div>
-                <button type="button" className="icon-button danger" onClick={() => void handleRevokeToken(tokenItem.id)}>
+                <button
+                  type="button"
+                  className="icon-button danger"
+                  onClick={() => void handleRevokeToken(tokenItem.id)}
+                  title="Revogar token"
+                >
                   <Trash2 size={16} />
                 </button>
               </article>
@@ -2016,7 +2021,9 @@ export const IntegrationsPage = () => {
             {webhooks.map((webhookItem) => (
               <article
                 key={webhookItem.id}
-                className={`integration-row-card ${selectedWebhookId === webhookItem.id ? "is-selected" : ""}`}
+                className={`integration-row-card ${selectedWebhookId === webhookItem.id ? "is-selected" : ""} ${
+                  webhookItem.isActive ? "" : "is-inactive"
+                }`}
               >
                 <button type="button" className="integration-row-card__body" onClick={() => setSelectedWebhookId(webhookItem.id)}>
                   <strong>{webhookItem.name}</strong>
@@ -2033,13 +2040,28 @@ export const IntegrationsPage = () => {
                   </div>
                 </button>
                 <div className="integration-row-card__side">
-                  <button type="button" className="icon-button" onClick={() => void handleToggleWebhook(webhookItem)}>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    onClick={() => void handleToggleWebhook(webhookItem)}
+                    title={webhookItem.isActive ? "Pausar webhook" : "Ativar webhook"}
+                  >
                     {webhookItem.isActive ? <Clock3 size={16} /> : <CheckCircle2 size={16} />}
                   </button>
-                  <button type="button" className="icon-button" onClick={() => void handleTestWebhook(webhookItem.id)}>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    onClick={() => void handleTestWebhook(webhookItem.id)}
+                    title="Disparar teste"
+                  >
                     <SendHorizontal size={16} />
                   </button>
-                  <button type="button" className="icon-button danger" onClick={() => void handleDeleteWebhook(webhookItem.id)}>
+                  <button
+                    type="button"
+                    className="icon-button danger"
+                    onClick={() => void handleDeleteWebhook(webhookItem.id)}
+                    title="Excluir webhook"
+                  >
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -2145,7 +2167,7 @@ export const IntegrationsPage = () => {
             ) : null}
             <div className="integration-delivery-list">
               {filteredDeliveries.map((delivery) => (
-                <article key={delivery.id} className="integration-delivery-item">
+                <article key={delivery.id} className={`integration-delivery-item is-${delivery.status.toLowerCase()}`}>
                   <div className="integration-delivery-item__main">
                     <strong>{delivery.eventName}</strong>
                     <small>Criado em {formatDateTime(delivery.createdAt)}</small>
