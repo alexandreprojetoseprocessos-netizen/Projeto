@@ -68,6 +68,43 @@ type WebhookDelivery = {
   createdAt: string;
 };
 
+type WebhookHealthLevel = "HEALTHY" | "WARNING" | "CRITICAL" | "IDLE" | "INACTIVE";
+
+type WebhookHealthItem = {
+  id: string;
+  name: string;
+  provider: string;
+  isActive: boolean;
+  attempts: number;
+  successCount: number;
+  failedCount: number;
+  pendingCount: number;
+  successRate: number;
+  failedRate: number;
+  lastTriggeredAt?: string | null;
+  lastFailureAt?: string | null;
+  level: WebhookHealthLevel;
+};
+
+type WebhookHealthSummary = {
+  windowHours: number;
+  generatedAt: string;
+  totalWebhooks: number;
+  activeWebhooks: number;
+  totalAttempts: number;
+  successCount: number;
+  failedCount: number;
+  pendingCount: number;
+  successRate: number;
+  warningCount: number;
+  criticalCount: number;
+};
+
+type WebhookHealthResponse = {
+  summary: WebhookHealthSummary;
+  webhooks: WebhookHealthItem[];
+};
+
 type TokenCreateResponse = {
   token?: ApiTokenSummary | null;
 };
@@ -142,6 +179,14 @@ const DELIVERY_STATUS_LABELS: Record<WebhookDelivery["status"], string> = {
   FAILED: "Falha"
 };
 
+const WEBHOOK_HEALTH_LABELS: Record<WebhookHealthLevel, string> = {
+  HEALTHY: "Saudável",
+  WARNING: "Atenção",
+  CRITICAL: "Crítico",
+  IDLE: "Sem tráfego",
+  INACTIVE: "Inativo"
+};
+
 const formatDateTime = (value?: string | null) => {
   if (!value) return "-";
   const date = new Date(value);
@@ -202,6 +247,10 @@ export const IntegrationsPage = () => {
   const [deliveryLimit, setDeliveryLimit] = useState(10);
   const [retryingDeliveryId, setRetryingDeliveryId] = useState<string | null>(null);
   const [retryingBatch, setRetryingBatch] = useState(false);
+  const [healthWindowHours, setHealthWindowHours] = useState(24);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState<string | null>(null);
+  const [webhookHealth, setWebhookHealth] = useState<WebhookHealthResponse | null>(null);
 
   const [tokenName, setTokenName] = useState("");
   const [tokenExpiresAt, setTokenExpiresAt] = useState("");
@@ -256,11 +305,42 @@ export const IntegrationsPage = () => {
     [selectedOrganizationId, token]
   );
 
+  const loadWebhookHealth = useCallback(
+    async (windowHours = healthWindowHours) => {
+      if (!token || !selectedOrganizationId || !canManage) {
+        setWebhookHealth(null);
+        setHealthError(null);
+        setHealthLoading(false);
+        return;
+      }
+
+      setHealthLoading(true);
+      setHealthError(null);
+      try {
+        const body = await apiRequest<WebhookHealthResponse>(`/integrations/webhooks/health?windowHours=${windowHours}`, {
+          headers
+        });
+        setWebhookHealth({
+          summary: body.summary,
+          webhooks: Array.isArray(body.webhooks) ? body.webhooks : []
+        });
+      } catch (error) {
+        setWebhookHealth(null);
+        setHealthError(getApiErrorMessage(error, "Falha ao carregar a saúde dos webhooks."));
+      } finally {
+        setHealthLoading(false);
+      }
+    },
+    [canManage, headers, healthWindowHours, selectedOrganizationId, token]
+  );
+
   const loadPage = useCallback(async () => {
     if (!token || !selectedOrganizationId || !canManage) {
       setCatalogEvents([]);
       setTokens([]);
       setWebhooks([]);
+      setWebhookHealth(null);
+      setHealthError(null);
       setSlackConnection(null);
       setCalendarConnection(null);
       setImportJobs([]);
@@ -316,18 +396,20 @@ export const IntegrationsPage = () => {
         if (current && nextWebhooks.some((item) => item.id === current)) return current;
         return nextWebhooks[0]?.id ?? null;
       });
+      void loadWebhookHealth();
     } catch (error) {
       setPageError(getApiErrorMessage(error, "Falha ao carregar a central de integrações."));
       setCatalogEvents([]);
       setTokens([]);
       setWebhooks([]);
+      setWebhookHealth(null);
       setSlackConnection(null);
       setCalendarConnection(null);
       setImportJobs([]);
     } finally {
       setPageLoading(false);
     }
-  }, [canManage, headers, selectedOrganizationId, selectedProjectId, token]);
+  }, [canManage, headers, loadWebhookHealth, selectedOrganizationId, selectedProjectId, token]);
 
   const loadDeliveries = useCallback(
     async (webhookId: string | null, limit = deliveryLimit) => {
@@ -399,10 +481,14 @@ export const IntegrationsPage = () => {
     () => ({
       tokensAtivos: tokens.length,
       webhooksAtivos: webhooks.filter((item) => item.isActive).length,
-      entregasOk: deliveries.filter((item) => item.status === "SUCCESS").length,
-      entregasFalhas: deliveries.filter((item) => item.status === "FAILED").length
+      entregasOk:
+        webhookHealth?.summary?.successCount ??
+        deliveries.filter((item) => item.status === "SUCCESS").length,
+      entregasFalhas:
+        webhookHealth?.summary?.failedCount ??
+        deliveries.filter((item) => item.status === "FAILED").length
     }),
-    [deliveries, tokens.length, webhooks]
+    [deliveries, tokens.length, webhookHealth, webhooks]
   );
   const filteredDeliveries = useMemo(() => {
     const eventTerm = deliveryEventFilter.trim().toLocaleLowerCase("pt-BR");
@@ -878,14 +964,14 @@ export const IntegrationsPage = () => {
           {
             label: "Entregas OK",
             value: tokenStats.entregasOk,
-            helper: selectedWebhook ? `Últimas 10 do webhook ${selectedWebhook.name}` : "Selecione um webhook",
+            helper: `Últimas ${webhookHealth?.summary?.windowHours ?? healthWindowHours}h em todos os webhooks`,
             icon: <CheckCircle2 size={18} />,
             tone: "success"
           },
           {
             label: "Falhas recentes",
             value: tokenStats.entregasFalhas,
-            helper: "Use isso para rastrear retries e destinos inválidos",
+            helper: "Monitore para agir antes de impacto no cliente final",
             icon: <Activity size={18} />,
             tone: tokenStats.entregasFalhas > 0 ? "danger" : "default"
           }
@@ -920,6 +1006,87 @@ export const IntegrationsPage = () => {
           }
         ]}
       />
+
+      <article className="integration-card">
+        <div className="integration-card__header">
+          <div>
+            <p className="integration-card__kicker">Saúde</p>
+            <h2>Saúde dos webhooks</h2>
+          </div>
+          <div className="integration-card__actions">
+            <label className="integration-field integration-field--compact">
+              <span>Janela</span>
+              <select
+                value={String(healthWindowHours)}
+                onChange={(event) => {
+                  const next = Number(event.target.value);
+                  setHealthWindowHours(next);
+                  void loadWebhookHealth(next);
+                }}
+              >
+                <option value="24">24h</option>
+                <option value="72">72h</option>
+                <option value="168">7 dias</option>
+              </select>
+            </label>
+            <button type="button" className="btn-secondary" onClick={() => void loadWebhookHealth()} disabled={healthLoading}>
+              <RefreshCw size={16} />
+              {healthLoading ? "Atualizando..." : "Atualizar saúde"}
+            </button>
+          </div>
+        </div>
+
+        <div className="integrations-grid integrations-grid--health">
+          <article className="integration-health-metric">
+            <small>Taxa de sucesso</small>
+            <strong>{Math.round((webhookHealth?.summary?.successRate ?? 0) * 100)}%</strong>
+            <span>{webhookHealth?.summary?.totalAttempts ?? 0} tentativas no período</span>
+          </article>
+          <article className="integration-health-metric">
+            <small>Webhooks críticos</small>
+            <strong>{webhookHealth?.summary?.criticalCount ?? 0}</strong>
+            <span>Falha alta e recorrente</span>
+          </article>
+          <article className="integration-health-metric">
+            <small>Webhooks em atenção</small>
+            <strong>{webhookHealth?.summary?.warningCount ?? 0}</strong>
+            <span>Falhas pontuais no período</span>
+          </article>
+          <article className="integration-health-metric">
+            <small>Webhooks ativos</small>
+            <strong>{webhookHealth?.summary?.activeWebhooks ?? webhooks.filter((item) => item.isActive).length}</strong>
+            <span>{webhookHealth?.summary?.totalWebhooks ?? webhooks.length} cadastrados</span>
+          </article>
+        </div>
+
+        {healthError ? <AppStateCard title="Falha ao carregar saúde dos webhooks" description={healthError} tone="danger" /> : null}
+        {!healthError && healthLoading ? <p className="integration-muted">Carregando saúde dos webhooks...</p> : null}
+        {!healthError && !healthLoading && webhookHealth && !webhookHealth.webhooks.length ? (
+          <p className="integration-muted">Ainda não há webhooks para consolidar saúde.</p>
+        ) : null}
+
+        {!healthError && !healthLoading && webhookHealth?.webhooks?.length ? (
+          <div className="integration-list">
+            {webhookHealth.webhooks.slice(0, 8).map((item) => (
+              <article key={item.id} className="integration-row-card">
+                <div className="integration-row-card__main">
+                  <strong>{item.name}</strong>
+                  <p>
+                    {PROVIDER_LABELS[item.provider] ?? item.provider} · {item.attempts} tentativas · {item.failedCount} falhas
+                  </p>
+                  <small>
+                    Última falha: {formatDateTime(item.lastFailureAt)} · Último disparo: {formatDateTime(item.lastTriggeredAt)}
+                  </small>
+                </div>
+                <div className="integration-row-card__side integration-row-card__side--stack">
+                  <span className={`integration-health-pill is-${item.level.toLowerCase()}`}>{WEBHOOK_HEALTH_LABELS[item.level]}</span>
+                  <small>{Math.round(item.successRate * 100)}% sucesso</small>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </article>
 
       <article className="integration-card">
         <div className="integration-card__header">

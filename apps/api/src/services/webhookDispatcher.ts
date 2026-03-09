@@ -121,6 +121,175 @@ export const listWebhookDeliveries = async (organizationId: string, subscription
     take: limit
   });
 
+type WebhookHealthLevel = "HEALTHY" | "WARNING" | "CRITICAL" | "IDLE" | "INACTIVE";
+
+export type WebhookHealthItem = {
+  id: string;
+  name: string;
+  provider: IntegrationProvider;
+  isActive: boolean;
+  attempts: number;
+  successCount: number;
+  failedCount: number;
+  pendingCount: number;
+  successRate: number;
+  failedRate: number;
+  lastTriggeredAt: string | null;
+  lastFailureAt: string | null;
+  level: WebhookHealthLevel;
+};
+
+export type WebhookHealthSummary = {
+  windowHours: number;
+  generatedAt: string;
+  totalWebhooks: number;
+  activeWebhooks: number;
+  totalAttempts: number;
+  successCount: number;
+  failedCount: number;
+  pendingCount: number;
+  successRate: number;
+  warningCount: number;
+  criticalCount: number;
+};
+
+export const getWebhookHealthByOrganization = async ({
+  organizationId,
+  windowHours = 24
+}: {
+  organizationId: string;
+  windowHours?: number;
+}) => {
+  const safeWindowHours = Number.isFinite(windowHours) ? Math.min(Math.max(windowHours, 1), 168) : 24;
+  const since = new Date(Date.now() - safeWindowHours * 60 * 60 * 1000);
+
+  const [subscriptions, recentDeliveries] = await Promise.all([
+    prisma.webhookSubscription.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        name: true,
+        provider: true,
+        isActive: true,
+        lastTriggeredAt: true
+      }
+    }),
+    prisma.webhookDelivery.findMany({
+      where: {
+        organizationId,
+        createdAt: {
+          gte: since
+        }
+      },
+      select: {
+        subscriptionId: true,
+        status: true,
+        createdAt: true
+      },
+      orderBy: {
+        createdAt: "desc"
+      }
+    })
+  ]);
+
+  const counters = new Map<
+    string,
+    {
+      attempts: number;
+      successCount: number;
+      failedCount: number;
+      pendingCount: number;
+      lastFailureAt: string | null;
+    }
+  >();
+
+  recentDeliveries.forEach((delivery) => {
+    const current = counters.get(delivery.subscriptionId) ?? {
+      attempts: 0,
+      successCount: 0,
+      failedCount: 0,
+      pendingCount: 0,
+      lastFailureAt: null
+    };
+    current.attempts += 1;
+    if (delivery.status === WebhookDeliveryStatus.SUCCESS) current.successCount += 1;
+    if (delivery.status === WebhookDeliveryStatus.FAILED) {
+      current.failedCount += 1;
+      if (!current.lastFailureAt) {
+        current.lastFailureAt = delivery.createdAt.toISOString();
+      }
+    }
+    if (delivery.status === WebhookDeliveryStatus.PENDING) current.pendingCount += 1;
+    counters.set(delivery.subscriptionId, current);
+  });
+
+  const webhooks: WebhookHealthItem[] = subscriptions
+    .map((subscription) => {
+      const stat = counters.get(subscription.id) ?? {
+        attempts: 0,
+        successCount: 0,
+        failedCount: 0,
+        pendingCount: 0,
+        lastFailureAt: null
+      };
+      const successRate = stat.attempts > 0 ? Number((stat.successCount / stat.attempts).toFixed(4)) : 0;
+      const failedRate = stat.attempts > 0 ? Number((stat.failedCount / stat.attempts).toFixed(4)) : 0;
+
+      let level: WebhookHealthLevel = "HEALTHY";
+      if (!subscription.isActive) level = "INACTIVE";
+      else if (stat.attempts === 0) level = "IDLE";
+      else if (failedRate >= 0.35 || (stat.failedCount >= 5 && failedRate >= 0.2)) level = "CRITICAL";
+      else if (stat.failedCount > 0) level = "WARNING";
+
+      return {
+        id: subscription.id,
+        name: subscription.name,
+        provider: subscription.provider,
+        isActive: subscription.isActive,
+        attempts: stat.attempts,
+        successCount: stat.successCount,
+        failedCount: stat.failedCount,
+        pendingCount: stat.pendingCount,
+        successRate,
+        failedRate,
+        lastTriggeredAt: subscription.lastTriggeredAt?.toISOString() ?? null,
+        lastFailureAt: stat.lastFailureAt,
+        level
+      };
+    })
+    .sort((a, b) => {
+      const severity = { CRITICAL: 0, WARNING: 1, HEALTHY: 2, IDLE: 3, INACTIVE: 4 } as const;
+      const bySeverity = severity[a.level] - severity[b.level];
+      if (bySeverity !== 0) return bySeverity;
+      return b.attempts - a.attempts;
+    });
+
+  const totalAttempts = webhooks.reduce((acc, item) => acc + item.attempts, 0);
+  const successCount = webhooks.reduce((acc, item) => acc + item.successCount, 0);
+  const failedCount = webhooks.reduce((acc, item) => acc + item.failedCount, 0);
+  const pendingCount = webhooks.reduce((acc, item) => acc + item.pendingCount, 0);
+  const successRate = totalAttempts > 0 ? Number((successCount / totalAttempts).toFixed(4)) : 0;
+
+  const summary: WebhookHealthSummary = {
+    windowHours: safeWindowHours,
+    generatedAt: new Date().toISOString(),
+    totalWebhooks: webhooks.length,
+    activeWebhooks: webhooks.filter((item) => item.isActive).length,
+    totalAttempts,
+    successCount,
+    failedCount,
+    pendingCount,
+    successRate,
+    warningCount: webhooks.filter((item) => item.level === "WARNING").length,
+    criticalCount: webhooks.filter((item) => item.level === "CRITICAL").length
+  };
+
+  return {
+    summary,
+    webhooks
+  };
+};
+
 export type RetriedWebhookDelivery = {
   id: string;
   subscriptionId: string;

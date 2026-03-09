@@ -24,6 +24,7 @@ import {
   createWebhookSubscription,
   deleteWebhookSubscription,
   dispatchIntegrationEvent,
+  getWebhookHealthByOrganization,
   listWebhookDeliveries,
   listWebhookSubscriptions,
   retryWebhookDeliveriesBatch,
@@ -1179,6 +1180,19 @@ integrationsRouter.get("/webhooks", async (req, res) => {
 
   const subscriptions = await listWebhookSubscriptions(req.organizationId!);
   return res.json({ webhooks: subscriptions.map(summarizeWebhookSubscription) });
+});
+
+integrationsRouter.get("/webhooks/health", async (req, res) => {
+  if (!ensureOrgAdmin(req, res)) return;
+
+  const rawWindowHours = Number(req.query.windowHours ?? "24");
+  const windowHours = Number.isFinite(rawWindowHours) ? rawWindowHours : 24;
+  const health = await getWebhookHealthByOrganization({
+    organizationId: req.organizationId!,
+    windowHours
+  });
+
+  return res.json(health);
 });
 
 integrationsRouter.post("/webhooks", async (req, res) => {

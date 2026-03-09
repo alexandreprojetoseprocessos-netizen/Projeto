@@ -15301,6 +15301,20 @@ button[type="submit"]:hover {
   color: #64748b;
 }
 
+.integration-field--compact {
+  min-width: 150px;
+}
+
+.integration-field--compact span {
+  font-size: 0.78rem;
+}
+
+.integration-field--compact select {
+  min-height: 38px;
+  border-radius: 12px;
+  padding: 0.55rem 0.75rem;
+}
+
 .integration-code-block {
   display: block;
   width: 100%;
@@ -15528,6 +15542,83 @@ button[type="submit"]:hover {
   font-size: 0.78rem;
 }
 
+.integrations-grid--health {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 0.8rem;
+}
+
+.integration-health-metric {
+  border: 1px solid rgba(191, 219, 254, 0.7);
+  border-radius: 16px;
+  background: rgba(241, 245, 249, 0.8);
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.integration-health-metric small {
+  color: #64748b;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.integration-health-metric strong {
+  color: #0f172a;
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+
+.integration-health-metric span {
+  color: #475569;
+  font-size: 0.82rem;
+}
+
+.integration-health-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0.22rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.integration-health-pill.is-healthy {
+  color: #166534;
+  background: rgba(220, 252, 231, 0.9);
+  border-color: rgba(74, 222, 128, 0.5);
+}
+
+.integration-health-pill.is-warning {
+  color: #92400e;
+  background: rgba(254, 243, 199, 0.92);
+  border-color: rgba(251, 191, 36, 0.5);
+}
+
+.integration-health-pill.is-critical {
+  color: #b91c1c;
+  background: rgba(254, 226, 226, 0.92);
+  border-color: rgba(248, 113, 113, 0.56);
+}
+
+.integration-health-pill.is-idle {
+  color: #334155;
+  background: rgba(226, 232, 240, 0.86);
+  border-color: rgba(148, 163, 184, 0.48);
+}
+
+.integration-health-pill.is-inactive {
+  color: #475569;
+  background: rgba(241, 245, 249, 0.95);
+  border-color: rgba(203, 213, 225, 0.7);
+}
+
 .integration-delivery-meta {
   display: flex;
   align-items: center;
@@ -15646,6 +15737,10 @@ button[type="submit"]:hover {
   .integration-delivery-filters {
     grid-template-columns: 1fr;
   }
+
+  .integrations-grid--health {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 720px) {
@@ -15667,5 +15762,9 @@ button[type="submit"]:hover {
   .integration-delivery-item__status {
     justify-content: flex-start;
     align-items: flex-start;
+  }
+
+  .integrations-grid--health {
+    grid-template-columns: 1fr;
   }
 }

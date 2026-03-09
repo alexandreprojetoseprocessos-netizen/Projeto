@@ -33,6 +33,7 @@ Uso:
 ### Webhooks de saida
 
 - `GET /integrations/webhooks`
+- `GET /integrations/webhooks/health?windowHours=24`
 - `POST /integrations/webhooks`
 - `PATCH /integrations/webhooks/:webhookId`
 - `DELETE /integrations/webhooks/:webhookId`
@@ -49,6 +50,7 @@ Uso:
 - reenviar manualmente entregas com falha (individual ou em lote filtrado)
 - exportar trilha filtrada em CSV
 - retry em lote aceita ate 50 `deliveryIds` por requisicao
+- acompanhar painel de saude por webhook (nivel: healthy, warning, critical, idle, inactive)
 
 Assinatura HMAC enviada em cada chamada de webhook:
 - `X-Webhook-Event`: nome do evento
@@ -155,7 +157,6 @@ Arquivos aceitos:
 
 ## Proximos incrementos sugeridos
 
-- Assinatura HMAC padrao para webhooks custom.
-- Retry assíncrono em lote pelo backend (evitar fan-out no front).
-- Dashboard de saude de integracoes por organizacao.
+- Retry assíncrono em lote pelo backend (fila dedicada).
 - Alertas proativos para aumento de falha por webhook.
+- Notificacoes automáticas (Slack/e-mail) para webhook em estado `CRITICAL`.
