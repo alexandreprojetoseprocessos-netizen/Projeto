@@ -1387,7 +1387,10 @@ export const IntegrationsPage = () => {
             </span>
           </div>
         ) : (
-          <p className="integration-muted">Nenhuma conexão Slack salva nesta organização.</p>
+          <div className="integration-empty-state integration-empty-state--compact">
+            <strong>Slack ainda não configurado</strong>
+            <p>Informe o webhook, selecione os eventos e clique em salvar para iniciar os envios.</p>
+          </div>
         )}
       </article>
 
@@ -1590,7 +1593,10 @@ export const IntegrationsPage = () => {
             </button>
           </div>
         ) : (
-          <p className="integration-muted">Nenhum feed Google Calendar configurado nesta organização.</p>
+          <div className="integration-empty-state integration-empty-state--compact">
+            <strong>Google Calendar ainda não configurado</strong>
+            <p>Selecione um projeto e os itens publicados para gerar o feed ICS.</p>
+          </div>
         )}
       </article>
 
@@ -1742,7 +1748,10 @@ export const IntegrationsPage = () => {
         </div>
 
         {!importJobs.length ? (
-          <p className="integration-muted">Nenhuma importação registrada ainda nesta organização.</p>
+          <div className="integration-empty-state integration-empty-state--compact">
+            <strong>Nenhuma importação registrada</strong>
+            <p>Os jobs de importação aparecerão aqui após usar a central rápida acima.</p>
+          </div>
         ) : (
           <div className="integration-delivery-list">
             {importJobs.map((job) => {
@@ -1887,7 +1896,12 @@ export const IntegrationsPage = () => {
 
           <div className="integration-list">
             {pageLoading ? <p className="integration-muted">Carregando tokens...</p> : null}
-            {!pageLoading && !tokens.length ? <p className="integration-muted">Nenhum token ativo nesta organização.</p> : null}
+            {!pageLoading && !tokens.length ? (
+              <div className="integration-empty-state integration-empty-state--compact">
+                <strong>Nenhum token ativo</strong>
+                <p>Crie um token para liberar integrações externas por organização.</p>
+              </div>
+            ) : null}
             {tokens.map((tokenItem) => (
               <article key={tokenItem.id} className="integration-row-card integration-row-card--token">
                 <div className="integration-row-card__main">
@@ -2022,7 +2036,12 @@ export const IntegrationsPage = () => {
 
           <div className="integration-list">
             {pageLoading ? <p className="integration-muted">Carregando webhooks...</p> : null}
-            {!pageLoading && !webhooks.length ? <p className="integration-muted">Nenhum webhook cadastrado nesta organização.</p> : null}
+            {!pageLoading && !webhooks.length ? (
+              <div className="integration-empty-state integration-empty-state--compact">
+                <strong>Nenhum webhook cadastrado</strong>
+                <p>Cadastre um destino para começar a emitir eventos da organização.</p>
+              </div>
+            ) : null}
             {webhooks.map((webhookItem) => (
               <article
                 key={webhookItem.id}
@@ -2164,11 +2183,14 @@ export const IntegrationsPage = () => {
             {deliveryError ? <AppStateCard title="Falha ao carregar entregas" description={deliveryError} tone="danger" /> : null}
             {deliveryLoading ? <p className="integration-muted">Carregando entregas...</p> : null}
             {!deliveryLoading && !filteredDeliveries.length ? (
-              <p className="integration-muted">
-                {deliveries.length
-                  ? "Nenhuma entrega corresponde aos filtros atuais."
-                  : "Ainda não há entregas registradas para esse webhook."}
-              </p>
+              <div className="integration-empty-state integration-empty-state--compact">
+                <strong>{deliveries.length ? "Nenhuma entrega com esses filtros" : "Sem entregas registradas ainda"}</strong>
+                <p>
+                  {deliveries.length
+                    ? "Ajuste ordem, status ou evento para ampliar o resultado."
+                    : "Dispare um evento de teste no webhook para iniciar a trilha."}
+                </p>
+              </div>
             ) : null}
             <div className="integration-delivery-list">
               {filteredDeliveries.map((delivery) => (
