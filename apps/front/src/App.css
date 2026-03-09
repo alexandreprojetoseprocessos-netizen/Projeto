@@ -15296,6 +15296,38 @@ button[type="submit"]:hover {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.integrations-grid--imports-clean {
+  gap: 0.9rem;
+}
+
+.integrations-grid--imports-clean .integration-row-card--import {
+  border-radius: 18px;
+  border-color: rgba(191, 219, 254, 0.76);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(245, 250, 255, 0.94));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.integrations-grid--imports-clean .integration-row-card--import:hover {
+  border-color: rgba(96, 165, 250, 0.78);
+  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.12);
+}
+
+.integrations-grid--imports-clean .integration-row-card--import .integration-row-card__main strong {
+  font-size: 1.08rem;
+}
+
+.integrations-grid--imports-clean .integration-row-card__side--import {
+  min-width: 184px;
+  justify-content: flex-start;
+}
+
+.integrations-grid--imports-clean .integration-row-card__side--import .btn-primary,
+.integrations-grid--imports-clean .integration-row-card__side--import .btn-secondary {
+  width: 100%;
+  justify-content: center;
+  min-height: 38px;
+}
+
 .integration-card {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 250, 255, 0.96));
   border: 1px solid rgba(148, 163, 184, 0.2);
@@ -15901,6 +15933,24 @@ button[type="submit"]:hover {
   border-left: 4px solid rgba(245, 158, 11, 0.7);
 }
 
+.integration-delivery-item--job {
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96));
+}
+
+.integration-delivery-item--job .integration-delivery-item__main strong {
+  font-size: 0.98rem;
+}
+
+.integration-delivery-item--job .integration-delivery-item__status code {
+  background: rgba(241, 245, 249, 0.9);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 10px;
+  padding: 0.24rem 0.5rem;
+  font-size: 0.76rem;
+  color: #475569;
+}
+
 .integration-delivery-item__main {
   display: flex;
   flex-direction: column;
@@ -15976,6 +16026,10 @@ button[type="submit"]:hover {
 
   .integrations-grid {
     grid-template-columns: 1fr;
+  }
+
+  .integrations-grid--imports-clean .integration-row-card__side--import {
+    min-width: 0;
   }
 
   .integration-form-grid,

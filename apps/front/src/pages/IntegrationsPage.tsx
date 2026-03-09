@@ -1618,14 +1618,14 @@ export const IntegrationsPage = () => {
               </div>
             </div>
 
-            <div className="integrations-grid integrations-grid--imports">
-              <article className="integration-row-card">
+            <div className="integrations-grid integrations-grid--imports integrations-grid--imports-clean">
+              <article className="integration-row-card integration-row-card--import">
                 <div className="integration-row-card__main">
                   <strong>Importar EAP</strong>
                   <p>Planilha `.xlsx` com código, título, datas, dependências e serviços.</p>
                   <small>Usa o mesmo fluxo já validado na tela de EAP.</small>
                 </div>
-                <div className="integration-row-card__side integration-row-card__side--stack">
+                <div className="integration-row-card__side integration-row-card__side--stack integration-row-card__side--import">
                   <input
                     ref={wbsInputRef}
                     type="file"
@@ -1647,13 +1647,13 @@ export const IntegrationsPage = () => {
                 </div>
               </article>
 
-              <article className="integration-row-card">
+              <article className="integration-row-card integration-row-card--import">
                 <div className="integration-row-card__main">
                   <strong>Importar catálogo de serviços</strong>
                   <p>Planilha com nome, descrição e horas base para acelerar composição da EAP.</p>
                   <small>Usa o importador operacional do módulo de orçamento.</small>
                 </div>
-                <div className="integration-row-card__side integration-row-card__side--stack">
+                <div className="integration-row-card__side integration-row-card__side--stack integration-row-card__side--import">
                   <input
                     ref={catalogInputRef}
                     type="file"
@@ -1672,13 +1672,13 @@ export const IntegrationsPage = () => {
                 </div>
               </article>
 
-              <article className="integration-row-card">
+              <article className="integration-row-card integration-row-card--import">
                 <div className="integration-row-card__main">
                   <strong>Importar board do Trello</strong>
                   <p>Arquivo `.json` exportado do board para criar cards diretamente no Kanban do projeto ativo.</p>
                   <small>Mapeia listas para colunas e preserva descrição, prazo e prioridade sugerida.</small>
                 </div>
-                <div className="integration-row-card__side integration-row-card__side--stack">
+                <div className="integration-row-card__side integration-row-card__side--stack integration-row-card__side--import">
                   <input
                     ref={trelloInputRef}
                     type="file"
@@ -1697,13 +1697,13 @@ export const IntegrationsPage = () => {
                 </div>
               </article>
 
-              <article className="integration-row-card">
+              <article className="integration-row-card integration-row-card--import">
                 <div className="integration-row-card__main">
                   <strong>Importar issues do Jira</strong>
                   <p>Arquivo `.csv` ou `.xlsx` exportado do Jira para criar cards diretamente no Kanban do projeto ativo.</p>
                   <small>Usa colunas como Summary, Status, Priority, Description, Due Date e Issue Key.</small>
                 </div>
-                <div className="integration-row-card__side integration-row-card__side--stack">
+                <div className="integration-row-card__side integration-row-card__side--stack integration-row-card__side--import">
                   <input
                     ref={jiraInputRef}
                     type="file"
@@ -1768,7 +1768,12 @@ export const IntegrationsPage = () => {
                   : job.entity;
 
               return (
-                <article key={job.id} className="integration-delivery-item">
+                <article
+                  key={job.id}
+                  className={`integration-delivery-item integration-delivery-item--job is-${
+                    job.status === "SUCCESS" ? "success" : job.status === "FAILED" ? "failed" : "pending"
+                  }`}
+                >
                   <div className="integration-delivery-item__main">
                     <strong>{jobLabel}</strong>
                     <small>{job.fileName ?? "Arquivo sem nome"}</small>
