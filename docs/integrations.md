@@ -123,6 +123,15 @@ Uso:
 - disparar teste direto pela tela
 - receber alerta automático `integration.webhook.critical` quando webhook custom entra em estado crítico (com cooldown de 60 min por webhook)
 
+Canal de e-mail para alerta crítico (opcional):
+- `SMTP_CRITICAL_ALERTS_ENABLED=true|false`
+- `SMTP_HOST`
+- `SMTP_PORT` (padrão 587)
+- `SMTP_SECURE=true|false` (padrão false)
+- `SMTP_USER` / `SMTP_PASS` (se o provedor exigir autenticação)
+- `SMTP_FROM` (remetente)
+- `SMTP_ALERT_RECIPIENTS` (lista separada por vírgula para override; se vazio usa owners/admins da organização)
+
 ### Google Calendar nativo (feed ICS)
 
 - `GET /integrations/google-calendar`

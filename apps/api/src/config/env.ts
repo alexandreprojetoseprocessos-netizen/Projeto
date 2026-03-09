@@ -38,7 +38,15 @@ const envSchema = z.object({
   STRIPE_PRICE_START: z.string().optional(),
   STRIPE_PRICE_PRO: z.string().optional(),
   STRIPE_PRICE_BUSINESS: z.string().optional(),
-  STRIPE_PRICE_ENTERPRISE: z.string().optional()
+  STRIPE_PRICE_ENTERPRISE: z.string().optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_SECURE: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
+  SMTP_ALERT_RECIPIENTS: z.string().optional(),
+  SMTP_CRITICAL_ALERTS_ENABLED: z.string().optional()
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -97,5 +105,21 @@ export const config = {
     pricePro: parsed.data.STRIPE_PRICE_PRO,
     priceBusiness: parsed.data.STRIPE_PRICE_BUSINESS,
     priceEnterprise: parsed.data.STRIPE_PRICE_ENTERPRISE
+  },
+  notifications: {
+    smtp: {
+      host: parsed.data.SMTP_HOST ?? null,
+      port: parsed.data.SMTP_PORT ? Number(parsed.data.SMTP_PORT) : 587,
+      user: parsed.data.SMTP_USER ?? null,
+      pass: parsed.data.SMTP_PASS ?? null,
+      secure: (parsed.data.SMTP_SECURE ?? "false").toLowerCase() === "true",
+      from: parsed.data.SMTP_FROM ?? null,
+      criticalAlertsEnabled: (parsed.data.SMTP_CRITICAL_ALERTS_ENABLED ?? "true").toLowerCase() === "true",
+      alertRecipients: parsed.data.SMTP_ALERT_RECIPIENTS
+        ? parsed.data.SMTP_ALERT_RECIPIENTS.split(",")
+            .map((item) => item.trim().toLowerCase())
+            .filter(Boolean)
+        : []
+    }
   }
 };

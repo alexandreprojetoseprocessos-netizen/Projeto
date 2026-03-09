@@ -28,6 +28,11 @@ Checklist operacional mínimo para publicar uma nova versão sem depender de mem
 4. Confirmar `SUPABASE_SERVICE_ROLE_KEY`.
 5. Confirmar `JWT_SECRET`.
 6. Confirmar credenciais de pagamento se o fluxo estiver ativo.
+7. Se alerta por e-mail estiver habilitado, confirmar:
+   - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`
+   - `SMTP_USER`, `SMTP_PASS`
+   - `SMTP_FROM`
+   - `SMTP_CRITICAL_ALERTS_ENABLED`
 
 ## Validação funcional mínima
 1. Login.

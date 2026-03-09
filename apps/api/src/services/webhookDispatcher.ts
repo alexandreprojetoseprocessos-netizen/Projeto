@@ -4,6 +4,7 @@ import { prisma } from "@gestao/database";
 import { WebhookDeliveryStatus, type IntegrationProvider, type Prisma, type WebhookSubscription } from "@prisma/client";
 import { logger } from "../config/logger";
 import { writeAuditLog } from "./audit";
+import { sendCriticalWebhookAlertEmail } from "./emailNotifications";
 import { dispatchSlackIntegrationEvent } from "./integrationConnections";
 
 type DispatchClient = Prisma.TransactionClient | typeof prisma;
@@ -395,23 +396,39 @@ const notifyCriticalWebhookAlertIfNeeded = async ({
       select: { name: true }
     });
 
-    const dispatched = await dispatchSlackIntegrationEvent({
-      organizationId,
-      organizationName: organization?.name ?? null,
-      eventName: WEBHOOK_CRITICAL_ALERT_EVENT,
-      entity: "WEBHOOK_SUBSCRIPTION",
-      entityId: webhookId,
-      payload: {
+    const [slackDispatch, emailDispatch] = await Promise.all([
+      dispatchSlackIntegrationEvent({
+        organizationId,
+        organizationName: organization?.name ?? null,
+        eventName: WEBHOOK_CRITICAL_ALERT_EVENT,
+        entity: "WEBHOOK_SUBSCRIPTION",
+        entityId: webhookId,
+        payload: {
+          webhookId,
+          webhookName,
+          attempts,
+          failedCount,
+          failedRate: Number(failedRate.toFixed(4)),
+          windowHours: WEBHOOK_CRITICAL_ALERT_WINDOW_HOURS
+        }
+      }),
+      sendCriticalWebhookAlertEmail({
+        organizationId,
+        organizationName: organization?.name ?? null,
         webhookId,
         webhookName,
         attempts,
         failedCount,
         failedRate: Number(failedRate.toFixed(4)),
         windowHours: WEBHOOK_CRITICAL_ALERT_WINDOW_HOURS
-      }
-    });
+      })
+    ]);
 
-    if (dispatched.dispatched <= 0) return;
+    const deliveredChannels: string[] = [];
+    if (slackDispatch.dispatched > 0) deliveredChannels.push("SLACK");
+    if (emailDispatch.delivered) deliveredChannels.push("EMAIL");
+
+    if (!deliveredChannels.length) return;
 
     await writeAuditLog({
       organizationId,
@@ -419,11 +436,14 @@ const notifyCriticalWebhookAlertIfNeeded = async ({
       entity: "WEBHOOK_SUBSCRIPTION",
       entityId: webhookId,
       diff: {
+        channels: deliveredChannels,
         webhookName,
         attempts,
         failedCount,
         failedRate: Number(failedRate.toFixed(4)),
-        cooldownMinutes: WEBHOOK_CRITICAL_ALERT_COOLDOWN_MINUTES
+        cooldownMinutes: WEBHOOK_CRITICAL_ALERT_COOLDOWN_MINUTES,
+        emailRecipients: emailDispatch.recipients,
+        emailSkippedReason: emailDispatch.skippedReason ?? null
       } as Prisma.InputJsonValue
     });
   } catch (error) {
