@@ -121,6 +121,7 @@ Uso:
 - salvar webhook do Slack por organizacao
 - escolher eventos que devem ser enviados
 - disparar teste direto pela tela
+- receber alerta automático `integration.webhook.critical` quando webhook custom entra em estado crítico (com cooldown de 60 min por webhook)
 
 ### Google Calendar nativo (feed ICS)
 
@@ -160,4 +161,4 @@ Arquivos aceitos:
 
 - Retry assíncrono em lote pelo backend (fila dedicada).
 - Alertas proativos para aumento de falha por webhook.
-- Notificacoes automáticas (Slack/e-mail) para webhook em estado `CRITICAL`.
+- Notificacoes por e-mail para webhook em estado `CRITICAL`.

@@ -15,7 +15,8 @@ export const SLACK_SUPPORTED_EVENTS = [
   "organization.trashed",
   "organization.restored",
   "organization.deleted",
-  "integration.test"
+  "integration.test",
+  "integration.webhook.critical"
 ] as const;
 
 type SlackConfig = {

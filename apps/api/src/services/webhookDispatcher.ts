@@ -3,6 +3,7 @@ import axios from "axios";
 import { prisma } from "@gestao/database";
 import { WebhookDeliveryStatus, type IntegrationProvider, type Prisma, type WebhookSubscription } from "@prisma/client";
 import { logger } from "../config/logger";
+import { writeAuditLog } from "./audit";
 import { dispatchSlackIntegrationEvent } from "./integrationConnections";
 
 type DispatchClient = Prisma.TransactionClient | typeof prisma;
@@ -14,13 +15,17 @@ export const WEBHOOK_EVENT_CATALOG = [
   "organization.trashed",
   "organization.restored",
   "organization.deleted",
-  "integration.test"
+  "integration.test",
+  "integration.webhook.critical"
 ] as const;
 
 const DELIVERY_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BODY_LENGTH = 2_000;
 const WEBHOOK_SIGNATURE_ALG = "HMAC-SHA256";
 const WEBHOOK_SIGNATURE_VERSION = "v1";
+const WEBHOOK_CRITICAL_ALERT_EVENT = "integration.webhook.critical";
+const WEBHOOK_CRITICAL_ALERT_WINDOW_HOURS = 24;
+const WEBHOOK_CRITICAL_ALERT_COOLDOWN_MINUTES = 60;
 
 type DeliveryEnvelope = {
   id: string;
@@ -338,6 +343,101 @@ export const getWebhookHealthByOrganization = async ({
   };
 };
 
+const notifyCriticalWebhookAlertIfNeeded = async ({
+  organizationId,
+  webhookId,
+  webhookName
+}: {
+  organizationId: string;
+  webhookId: string;
+  webhookName: string;
+}) => {
+  try {
+    const since = new Date(Date.now() - WEBHOOK_CRITICAL_ALERT_WINDOW_HOURS * 60 * 60 * 1000);
+    const [attempts, failedCount] = await Promise.all([
+      prisma.webhookDelivery.count({
+        where: {
+          organizationId,
+          subscriptionId: webhookId,
+          createdAt: { gte: since }
+        }
+      }),
+      prisma.webhookDelivery.count({
+        where: {
+          organizationId,
+          subscriptionId: webhookId,
+          status: WebhookDeliveryStatus.FAILED,
+          createdAt: { gte: since }
+        }
+      })
+    ]);
+
+    if (attempts <= 0) return;
+    const failedRate = failedCount / attempts;
+    const isCritical = failedRate >= 0.35 || (failedCount >= 5 && failedRate >= 0.2);
+    if (!isCritical) return;
+
+    const cooldownSince = new Date(Date.now() - WEBHOOK_CRITICAL_ALERT_COOLDOWN_MINUTES * 60 * 1000);
+    const alreadyNotified = await prisma.auditLog.findFirst({
+      where: {
+        organizationId,
+        action: "INTEGRATION_WEBHOOK_CRITICAL_ALERT_SENT",
+        entity: "WEBHOOK_SUBSCRIPTION",
+        entityId: webhookId,
+        createdAt: { gte: cooldownSince }
+      },
+      select: { id: true }
+    });
+    if (alreadyNotified) return;
+
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true }
+    });
+
+    const dispatched = await dispatchSlackIntegrationEvent({
+      organizationId,
+      organizationName: organization?.name ?? null,
+      eventName: WEBHOOK_CRITICAL_ALERT_EVENT,
+      entity: "WEBHOOK_SUBSCRIPTION",
+      entityId: webhookId,
+      payload: {
+        webhookId,
+        webhookName,
+        attempts,
+        failedCount,
+        failedRate: Number(failedRate.toFixed(4)),
+        windowHours: WEBHOOK_CRITICAL_ALERT_WINDOW_HOURS
+      }
+    });
+
+    if (dispatched.dispatched <= 0) return;
+
+    await writeAuditLog({
+      organizationId,
+      action: "INTEGRATION_WEBHOOK_CRITICAL_ALERT_SENT",
+      entity: "WEBHOOK_SUBSCRIPTION",
+      entityId: webhookId,
+      diff: {
+        webhookName,
+        attempts,
+        failedCount,
+        failedRate: Number(failedRate.toFixed(4)),
+        cooldownMinutes: WEBHOOK_CRITICAL_ALERT_COOLDOWN_MINUTES
+      } as Prisma.InputJsonValue
+    });
+  } catch (error) {
+    logger.warn(
+      {
+        err: error,
+        organizationId,
+        webhookId
+      },
+      "Failed to dispatch critical webhook alert"
+    );
+  }
+};
+
 export type RetriedWebhookDelivery = {
   id: string;
   subscriptionId: string;
@@ -582,6 +682,11 @@ const deliverToSubscription = async ({
     });
 
     if (!ok) {
+      void notifyCriticalWebhookAlertIfNeeded({
+        organizationId: subscription.organizationId,
+        webhookId: subscription.id,
+        webhookName: subscription.name
+      });
       logger.warn(
         {
           organizationId: subscription.organizationId,
@@ -611,6 +716,12 @@ const deliverToSubscription = async ({
         errorMessage: truncateText(candidateError.message ?? "Unknown webhook delivery error"),
         lastAttemptAt: startedAt
       }
+    });
+
+    void notifyCriticalWebhookAlertIfNeeded({
+      organizationId: subscription.organizationId,
+      webhookId: subscription.id,
+      webhookName: subscription.name
     });
 
     logger.warn(
