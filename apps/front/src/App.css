@@ -15576,6 +15576,51 @@ button[type="submit"]:hover {
   font-size: 0.82rem;
 }
 
+.integration-health-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-bottom: 0.8rem;
+}
+
+.integration-health-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  border-radius: 16px;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  background: rgba(255, 255, 255, 0.94);
+  padding: 0.85rem 0.95rem;
+}
+
+.integration-health-alert strong,
+.integration-health-alert p,
+.integration-health-alert small {
+  margin: 0;
+}
+
+.integration-health-alert p {
+  color: #334155;
+  margin-top: 0.2rem;
+}
+
+.integration-health-alert small {
+  color: #64748b;
+  margin-top: 0.2rem;
+  display: block;
+}
+
+.integration-health-alert.is-warning {
+  border-color: rgba(251, 191, 36, 0.48);
+  background: rgba(255, 251, 235, 0.84);
+}
+
+.integration-health-alert.is-critical {
+  border-color: rgba(248, 113, 113, 0.54);
+  background: rgba(254, 242, 242, 0.86);
+}
+
 .integration-health-pill {
   display: inline-flex;
   align-items: center;
@@ -15754,6 +15799,11 @@ button[type="submit"]:hover {
   .integration-secret-card,
   .integration-delivery-item,
   .integration-row-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .integration-health-alert {
     flex-direction: column;
     align-items: stretch;
   }

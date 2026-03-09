@@ -100,9 +100,23 @@ type WebhookHealthSummary = {
   criticalCount: number;
 };
 
+type WebhookHealthAlert = {
+  id: string;
+  level: "WARNING" | "CRITICAL";
+  webhookId: string;
+  webhookName: string;
+  attempts: number;
+  failedCount: number;
+  failedRate: number;
+  title: string;
+  message: string;
+  recommendedAction: string;
+};
+
 type WebhookHealthResponse = {
   summary: WebhookHealthSummary;
   webhooks: WebhookHealthItem[];
+  alerts: WebhookHealthAlert[];
 };
 
 type TokenCreateResponse = {
@@ -322,7 +336,8 @@ export const IntegrationsPage = () => {
         });
         setWebhookHealth({
           summary: body.summary,
-          webhooks: Array.isArray(body.webhooks) ? body.webhooks : []
+          webhooks: Array.isArray(body.webhooks) ? body.webhooks : [],
+          alerts: Array.isArray(body.alerts) ? body.alerts : []
         });
       } catch (error) {
         setWebhookHealth(null);
@@ -1058,6 +1073,30 @@ export const IntegrationsPage = () => {
             <span>{webhookHealth?.summary?.totalWebhooks ?? webhooks.length} cadastrados</span>
           </article>
         </div>
+
+        {!healthError && !healthLoading && (webhookHealth?.alerts?.length ?? 0) > 0 ? (
+          <div className="integration-health-alerts">
+            {(webhookHealth?.alerts ?? []).slice(0, 3).map((alertItem) => (
+              <article key={alertItem.id} className={`integration-health-alert is-${alertItem.level.toLowerCase()}`}>
+                <div>
+                  <strong>{alertItem.title}</strong>
+                  <p>{alertItem.message}</p>
+                  <small>{alertItem.recommendedAction}</small>
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    setSelectedWebhookId(alertItem.webhookId);
+                    void loadDeliveries(alertItem.webhookId, 10);
+                  }}
+                >
+                  Ver entregas
+                </button>
+              </article>
+            ))}
+          </div>
+        ) : null}
 
         {healthError ? <AppStateCard title="Falha ao carregar saúde dos webhooks" description={healthError} tone="danger" /> : null}
         {!healthError && healthLoading ? <p className="integration-muted">Carregando saúde dos webhooks...</p> : null}

@@ -51,6 +51,7 @@ Uso:
 - exportar trilha filtrada em CSV
 - retry em lote aceita ate 50 `deliveryIds` por requisicao
 - acompanhar painel de saude por webhook (nivel: healthy, warning, critical, idle, inactive)
+- endpoint de saude retorna `alerts[]` com recomendacao para webhooks `warning/critical`
 
 Assinatura HMAC enviada em cada chamada de webhook:
 - `X-Webhook-Event`: nome do evento

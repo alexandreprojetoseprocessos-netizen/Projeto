@@ -153,6 +153,19 @@ export type WebhookHealthSummary = {
   criticalCount: number;
 };
 
+export type WebhookHealthAlert = {
+  id: string;
+  level: "WARNING" | "CRITICAL";
+  webhookId: string;
+  webhookName: string;
+  attempts: number;
+  failedCount: number;
+  failedRate: number;
+  title: string;
+  message: string;
+  recommendedAction: string;
+};
+
 export const getWebhookHealthByOrganization = async ({
   organizationId,
   windowHours = 24
@@ -284,9 +297,44 @@ export const getWebhookHealthByOrganization = async ({
     criticalCount: webhooks.filter((item) => item.level === "CRITICAL").length
   };
 
+  const alerts: WebhookHealthAlert[] = webhooks
+    .filter((item) => item.level === "CRITICAL" || item.level === "WARNING")
+    .map((item) => {
+      const level: WebhookHealthAlert["level"] = item.level === "CRITICAL" ? "CRITICAL" : "WARNING";
+      const failedPercent = Math.round(item.failedRate * 100);
+      return {
+        id: `${item.id}:${level}`,
+        level,
+        webhookId: item.id,
+        webhookName: item.name,
+        attempts: item.attempts,
+        failedCount: item.failedCount,
+        failedRate: item.failedRate,
+        title:
+          level === "CRITICAL"
+            ? `Webhook crítico: ${item.name}`
+            : `Webhook em atenção: ${item.name}`,
+        message:
+          level === "CRITICAL"
+            ? `${item.failedCount} falhas em ${item.attempts} envios (${failedPercent}%). Risco alto de perda de integração.`
+            : `${item.failedCount} falhas em ${item.attempts} envios (${failedPercent}%). Monitorar e corrigir destino.`,
+        recommendedAction:
+          level === "CRITICAL"
+            ? "Validar URL/credenciais, testar endpoint e reenfileirar falhas."
+            : "Acompanhar próximas entregas e executar retry se necessário."
+      };
+    })
+    .sort((a, b) => {
+      const levelScore = { CRITICAL: 0, WARNING: 1 } as const;
+      const byLevel = levelScore[a.level] - levelScore[b.level];
+      if (byLevel !== 0) return byLevel;
+      return b.failedRate - a.failedRate;
+    });
+
   return {
     summary,
-    webhooks
+    webhooks,
+    alerts
   };
 };
 
