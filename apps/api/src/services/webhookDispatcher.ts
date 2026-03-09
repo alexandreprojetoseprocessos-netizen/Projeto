@@ -19,6 +19,8 @@ export const WEBHOOK_EVENT_CATALOG = [
 
 const DELIVERY_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BODY_LENGTH = 2_000;
+const WEBHOOK_SIGNATURE_ALG = "HMAC-SHA256";
+const WEBHOOK_SIGNATURE_VERSION = "v1";
 
 type DeliveryEnvelope = {
   id: string;
@@ -38,6 +40,16 @@ const truncateText = (value?: string | null) => {
 
 const signWebhookPayload = (secret: string, rawBody: string) =>
   crypto.createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
+
+const signWebhookPayloadWithTimestamp = ({
+  secret,
+  timestamp,
+  rawBody
+}: {
+  secret: string;
+  timestamp: string;
+  rawBody: string;
+}) => signWebhookPayload(secret, `${timestamp}.${rawBody}`);
 
 const supportsEvent = (subscription: WebhookSubscription, eventName: string) =>
   subscription.eventNames.includes("*") || subscription.eventNames.includes(eventName);
@@ -294,6 +306,12 @@ const deliverToSubscription = async ({
   envelope: DeliveryEnvelope;
 }) => {
   const rawPayload = JSON.stringify(envelope);
+  const signatureTimestamp = Math.floor(Date.now() / 1000).toString();
+  const signatureV1 = signWebhookPayloadWithTimestamp({
+    secret: subscription.secret,
+    timestamp: signatureTimestamp,
+    rawBody: rawPayload
+  });
   const delivery = await prisma.webhookDelivery.create({
     data: {
       subscriptionId: subscription.id,
@@ -315,7 +333,13 @@ const deliverToSubscription = async ({
         "User-Agent": "meu-gp-webhooks/1.0",
         "X-Webhook-Event": envelope.event,
         "X-Webhook-Id": envelope.id,
-        "X-Webhook-Signature": `sha256=${signWebhookPayload(subscription.secret, rawPayload)}`
+        // legacy signature kept for backward compatibility
+        "X-Webhook-Signature": `sha256=${signWebhookPayload(subscription.secret, rawPayload)}`,
+        // replay-safe signature format
+        "X-Webhook-Signature-Alg": WEBHOOK_SIGNATURE_ALG,
+        "X-Webhook-Signature-Version": WEBHOOK_SIGNATURE_VERSION,
+        "X-Webhook-Signature-Timestamp": signatureTimestamp,
+        "X-Webhook-Signature-V1": `t=${signatureTimestamp},v1=${signatureV1}`
       },
       validateStatus: () => true
     });

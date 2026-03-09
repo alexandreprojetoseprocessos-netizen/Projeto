@@ -50,6 +50,33 @@ Uso:
 - exportar trilha filtrada em CSV
 - retry em lote aceita ate 50 `deliveryIds` por requisicao
 
+Assinatura HMAC enviada em cada chamada de webhook:
+- `X-Webhook-Event`: nome do evento
+- `X-Webhook-Id`: request id do evento
+- `X-Webhook-Signature`: legado (`sha256=<hmac(payload)>`)
+- `X-Webhook-Signature-Alg`: `HMAC-SHA256`
+- `X-Webhook-Signature-Version`: `v1`
+- `X-Webhook-Signature-Timestamp`: epoch em segundos
+- `X-Webhook-Signature-V1`: `t=<timestamp>,v1=<hmac(timestamp.payload)>`
+
+Exemplo de validacao no destino (Node.js):
+
+```ts
+import crypto from "node:crypto";
+
+const timestamp = req.header("X-Webhook-Signature-Timestamp");
+const signatureHeader = req.header("X-Webhook-Signature-V1") ?? "";
+const expected = crypto
+  .createHmac("sha256", process.env.WEBHOOK_SECRET!)
+  .update(`${timestamp}.${rawBody}`, "utf8")
+  .digest("hex");
+
+const informed = signatureHeader.split(",").find((part) => part.startsWith("v1="))?.replace("v1=", "");
+if (!informed || informed !== expected) {
+  return res.status(401).send("invalid signature");
+}
+```
+
 ### Inbound Kanban (upsert por referencia externa)
 
 - `POST /integrations/inbound/kanban/task-upsert`

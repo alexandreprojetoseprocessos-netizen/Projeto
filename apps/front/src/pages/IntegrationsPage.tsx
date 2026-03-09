@@ -1547,6 +1547,9 @@ export const IntegrationsPage = () => {
             <label className="integration-field">
               <span>Segredo opcional</span>
               <input value={webhookSecret} onChange={(event) => setWebhookSecret(event.target.value)} placeholder="Se vazio, o sistema gera um segredo." />
+              <small>
+                O destino recebe assinatura HMAC nos headers `X-Webhook-Signature-V1` + timestamp e também `X-Webhook-Signature` (legado).
+              </small>
             </label>
           </div>
 
