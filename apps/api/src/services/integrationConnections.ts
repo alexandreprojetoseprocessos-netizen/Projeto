@@ -7,6 +7,7 @@ import { logger } from "../config/logger";
 type ServiceClient = Prisma.TransactionClient | typeof prisma;
 
 const DELIVERY_TIMEOUT_MS = 10_000;
+export const WEBHOOK_CRITICAL_ALERT_EVENT = "integration.webhook.critical";
 
 export const SLACK_SUPPORTED_EVENTS = [
   "organization.created",
@@ -16,11 +17,16 @@ export const SLACK_SUPPORTED_EVENTS = [
   "organization.restored",
   "organization.deleted",
   "integration.test",
-  "integration.webhook.critical"
+  WEBHOOK_CRITICAL_ALERT_EVENT
 ] as const;
 
 type SlackConfig = {
   webhookUrl: string;
+};
+
+type EmailAlertsConfig = {
+  kind: "EMAIL_ALERTS";
+  recipients: string[];
 };
 
 type GoogleCalendarConfig = {
@@ -29,6 +35,9 @@ type GoogleCalendarConfig = {
   includeMilestones: boolean;
 };
 
+const EMAIL_ALERTS_KIND = "EMAIL_ALERTS";
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 
@@ -36,6 +45,9 @@ const truncateText = (value: string | null | undefined, max = 300) => {
   if (!value) return null;
   return value.length > max ? `${value.slice(0, max)}...` : value;
 };
+
+const normalizeEmailList = (items: string[]) =>
+  [...new Set(items.map((item) => item.trim().toLowerCase()).filter((item) => EMAIL_REGEX.test(item)))];
 
 export const generateIntegrationAccessToken = () => crypto.randomBytes(24).toString("hex");
 
@@ -65,6 +77,19 @@ const readGoogleCalendarConfig = (config: unknown): GoogleCalendarConfig | null 
     projectId,
     includeTasks: record?.includeTasks !== false,
     includeMilestones: record?.includeMilestones !== false
+  };
+};
+
+const readEmailAlertsConfig = (config: unknown): EmailAlertsConfig | null => {
+  const record = asRecord(config);
+  if (!record) return null;
+  if (record.kind !== EMAIL_ALERTS_KIND) return null;
+  const recipients = Array.isArray(record.recipients)
+    ? normalizeEmailList(record.recipients.filter((item): item is string => typeof item === "string"))
+    : [];
+  return {
+    kind: EMAIL_ALERTS_KIND,
+    recipients
   };
 };
 
@@ -101,6 +126,80 @@ export const getIntegrationConnectionByAccessToken = async (provider: Integratio
       isActive: true
     }
   });
+
+export const getEmailAlertsConnection = async (organizationId: string) => {
+  const connection = await getIntegrationConnection(organizationId, IntegrationProvider.CUSTOM);
+  if (!connection) return null;
+  const emailConfig = readEmailAlertsConfig(connection.config);
+  if (!emailConfig) return null;
+  return {
+    ...connection,
+    emailConfig
+  };
+};
+
+export const upsertEmailAlertsConnection = async ({
+  client = prisma,
+  organizationId,
+  createdById,
+  name,
+  recipients,
+  isActive
+}: {
+  client?: ServiceClient;
+  organizationId: string;
+  createdById: string;
+  name: string;
+  recipients: string[];
+  isActive: boolean;
+}) => {
+  const normalizedRecipients = normalizeEmailList(recipients);
+  const existing = await client.integrationConnection.findUnique({
+    where: {
+      organizationId_provider: {
+        organizationId,
+        provider: IntegrationProvider.CUSTOM
+      }
+    }
+  });
+
+  if (existing) {
+    const existingEmailConfig = readEmailAlertsConfig(existing.config);
+    if (!existingEmailConfig) {
+      throw new Error("CUSTOM_PROVIDER_ALREADY_IN_USE");
+    }
+  }
+
+  return client.integrationConnection.upsert({
+    where: {
+      organizationId_provider: {
+        organizationId,
+        provider: IntegrationProvider.CUSTOM
+      }
+    },
+    update: {
+      name,
+      isActive,
+      eventNames: [WEBHOOK_CRITICAL_ALERT_EVENT],
+      config: {
+        kind: EMAIL_ALERTS_KIND,
+        recipients: normalizedRecipients
+      }
+    },
+    create: {
+      organizationId,
+      createdById,
+      provider: IntegrationProvider.CUSTOM,
+      name,
+      isActive,
+      eventNames: [WEBHOOK_CRITICAL_ALERT_EVENT],
+      config: {
+        kind: EMAIL_ALERTS_KIND,
+        recipients: normalizedRecipients
+      }
+    }
+  });
+};
 
 export const upsertSlackConnection = async ({
   client = prisma,

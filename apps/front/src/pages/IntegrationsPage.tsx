@@ -9,6 +9,7 @@ import {
   ExternalLink,
   KeyRound,
   Link2,
+  Mail,
   RefreshCw,
   SendHorizontal,
   ShieldCheck,
@@ -143,6 +144,21 @@ type SlackConnectionSummary = {
   webhookPreview?: string | null;
 };
 
+type EmailAlertsConnectionSummary = {
+  id: string | null;
+  provider?: string;
+  name: string;
+  isActive: boolean;
+  recipients: string[];
+  smtpConfigured: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  lastTriggeredAt?: string | null;
+  lastValidatedAt?: string | null;
+  lastValidationStatus?: string | null;
+  lastValidationMessage?: string | null;
+};
+
 type GoogleCalendarConnectionSummary = {
   id: string;
   provider: string;
@@ -219,6 +235,10 @@ const asStringArray = (value: unknown) => {
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 };
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const parseEmailRecipientsText = (value: string) =>
+  [...new Set(value.split(",").map((item) => item.trim().toLowerCase()).filter((item) => EMAIL_REGEX.test(item)))];
+
 const feedbackClassName = (message: string | null) => {
   if (!message) return "integration-feedback";
   const normalized = message.toLocaleLowerCase("pt-BR");
@@ -288,6 +308,13 @@ export const IntegrationsPage = () => {
   const [slackLoading, setSlackLoading] = useState(false);
   const [slackTesting, setSlackTesting] = useState(false);
   const [slackFeedback, setSlackFeedback] = useState<string | null>(null);
+  const [emailAlertsConnection, setEmailAlertsConnection] = useState<EmailAlertsConnectionSummary | null>(null);
+  const [emailAlertsName, setEmailAlertsName] = useState("Alertas por e-mail");
+  const [emailAlertsRecipientsText, setEmailAlertsRecipientsText] = useState("");
+  const [emailAlertsIsActive, setEmailAlertsIsActive] = useState(true);
+  const [emailAlertsLoading, setEmailAlertsLoading] = useState(false);
+  const [emailAlertsTesting, setEmailAlertsTesting] = useState(false);
+  const [emailAlertsFeedback, setEmailAlertsFeedback] = useState<string | null>(null);
   const [calendarConnection, setCalendarConnection] = useState<GoogleCalendarConnectionSummary | null>(null);
   const [calendarName, setCalendarName] = useState("Google Calendar");
   const [calendarProjectId, setCalendarProjectId] = useState("");
@@ -357,6 +384,7 @@ export const IntegrationsPage = () => {
       setWebhookHealth(null);
       setHealthError(null);
       setSlackConnection(null);
+      setEmailAlertsConnection(null);
       setCalendarConnection(null);
       setImportJobs([]);
       setPageError(null);
@@ -367,11 +395,12 @@ export const IntegrationsPage = () => {
     setPageLoading(true);
     setPageError(null);
     try {
-      const [catalogBody, tokenBody, webhookBody, slackBody, calendarBody, jobsBody] = await Promise.all([
+      const [catalogBody, tokenBody, webhookBody, slackBody, emailAlertsBody, calendarBody, jobsBody] = await Promise.all([
         apiRequest<{ events?: CatalogEvent[] }>("/integrations/catalog/events", { headers }),
         apiRequest<{ tokens?: ApiTokenSummary[] }>("/integrations/tokens", { headers }),
         apiRequest<{ webhooks?: WebhookSummary[] }>("/integrations/webhooks", { headers }),
         apiRequest<{ slack?: SlackConnectionSummary | null }>("/integrations/slack", { headers }),
+        apiRequest<{ emailAlerts?: EmailAlertsConnectionSummary | null }>("/integrations/email-alerts", { headers }),
         apiRequest<{ calendar?: GoogleCalendarConnectionSummary | null }>("/integrations/google-calendar", { headers }),
         apiRequest<{ jobs?: ImportJobSummary[] }>("/integrations/import-jobs?limit=12", { headers })
       ]);
@@ -380,6 +409,7 @@ export const IntegrationsPage = () => {
       const nextTokens = Array.isArray(tokenBody.tokens) ? tokenBody.tokens : [];
       const nextWebhooks = Array.isArray(webhookBody.webhooks) ? webhookBody.webhooks : [];
       const nextSlack = slackBody.slack ?? null;
+      const nextEmailAlerts = emailAlertsBody.emailAlerts ?? null;
       const nextCalendar = calendarBody.calendar ?? null;
       const nextJobs = Array.isArray(jobsBody.jobs) ? jobsBody.jobs : [];
 
@@ -387,6 +417,7 @@ export const IntegrationsPage = () => {
       setTokens(nextTokens);
       setWebhooks(nextWebhooks);
       setSlackConnection(nextSlack);
+      setEmailAlertsConnection(nextEmailAlerts);
       setCalendarConnection(nextCalendar);
       setImportJobs(nextJobs);
       setTokenScopes((current) => current.filter((scope) => nextCatalog.some((eventItem) => eventItem.eventName === scope)));
@@ -402,6 +433,9 @@ export const IntegrationsPage = () => {
       setSlackName(nextSlack?.name ?? "Slack");
       setSlackIsActive(nextSlack?.isActive ?? true);
       setSlackWebhookUrl("");
+      setEmailAlertsName(nextEmailAlerts?.name ?? "Alertas por e-mail");
+      setEmailAlertsIsActive(nextEmailAlerts?.isActive ?? true);
+      setEmailAlertsRecipientsText((nextEmailAlerts?.recipients ?? []).join(", "));
       setCalendarName(nextCalendar?.name ?? "Google Calendar");
       setCalendarProjectId(nextCalendar?.projectId ?? (selectedProjectId && selectedProjectId !== "all" ? selectedProjectId : ""));
       setCalendarIncludeTasks(nextCalendar?.includeTasks !== false);
@@ -419,6 +453,7 @@ export const IntegrationsPage = () => {
       setWebhooks([]);
       setWebhookHealth(null);
       setSlackConnection(null);
+      setEmailAlertsConnection(null);
       setCalendarConnection(null);
       setImportJobs([]);
     } finally {
@@ -821,6 +856,71 @@ export const IntegrationsPage = () => {
       setSlackFeedback(getApiErrorMessage(error, "Falha ao testar Slack."));
     } finally {
       setSlackTesting(false);
+    }
+  };
+
+  const handleSaveEmailAlerts = async () => {
+    if (!token || !selectedOrganizationId || !canManage) return;
+
+    const recipients = parseEmailRecipientsText(emailAlertsRecipientsText);
+    if (emailAlertsRecipientsText.trim().length > 0 && recipients.length === 0) {
+      setEmailAlertsFeedback("Informe e-mails válidos separados por vírgula.");
+      return;
+    }
+
+    setEmailAlertsLoading(true);
+    setEmailAlertsFeedback(null);
+    try {
+      const body = await apiRequest<{ emailAlerts?: EmailAlertsConnectionSummary | null }>("/integrations/email-alerts", {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          name: emailAlertsName.trim() || "Alertas por e-mail",
+          isActive: emailAlertsIsActive,
+          recipients
+        })
+      });
+      const next = body.emailAlerts ?? null;
+      setEmailAlertsConnection(next);
+      if (next) {
+        setEmailAlertsName(next.name);
+        setEmailAlertsIsActive(next.isActive);
+        setEmailAlertsRecipientsText((next.recipients ?? []).join(", "));
+      }
+      setEmailAlertsFeedback("Alertas por e-mail salvos com sucesso.");
+      await loadPage();
+    } catch (error) {
+      setEmailAlertsFeedback(getApiErrorMessage(error, "Falha ao salvar alertas por e-mail."));
+    } finally {
+      setEmailAlertsLoading(false);
+    }
+  };
+
+  const handleTestEmailAlerts = async () => {
+    if (!token || !selectedOrganizationId || !canManage) return;
+
+    const recipients = parseEmailRecipientsText(emailAlertsRecipientsText);
+    if (emailAlertsRecipientsText.trim().length > 0 && recipients.length === 0) {
+      setEmailAlertsFeedback("Informe e-mails válidos para teste.");
+      return;
+    }
+
+    setEmailAlertsTesting(true);
+    setEmailAlertsFeedback(null);
+    try {
+      const body = await apiRequest<{ message?: string }>("/integrations/email-alerts/test", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          recipients
+        })
+      });
+      setEmailAlertsFeedback(body.message ?? "Teste de e-mail enviado.");
+      await loadPage();
+    } catch (error) {
+      setEmailAlertsFeedback(getApiErrorMessage(error, "Falha ao enviar teste de e-mail."));
+    } finally {
+      setEmailAlertsTesting(false);
     }
   };
 
@@ -1289,6 +1389,102 @@ export const IntegrationsPage = () => {
         ) : (
           <p className="integration-muted">Nenhuma conexão Slack salva nesta organização.</p>
         )}
+      </article>
+
+      <article className="integration-card">
+        <div className="integration-card__header">
+          <div>
+            <p className="integration-card__kicker">Interno</p>
+            <h2>Alertas por e-mail</h2>
+          </div>
+          <Mail size={18} />
+        </div>
+
+        <div className="integration-form-grid">
+          <label className="integration-field">
+            <span>Nome da conexão</span>
+            <input
+              value={emailAlertsName}
+              onChange={(event) => setEmailAlertsName(event.target.value)}
+              placeholder="Alertas operacionais"
+            />
+          </label>
+          <label className="integration-field">
+            <span>Status</span>
+            <select
+              value={emailAlertsIsActive ? "active" : "paused"}
+              onChange={(event) => setEmailAlertsIsActive(event.target.value === "active")}
+            >
+              <option value="active">Ativo</option>
+              <option value="paused">Pausado</option>
+            </select>
+          </label>
+        </div>
+
+        <label className="integration-field">
+          <span>Destinatários</span>
+          <input
+            value={emailAlertsRecipientsText}
+            onChange={(event) => setEmailAlertsRecipientsText(event.target.value)}
+            placeholder="ops@empresa.com, pmo@empresa.com"
+          />
+          <small>
+            Separe e-mails por vírgula. Se ficar vazio, usa admins/owners da organização. Se existir
+            `SMTP_ALERT_RECIPIENTS`, ele tem prioridade.
+          </small>
+        </label>
+
+        <div className="integration-card__actions">
+          <button type="button" className="btn-primary" onClick={() => void handleSaveEmailAlerts()} disabled={emailAlertsLoading}>
+            {emailAlertsLoading ? "Salvando..." : "Salvar alertas"}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void handleTestEmailAlerts()}
+            disabled={emailAlertsTesting || !(emailAlertsConnection?.smtpConfigured ?? false)}
+          >
+            <SendHorizontal size={16} />
+            {emailAlertsTesting ? "Testando..." : "Testar e-mail"}
+          </button>
+          {emailAlertsFeedback ? <p className={feedbackClassName(emailAlertsFeedback)}>{emailAlertsFeedback}</p> : null}
+        </div>
+
+        <div className="integration-secret-card">
+          <div>
+            <strong>Canal de notificação</strong>
+            <small>
+              SMTP: {(emailAlertsConnection?.smtpConfigured ?? false) ? "configurado" : "não configurado"} · Última validação:{" "}
+              {formatDateTime(emailAlertsConnection?.lastValidatedAt)} · Último disparo crítico:{" "}
+              {formatDateTime(emailAlertsConnection?.lastTriggeredAt)}
+            </small>
+            <code>
+              {parseEmailRecipientsText(emailAlertsRecipientsText).join(", ") ||
+                "Sem destinatário explícito (fallback para admins/owners)."}
+            </code>
+          </div>
+          <span
+            className={`integration-status-badge is-${
+              !(emailAlertsConnection?.smtpConfigured ?? false)
+                ? "pending"
+                : emailAlertsConnection?.lastValidationStatus === "FAILED"
+                ? "failed"
+                : emailAlertsConnection?.lastValidationStatus === "SUCCESS"
+                ? "success"
+                : "pending"
+            }`}
+          >
+            {emailAlertsConnection?.lastValidationStatus === "FAILED" ? <XCircle size={14} /> : null}
+            {emailAlertsConnection?.lastValidationStatus === "SUCCESS" ? <CheckCircle2 size={14} /> : null}
+            {!(emailAlertsConnection?.smtpConfigured ?? false)
+              ? "SMTP pendente"
+              : emailAlertsConnection?.lastValidationStatus === "FAILED"
+              ? "Falha"
+              : emailAlertsConnection?.lastValidationStatus === "SUCCESS"
+              ? "Saudável"
+              : "Sem teste"}
+          </span>
+        </div>
       </article>
 
       <article className="integration-card">

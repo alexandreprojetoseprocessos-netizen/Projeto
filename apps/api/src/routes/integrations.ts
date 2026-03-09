@@ -36,16 +36,19 @@ import {
 import {
   buildGoogleCalendarFeed,
   generateIntegrationAccessToken,
+  getEmailAlertsConnection,
   getIntegrationConnection,
   getIntegrationConnectionByAccessToken,
   sanitizeSlackWebhookUrl,
   sendSlackConnectionMessage,
   SLACK_SUPPORTED_EVENTS,
   summarizeIntegrationConnection,
+  upsertEmailAlertsConnection,
   upsertGoogleCalendarConnection,
   upsertSlackConnection
 } from "../services/integrationConnections";
 import { writeAuditLog } from "../services/audit";
+import { isSmtpConfigured, sendEmailAlertsTest } from "../services/emailNotifications";
 import { canManageOrganizationSettings } from "../services/permissions";
 import { ensureProjectMembership } from "../services/rbac";
 import { normalizeUuid } from "../utils/uuid";
@@ -72,6 +75,19 @@ const normalizeEvents = (value: unknown) => {
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter(Boolean);
+};
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const normalizeEmails = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim().toLowerCase())
+        .filter((item) => EMAIL_REGEX.test(item))
+    )
+  ];
 };
 
 const DEFAULT_BOARD_COLUMNS: Array<{ label: string; status: TaskStatus; wipLimit?: number | null }> = [
@@ -508,6 +524,33 @@ integrationsRouter.get("/slack", async (req, res) => {
   });
 });
 
+integrationsRouter.get("/email-alerts", async (req, res) => {
+  if (!ensureOrgAdmin(req, res)) return;
+
+  const connection = await getEmailAlertsConnection(req.organizationId!);
+  return res.json({
+    emailAlerts: connection
+      ? {
+          ...summarizeIntegrationConnection(connection),
+          recipients: connection.emailConfig.recipients,
+          smtpConfigured: isSmtpConfigured()
+        }
+      : {
+          id: null,
+          name: "Alertas por e-mail",
+          isActive: true,
+          recipients: [],
+          smtpConfigured: isSmtpConfigured(),
+          createdAt: null,
+          updatedAt: null,
+          lastTriggeredAt: null,
+          lastValidatedAt: null,
+          lastValidationStatus: null,
+          lastValidationMessage: null
+        }
+  });
+});
+
 integrationsRouter.get("/google-calendar", async (req, res) => {
   if (!ensureOrgAdmin(req, res)) return;
 
@@ -582,6 +625,62 @@ integrationsRouter.put("/slack", async (req, res) => {
       webhookPreview: `${normalizedWebhookUrl.slice(0, 36)}...`
     }
   });
+});
+
+integrationsRouter.put("/email-alerts", async (req, res) => {
+  if (!ensureOrgAdmin(req, res)) return;
+
+  const name =
+    typeof req.body?.name === "string" && req.body.name.trim()
+      ? req.body.name.trim()
+      : "Alertas por e-mail";
+  const recipients = normalizeEmails(req.body?.recipients);
+  const isActive = typeof req.body?.isActive === "boolean" ? req.body.isActive : true;
+  const existing = await getEmailAlertsConnection(req.organizationId!);
+
+  try {
+    const connection = await upsertEmailAlertsConnection({
+      organizationId: req.organizationId!,
+      createdById: req.user!.id,
+      name,
+      recipients,
+      isActive
+    });
+
+    await writeAuditLog({
+      organizationId: req.organizationId!,
+      actorId: req.user!.id,
+      action: existing ? "INTEGRATION_EMAIL_ALERTS_UPDATED" : "INTEGRATION_EMAIL_ALERTS_CREATED",
+      entity: "INTEGRATION_CONNECTION",
+      entityId: connection.id,
+      diff: {
+        after: {
+          id: connection.id,
+          provider: connection.provider,
+          isActive: connection.isActive,
+          recipients
+        }
+      }
+    });
+
+    return res.json({
+      emailAlerts: {
+        ...summarizeIntegrationConnection(connection),
+        recipients,
+        smtpConfigured: isSmtpConfigured()
+      }
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "INTEGRATION_EMAIL_ALERTS_SAVE_FAILED";
+    if (message === "CUSTOM_PROVIDER_ALREADY_IN_USE") {
+      return res.status(409).json({
+        message:
+          "Já existe integração CUSTOM desta organização em uso para outro fluxo. Não foi possível reservar o canal de e-mail."
+      });
+    }
+    logger.error({ err: error, organizationId: req.organizationId }, "Failed to upsert email alerts integration");
+    return res.status(500).json({ message: "Falha ao salvar alertas por e-mail." });
+  }
 });
 
 integrationsRouter.put("/google-calendar", async (req, res) => {
@@ -679,6 +778,71 @@ integrationsRouter.post("/slack/test", async (req, res) => {
     logger.error({ err: error, organizationId: req.organizationId }, "Failed to send Slack test");
     return res.status(500).json({ message: "Falha ao enviar teste para o Slack." });
   }
+});
+
+integrationsRouter.post("/email-alerts/test", async (req, res) => {
+  if (!ensureOrgAdmin(req, res)) return;
+
+  const bodyRecipients =
+    typeof req.body?.recipients === "string"
+      ? req.body.recipients.split(",")
+      : Array.isArray(req.body?.recipients)
+      ? req.body.recipients
+      : [];
+  const recipients = normalizeEmails(bodyRecipients);
+
+  const result = await sendEmailAlertsTest({
+    organizationId: req.organizationId!,
+    organizationName: req.organization?.name ?? null,
+    requestedRecipients: recipients
+  });
+  const emailConnection = await getEmailAlertsConnection(req.organizationId!);
+
+  if (!result.delivered) {
+    if (emailConnection) {
+      await prisma.integrationConnection.update({
+        where: { id: emailConnection.id },
+        data: {
+          lastValidatedAt: new Date(),
+          lastValidationStatus: "FAILED",
+          lastValidationMessage: result.skippedReason ?? "Falha ao enviar teste."
+        }
+      });
+    }
+    return res.status(400).json({
+      message: `Não foi possível enviar teste de e-mail (${result.skippedReason ?? "unknown"}).`,
+      recipients: result.recipients
+    });
+  }
+
+  if (emailConnection) {
+    await prisma.integrationConnection.update({
+      where: { id: emailConnection.id },
+      data: {
+        lastValidatedAt: new Date(),
+        lastValidationStatus: "SUCCESS",
+        lastValidationMessage: `Teste enviado para ${result.recipients.length} destinatário(s).`
+      }
+    });
+  }
+
+  await writeAuditLog({
+    organizationId: req.organizationId!,
+    actorId: req.user!.id,
+    action: "INTEGRATION_EMAIL_ALERTS_TESTED",
+    entity: "INTEGRATION_CONNECTION",
+    entityId: emailConnection?.id ?? req.organizationId!,
+    diff: {
+      after: {
+        recipientsCount: result.recipients.length
+      }
+    }
+  });
+
+  return res.json({
+    message: `Teste de e-mail enviado para ${result.recipients.length} destinatário(s).`,
+    recipients: result.recipients
+  });
 });
 
 integrationsRouter.get("/tokens", async (req, res) => {
